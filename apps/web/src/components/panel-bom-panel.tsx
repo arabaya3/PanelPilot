@@ -3,7 +3,18 @@
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
-import { Field, round, Sources } from '@/components/cable-sizing-panel';
+import {
+  CalcErrorNotice,
+  checkInputs,
+  clearedFor,
+  Field,
+  fieldErrorsFrom,
+  focusFirst,
+  round,
+  Sources,
+  useCalcText,
+  type FieldError,
+} from '@/components/cable-sizing-panel';
 import {
   buildBom,
   listDriveRanges,
@@ -13,7 +24,7 @@ import {
   type PanelBomResponse,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
-import { EmptyState, Notice, TableFrame } from '@/components/ui';
+import { EmptyState, fieldDescribedBy, Notice, TableFrame } from '@/components/ui';
 
 type Constraints = PanelBomRequest['constraints'];
 type Placement = Constraints['placement'];
@@ -86,6 +97,82 @@ const INITIAL_ENCLOSURE: Enclosure = {
   range: '',
 };
 
+type EnclosureKey =
+  'width' | 'height' | 'depth' | 'ingress' | 'ambient' | 'maxInternal' | 'voltage';
+
+/**
+ * An input's error key: the enclosure's by name, a load's as `<field>-<row key>`
+ * (`tag-0`, `cur-2`), which is also the suffix of its element id.
+ */
+type ErrorKey = EnclosureKey | `${'tag' | 'pow' | 'cur' | 'heat'}-${string}`;
+
+/** The enclosure fields a schema check can reject, by the input that holds them. */
+const API_FIELDS: Partial<Record<string, ErrorKey>> = {
+  width_mm: 'width',
+  height_mm: 'height',
+  depth_mm: 'depth',
+  supply_voltage_v: 'voltage',
+  ambient_temp_c: 'ambient',
+  max_internal_temp_c: 'maxInternal',
+};
+
+/** The coded refusals that are about one enclosure input. */
+const CODE_FIELDS: Partial<Record<string, ErrorKey>> = {
+  drive_voltage: 'voltage',
+  starter_voltage: 'voltage',
+};
+
+/** Every input the panel checks, in the order the form shows them. */
+function checkPanel(enclosure: Enclosure, loads: Load[]): Partial<Record<ErrorKey, FieldError>> {
+  const errors = checkInputs<ErrorKey>([
+    ['width', enclosure.width, 'wholePositive'],
+    ['height', enclosure.height, 'wholePositive'],
+    ['depth', enclosure.depth, 'wholePositive'],
+    ['ambient', enclosure.ambient, 'finite'],
+    ['maxInternal', enclosure.maxInternal, 'finite'],
+    ['voltage', enclosure.voltage, 'positive'],
+  ]);
+  // With no permitted rise the surface sheds nothing and the cooling balance
+  // is undefined; the server refuses it, so say so at the field.
+  if (
+    !errors.ambient &&
+    !errors.maxInternal &&
+    Number(enclosure.maxInternal) <= Number(enclosure.ambient)
+  ) {
+    errors.maxInternal = { problem: 'notAboveAmbient' };
+  }
+  for (const load of loads) {
+    if (load.tag.trim() === '') errors[`tag-${String(load.key)}`] = { problem: 'tagRequired' };
+    Object.assign(
+      errors,
+      checkInputs<ErrorKey>([
+        [`pow-${String(load.key)}`, load.power, 'positive', { optional: true }],
+        [`cur-${String(load.key)}`, load.current, 'positive', { optional: true }],
+        [`heat-${String(load.key)}`, load.dissipation, 'nonNegative', { optional: true }],
+      ]),
+    );
+  }
+  return errors;
+}
+
+function errorOrder(loads: Load[]): ErrorKey[] {
+  return [
+    'width',
+    'height',
+    'depth',
+    'ingress',
+    'ambient',
+    'maxInternal',
+    'voltage',
+    ...loads.flatMap((load): ErrorKey[] => [
+      `tag-${String(load.key)}`,
+      `pow-${String(load.key)}`,
+      `cur-${String(load.key)}`,
+      `heat-${String(load.key)}`,
+    ]),
+  ];
+}
+
 function blankLoad(key: number): Load {
   return {
     key,
@@ -121,7 +208,26 @@ export function PanelBomPanel({
   const [nextKey, setNextKey] = useState(1);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [ranges, setRanges] = useState<DriveRangeSummary[]>([]);
+  const [errors, setErrors] = useState<Partial<Record<ErrorKey, FieldError>>>({});
+  const text = useCalcText();
   const id = useId();
+
+  /** Clear an input's error once it is edited; a changed choice clears the server's. */
+  function edited(key: string, tableChanged = false) {
+    setErrors((current) => clearedFor(current, key, tableChanged));
+  }
+
+  function setChoice<K extends keyof Enclosure>(key: K, value: Enclosure[K]) {
+    setEnclosure((current) => ({ ...current, [key]: value }));
+    edited(key, true);
+  }
+
+  /** A text or number input's id, error and its accessible wiring. */
+  function wired(key: ErrorKey) {
+    const inputId = `${id}-${key}`;
+    const error = text.fieldError(errors[key]);
+    return { inputId, error, describedBy: fieldDescribedBy(inputId, { error }) };
+  }
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -145,14 +251,20 @@ export function PanelBomPanel({
     };
   }, [token, listImpl]);
 
-  function updateLoad(key: number, patch: Partial<Load>) {
+  function updateLoad(key: number, patch: Partial<Load>, errorKey?: ErrorKey) {
     setLoads((current) => current.map((load) => (load.key === key ? { ...load, ...patch } : load)));
+    if (errorKey) edited(errorKey);
   }
 
-  const complete = loads.every((load) => load.tag.trim() !== '');
-
   async function run() {
-    if (session.kind !== 'ready' || !complete) return;
+    if (session.kind !== 'ready') return;
+    const invalid = checkPanel(enclosure, loads);
+    setErrors(invalid);
+    if (Object.keys(invalid).length > 0) {
+      setResult({ kind: 'idle' });
+      focusFirst(id, errorOrder(loads), invalid);
+      return;
+    }
     setResult({ kind: 'working' });
     const outcome = await buildImpl({
       token: session.token,
@@ -187,23 +299,28 @@ export function PanelBomPanel({
       setResult({ kind: 'built', response: outcome.response });
     } else {
       setResult({ kind: 'error', outcome });
+      if (outcome.kind === 'refused') {
+        const refused = fieldErrorsFrom(outcome, { codes: CODE_FIELDS, fields: API_FIELDS });
+        setErrors(refused);
+        focusFirst(id, errorOrder(loads), refused);
+      }
       if (outcome.kind === 'unauthorized') void connect();
     }
   }
 
-  function enclosureField(
-    key: 'width' | 'height' | 'depth' | 'ingress' | 'ambient' | 'maxInternal' | 'voltage',
-    unit: string,
-  ) {
+  function enclosureField(key: EnclosureKey, unit: string) {
+    const { inputId, error, describedBy } = wired(key);
     return (
-      <Field id={`${id}-${key}`} label={t(`bom.field.${key}`)} unit={unit}>
+      <Field id={inputId} label={t(`bom.field.${key}`)} unit={unit} error={error}>
         <input
-          id={`${id}-${key}`}
+          id={inputId}
           inputMode={key === 'ingress' ? 'text' : 'decimal'}
           dir="ltr"
+          {...describedBy}
           value={enclosure[key]}
           onChange={(event) => {
             setEnclosure((current) => ({ ...current, [key]: event.target.value }));
+            edited(key);
           }}
           className="input w-full"
         />
@@ -235,7 +352,7 @@ export function PanelBomPanel({
                 id={`${id}-placement`}
                 value={enclosure.placement}
                 onChange={(event) => {
-                  setEnclosure((c) => ({ ...c, placement: event.target.value as Placement }));
+                  setChoice('placement', event.target.value as Placement);
                 }}
                 className="input w-full"
               >
@@ -251,7 +368,7 @@ export function PanelBomPanel({
                 id={`${id}-method`}
                 value={enclosure.method}
                 onChange={(event) => {
-                  setEnclosure((c) => ({ ...c, method: event.target.value as Method }));
+                  setChoice('method', event.target.value as Method);
                 }}
                 className="input w-full"
               >
@@ -270,7 +387,7 @@ export function PanelBomPanel({
                 id={`${id}-material`}
                 value={enclosure.material}
                 onChange={(event) => {
-                  setEnclosure((c) => ({ ...c, material: event.target.value as Material }));
+                  setChoice('material', event.target.value as Material);
                 }}
                 className="input w-full"
               >
@@ -283,7 +400,7 @@ export function PanelBomPanel({
                 id={`${id}-range`}
                 value={enclosure.range}
                 onChange={(event) => {
-                  setEnclosure((c) => ({ ...c, range: event.target.value }));
+                  setChoice('range', event.target.value);
                 }}
                 className="input w-full"
               >
@@ -307,13 +424,18 @@ export function PanelBomPanel({
                 data-testid={`bom-load-${String(index)}`}
                 className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 sm:items-end"
               >
-                <Field id={`${id}-tag-${String(load.key)}`} label={t('bom.field.tag')}>
+                <Field
+                  id={`${id}-tag-${String(load.key)}`}
+                  error={text.fieldError(errors[`tag-${String(load.key)}`])}
+                  label={t('bom.field.tag')}
+                >
                   <input
                     id={`${id}-tag-${String(load.key)}`}
+                    {...wired(`tag-${String(load.key)}`).describedBy}
                     dir="ltr"
                     value={load.tag}
                     onChange={(event) => {
-                      updateLoad(load.key, { tag: event.target.value });
+                      updateLoad(load.key, { tag: event.target.value }, `tag-${String(load.key)}`);
                     }}
                     className="input w-full"
                   />
@@ -328,42 +450,68 @@ export function PanelBomPanel({
                     className="input w-full"
                   />
                 </Field>
-                <Field id={`${id}-pow-${String(load.key)}`} label={t('bom.field.power')} unit="kW">
+                <Field
+                  id={`${id}-pow-${String(load.key)}`}
+                  error={text.fieldError(errors[`pow-${String(load.key)}`])}
+                  label={t('bom.field.power')}
+                  unit="kW"
+                >
                   <input
                     id={`${id}-pow-${String(load.key)}`}
+                    {...wired(`pow-${String(load.key)}`).describedBy}
                     inputMode="decimal"
                     dir="ltr"
                     value={load.power}
                     onChange={(event) => {
-                      updateLoad(load.key, { power: event.target.value });
+                      updateLoad(
+                        load.key,
+                        { power: event.target.value },
+                        `pow-${String(load.key)}`,
+                      );
                     }}
                     className="input w-full"
                   />
                 </Field>
-                <Field id={`${id}-cur-${String(load.key)}`} label={t('bom.field.current')} unit="A">
+                <Field
+                  id={`${id}-cur-${String(load.key)}`}
+                  error={text.fieldError(errors[`cur-${String(load.key)}`])}
+                  label={t('bom.field.current')}
+                  unit="A"
+                >
                   <input
                     id={`${id}-cur-${String(load.key)}`}
+                    {...wired(`cur-${String(load.key)}`).describedBy}
                     inputMode="decimal"
                     dir="ltr"
                     value={load.current}
                     onChange={(event) => {
-                      updateLoad(load.key, { current: event.target.value });
+                      updateLoad(
+                        load.key,
+                        { current: event.target.value },
+                        `cur-${String(load.key)}`,
+                      );
                     }}
                     className="input w-full"
                   />
                 </Field>
                 <Field
                   id={`${id}-heat-${String(load.key)}`}
+                  error={text.fieldError(errors[`heat-${String(load.key)}`])}
                   label={t('bom.field.dissipation')}
                   unit="W"
                 >
                   <input
                     id={`${id}-heat-${String(load.key)}`}
+                    {...wired(`heat-${String(load.key)}`).describedBy}
                     inputMode="decimal"
                     dir="ltr"
                     value={load.dissipation}
                     onChange={(event) => {
-                      updateLoad(load.key, { dissipation: event.target.value });
+                      updateLoad(
+                        load.key,
+                        { dissipation: event.target.value },
+                        `heat-${String(load.key)}`,
+                      );
                     }}
                     className="input w-full"
                   />
@@ -421,7 +569,7 @@ export function PanelBomPanel({
           <div>
             <button
               type="submit"
-              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              disabled={session.kind !== 'ready' || result.kind === 'working'}
               className="btn btn-primary"
             >
               {result.kind === 'working' ? t('working') : t('bom.submit')}
@@ -454,14 +602,11 @@ export function PanelBomPanel({
           )}
 
           {result.kind === 'error' && (
-            <Notice tone="critical" testId="bom-error">
-              <p>{t(`error.${result.outcome.kind}`)}</p>
-              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-                <p dir="ltr" className="mt-2 font-mono text-xs">
-                  {result.outcome.detail}
-                </p>
-              )}
-            </Notice>
+            <CalcErrorNotice
+              outcome={result.outcome}
+              hasFieldErrors={Object.keys(errors).length > 0}
+              testId="bom-error"
+            />
           )}
 
           {result.kind === 'built' && <BomResult response={result.response} />}

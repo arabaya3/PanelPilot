@@ -83,8 +83,13 @@ def _tenant(value: str | uuid.UUID) -> uuid.UUID:
         raise NotFoundError("no such tenant") from exc
 
 
-def _row(session: Session) -> SubscriptionRow | None:
-    return session.scalars(select(SubscriptionRow)).one_or_none()
+def _row(session: Session, tenant: uuid.UUID) -> SubscriptionRow | None:
+    # Filtered by tenant explicitly, not only by the session's binding: a
+    # caller under a lifted tenant filter (signup accepting an invitation) sees
+    # every tenant's subscription, and must still read its own.
+    return session.scalars(
+        select(SubscriptionRow).where(SubscriptionRow.tenant_id == tenant)
+    ).one_or_none()
 
 
 def _in_force(row: SubscriptionRow | None, now: datetime) -> tuple[Plan, str]:
@@ -107,8 +112,9 @@ def plan_of(*, session: Session, tenant_id: str | uuid.UUID, now: datetime | Non
     Returns:
         Its plan; the free plan without a subscription in force.
     """
-    bind_tenant(session, _tenant(tenant_id))
-    return _in_force(_row(session), now or datetime.now(UTC))[0]
+    tenant = _tenant(tenant_id)
+    bind_tenant(session, tenant)
+    return _in_force(_row(session, tenant), now or datetime.now(UTC))[0]
 
 
 def model_call_ceiling(*, session: Session, tenant_id: str | uuid.UUID) -> int | None:
@@ -162,8 +168,9 @@ def seat_limit(*, session: Session, tenant_id: str | uuid.UUID) -> int | None:
     """
     if not enforced():
         return None
-    bind_tenant(session, _tenant(tenant_id))
-    row = _row(session)
+    tenant = _tenant(tenant_id)
+    bind_tenant(session, tenant)
+    row = _row(session, tenant)
     plan, status = _in_force(row, datetime.now(UTC))
     if status == "active" and row is not None:
         return row.seats
@@ -211,7 +218,7 @@ def entitlements(
     tenant = _tenant(user.tenant_id)
     bind_tenant(session, tenant)
     moment = now or datetime.now(UTC)
-    row = _row(session)
+    row = _row(session, tenant)
     plan, status = _in_force(row, moment)
     seats_used = session.scalar(
         select(func.count()).select_from(User).where(User.is_active.is_(True))
@@ -272,7 +279,7 @@ def request_plan(
     plan.check_seats(request.seats)
     tenant = _tenant(user.tenant_id)
     bind_tenant(session, tenant)
-    row = _row(session)
+    row = _row(session, tenant)
     if row is None:
         row = SubscriptionRow(tenant_id=tenant)
         session.add(row)

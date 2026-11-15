@@ -701,6 +701,10 @@ def test_a_market_is_named_on_the_board() -> None:
     board = distribution.design_distribution_board(_hall(), company)
     (named,) = [n for n in board.notes if n.code == "market_rules"]
     assert named.params["market"] == "Israel"
+    # Codes the page translates by; the English names stay as the fallback.
+    assert named.params["market_code"] == "IL"
+    assert named.params["regulation_code"] == "IL"
+    assert named.params["regulation"] == "Israeli Electricity Law and Regulations"
     assert "market_rules" not in [
         n.code
         for n in distribution.design_distribution_board(_hall(), profile.default_profile()).notes

@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DRAFT — NOT FOR EXECUTION | ADV unapproved, revision 01, not approved, design 40beff92fcac, rules 2026.10.23.1 | findings: 0 blocking, 9 warning, 10 info -->
+<CAEXFile SchemaVersion="3.0" FileName="TEST INPUT - readiness trace pump panel.aml" xmlns="http://www.dke.de/CAEX">
+  <SourceDocumentInformation OriginName="PanelPilot" OriginID="01776396-8756-5ff7-8410-a3827fb7f1c9" OriginVersion="1" OriginProjectTitle="TEST INPUT - readiness trace pump panel" OriginProjectID="TEST-001" />
+  <InstanceHierarchy Name="TEST INPUT - readiness trace pump panel" ID="e0d666a9-f24c-51a5-9cb0-f6ff17e27ed0">
+    <InternalElement Name="PP1" ID="08125e77-c5e0-5774-bab3-d537874a43e7">
+      <Attribute Name="Kind" AttributeDataType="xs:string">
+        <Value>board</Value>
+      </Attribute>
+      <Attribute Name="Voltage" AttributeDataType="xs:decimal" Unit="V">
+        <Value>400</Value>
+      </Attribute>
+      <Attribute Name="Phases" AttributeDataType="xs:int">
+        <Value>3</Value>
+      </Attribute>
+      <Attribute Name="Frequency" AttributeDataType="xs:decimal" Unit="Hz">
+        <Value>50</Value>
+      </Attribute>
+      <Attribute Name="Earthing" AttributeDataType="xs:string">
+        <Value>TN-S</Value>
+      </Attribute>
+      <Attribute Name="FaultLevel" AttributeDataType="xs:decimal" Unit="kA">
+        <Value>10</Value>
+      </Attribute>
+      <InternalElement Name="Q1" ID="94d4ca7b-8379-5a82-bf61-dd02de5bafe6">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q1</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>circuit_breaker</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Main incomer</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>4</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>100</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>C</Value>
+        </Attribute>
+        <Attribute Name="BreakingCapacity" AttributeDataType="xs:decimal" Unit="kA">
+          <Value>10</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="c3ff2280-4c4c-500f-8803-fb9f748152e3" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="5a475a60-e96e-5e1b-89d1-ddfab6f37c7e" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q2" ID="f7ec90c6-3f41-5927-a779-2cd5ffd00867">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q2</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>circuit_breaker</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Group 1 supply</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>16</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>C</Value>
+        </Attribute>
+        <Attribute Name="BreakingCapacity" AttributeDataType="xs:decimal" Unit="kA">
+          <Value>10</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="89854b78-637a-5b2d-817a-5e158d514847" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="9199f2f3-6d90-5120-b17d-0745f95fa971" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="F1" ID="2e4ea435-5b9a-5343-b6cd-5ee7d4ad3491">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-F1</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>residual_current_device</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Group 1 residual current</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>4</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>16</Value>
+        </Attribute>
+        <Attribute Name="RatedResidualCurrent" AttributeDataType="xs:decimal" Unit="mA">
+          <Value>30</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="571d90aa-9845-5c93-970c-b2e034615e79" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="7398adb5-512a-5a0f-b3b3-0cfaf8cd8cb9" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q3" ID="2789cca4-bbb9-5235-abf8-ff92172f8884">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q3</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>circuit_breaker</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Panel lighting (test)</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>1</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>10</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>C</Value>
+        </Attribute>
+        <Attribute Name="BreakingCapacity" AttributeDataType="xs:decimal" Unit="kA">
+          <Value>10</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="d057c6db-9b00-5685-ad74-4017b1c0e76b" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="b5816553-e9df-554b-ab67-248247866ca1" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q4" ID="ff2eedc1-24a4-50db-928f-b0eb7449300f">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q4</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>circuit_breaker</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Duty pump (test) motor protection</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>20</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>MA</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>T2S160 MA 20</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="a0cafcec-542b-582b-9bc7-5bb90a47f9bb" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="b39f10e0-9aa8-52a8-ae4d-696c83e33fc1" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q5" ID="442867a7-10a3-5257-9d97-ba5212245420">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q5</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>contactor</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Duty pump (test) line contactor</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>A30</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="5d10d8bf-deda-577b-a720-35751844cca3" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="9bb54ff8-c104-5747-bf02-43e70b3c9f77" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="F2" ID="3f96e6d2-1e01-5ad1-8b1c-a88af4161e39">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-F2</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>overload_relay</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Duty pump (test) overload, set to 15.2 A</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>15.2</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>TA25DU19</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="aea86a6c-3c15-5647-9479-7aa3b91848ba" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="28d4abf4-606f-5b39-b8a4-2c562248facf" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q6" ID="8e1757b4-921f-56ce-a7a7-ba8d6544280e">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q6</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>circuit_breaker</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Standby pump (test) motor protection</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>80</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>MA</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>T2S160 MA80</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="96d9ed36-10a4-5671-b98d-b4e2fc54632f" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="44d55bc8-449c-5b3d-8339-72978247f15b" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q7" ID="d55ad38e-2f70-563f-aa8b-ad8f2b1daba4">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q7</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>contactor</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Standby pump (test) line contactor</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>A63</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="421b265b-ac96-5871-a225-287d51aed040" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="abd0c519-b0b9-5783-9d6f-166af0c97788" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q8" ID="4aee5277-f38f-5e72-b89a-2ccf754333a0">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q8</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>contactor</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Standby pump (test) delta contactor</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>A63</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="138c6234-fe52-555e-b24a-747b43304f61" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="0ab0d5d9-1d30-5e2b-8532-f06d0e1c7312" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="Q9" ID="f5aa6e6e-47fe-5eb7-8f77-f784e654f4dd">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-Q9</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>contactor</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Standby pump (test) star contactor</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>A30</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="f3be749e-9d6d-51ec-819b-f0a6011a9145" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="1ad7e1e7-c0ae-599d-80c8-25780b7f62d0" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="F3" ID="a2069668-836a-5231-b382-ae837905690b">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-F3</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>overload_relay</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Standby pump (test) overload, set to 32.33 A</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>32.33</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>TA75DU42</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="414829e0-75b4-5155-88ff-00a4e6a125c0" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="88ce0da1-16d6-5ef6-8968-b0c493b58c8c" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="F4" ID="192f4d68-4b79-53c4-852a-4eb873f08015">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-F4</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>fuse</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Booster (test) drive input fuses</Value>
+        </Attribute>
+        <Attribute Name="Poles" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>25</Value>
+        </Attribute>
+        <Attribute Name="TrippingCurve" AttributeDataType="xs:string">
+          <Value>aR</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>Bussmann</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>170M1311</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="e5fc6525-e1b0-5e42-bd50-4f8566ac6dfd" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="01598c42-51a5-5804-a1b0-3e2ef796de3b" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="T1" ID="35ed281c-7978-5330-a8ef-a353a50c5d8b">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-T1</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>drive</Value>
+        </Attribute>
+        <Attribute Name="FunctionText" AttributeDataType="xs:string">
+          <Value>Booster (test) drive</Value>
+        </Attribute>
+        <Attribute Name="RatedCurrent" AttributeDataType="xs:decimal" Unit="A">
+          <Value>12.9</Value>
+        </Attribute>
+        <Attribute Name="Manufacturer" AttributeDataType="xs:string">
+          <Value>ABB</Value>
+        </Attribute>
+        <Attribute Name="TypeNumber" AttributeDataType="xs:string">
+          <Value>ACS880-01-12A6-3</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="829df01f-9385-5675-b031-4ab5856a050d" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <ExternalInterface Name="PowerOut" ID="897a7094-4f39-5c1e-88b4-61e83a8f19b2" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="W1" ID="f1504004-e055-57cc-be42-4cfab1aae021">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-W1</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>cable</Value>
+        </Attribute>
+        <Attribute Name="Cores" AttributeDataType="xs:int">
+          <Value>3</Value>
+        </Attribute>
+        <Attribute Name="CrossSection" AttributeDataType="xs:decimal" Unit="mm2">
+          <Value>1.5</Value>
+        </Attribute>
+        <Attribute Name="Material" AttributeDataType="xs:string">
+          <Value>Cu</Value>
+        </Attribute>
+        <Attribute Name="Insulation" AttributeDataType="xs:string">
+          <Value>PVC</Value>
+        </Attribute>
+        <Attribute Name="Length" AttributeDataType="xs:decimal" Unit="m">
+          <Value>10</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="506a1f95-7b62-5f3d-9542-3ee600cf83de" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="W2" ID="fe62de70-e401-5e48-afc1-fa6869c0b39d">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-W2</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>cable</Value>
+        </Attribute>
+        <Attribute Name="Cores" AttributeDataType="xs:int">
+          <Value>4</Value>
+        </Attribute>
+        <Attribute Name="CrossSection" AttributeDataType="xs:decimal" Unit="mm2">
+          <Value>1.5</Value>
+        </Attribute>
+        <Attribute Name="Material" AttributeDataType="xs:string">
+          <Value>Cu</Value>
+        </Attribute>
+        <Attribute Name="Insulation" AttributeDataType="xs:string">
+          <Value>PVC</Value>
+        </Attribute>
+        <Attribute Name="Length" AttributeDataType="xs:decimal" Unit="m">
+          <Value>30</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="d2f7fd3e-db95-52be-8593-c5c259632c5f" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="W3" ID="e063d375-6347-5cb4-b674-74b9f32a3289">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-W3</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>cable</Value>
+        </Attribute>
+        <Attribute Name="Cores" AttributeDataType="xs:int">
+          <Value>7</Value>
+        </Attribute>
+        <Attribute Name="CrossSection" AttributeDataType="xs:decimal" Unit="mm2">
+          <Value>6</Value>
+        </Attribute>
+        <Attribute Name="Material" AttributeDataType="xs:string">
+          <Value>Cu</Value>
+        </Attribute>
+        <Attribute Name="Insulation" AttributeDataType="xs:string">
+          <Value>PVC</Value>
+        </Attribute>
+        <Attribute Name="Length" AttributeDataType="xs:decimal" Unit="m">
+          <Value>30</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="a49f7371-b5ad-520f-883a-aaf8a0fd9888" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalElement Name="W4" ID="0fafbd34-3cab-5379-94cb-263153ef19be">
+        <Attribute Name="ReferenceDesignation" AttributeDataType="xs:string">
+          <Value>=PP1-W4</Value>
+        </Attribute>
+        <Attribute Name="Kind" AttributeDataType="xs:string">
+          <Value>cable</Value>
+        </Attribute>
+        <Attribute Name="Cores" AttributeDataType="xs:int">
+          <Value>4</Value>
+        </Attribute>
+        <Attribute Name="CrossSection" AttributeDataType="xs:decimal" Unit="mm2">
+          <Value>1.5</Value>
+        </Attribute>
+        <Attribute Name="Material" AttributeDataType="xs:string">
+          <Value>Cu</Value>
+        </Attribute>
+        <Attribute Name="Insulation" AttributeDataType="xs:string">
+          <Value>PVC</Value>
+        </Attribute>
+        <Attribute Name="Length" AttributeDataType="xs:decimal" Unit="m">
+          <Value>20</Value>
+        </Attribute>
+        <ExternalInterface Name="PowerIn" ID="214827d5-b1fe-5b92-ba07-535c0816f567" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+        <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+      </InternalElement>
+      <InternalLink Name="incomer-&gt;g1-breaker" RefPartnerSideA="94d4ca7b-8379-5a82-bf61-dd02de5bafe6:PowerOut" RefPartnerSideB="f7ec90c6-3f41-5927-a779-2cd5ffd00867:PowerIn" />
+      <InternalLink Name="g1-breaker-&gt;g1-rcd" RefPartnerSideA="f7ec90c6-3f41-5927-a779-2cd5ffd00867:PowerOut" RefPartnerSideB="2e4ea435-5b9a-5343-b6cd-5ee7d4ad3491:PowerIn" />
+      <InternalLink Name="g1-rcd-&gt;c1-breaker" RefPartnerSideA="2e4ea435-5b9a-5343-b6cd-5ee7d4ad3491:PowerOut" RefPartnerSideB="2789cca4-bbb9-5235-abf8-ff92172f8884:PowerIn" />
+      <InternalLink Name="incomer-&gt;c2-breaker" RefPartnerSideA="94d4ca7b-8379-5a82-bf61-dd02de5bafe6:PowerOut" RefPartnerSideB="ff2eedc1-24a4-50db-928f-b0eb7449300f:PowerIn" />
+      <InternalLink Name="c2-breaker-&gt;c2-line" RefPartnerSideA="ff2eedc1-24a4-50db-928f-b0eb7449300f:PowerOut" RefPartnerSideB="442867a7-10a3-5257-9d97-ba5212245420:PowerIn" />
+      <InternalLink Name="c2-line-&gt;c2-overload" RefPartnerSideA="442867a7-10a3-5257-9d97-ba5212245420:PowerOut" RefPartnerSideB="3f96e6d2-1e01-5ad1-8b1c-a88af4161e39:PowerIn" />
+      <InternalLink Name="incomer-&gt;c3-breaker" RefPartnerSideA="94d4ca7b-8379-5a82-bf61-dd02de5bafe6:PowerOut" RefPartnerSideB="8e1757b4-921f-56ce-a7a7-ba8d6544280e:PowerIn" />
+      <InternalLink Name="c3-breaker-&gt;c3-line" RefPartnerSideA="8e1757b4-921f-56ce-a7a7-ba8d6544280e:PowerOut" RefPartnerSideB="d55ad38e-2f70-563f-aa8b-ad8f2b1daba4:PowerIn" />
+      <InternalLink Name="c3-line-&gt;c3-delta" RefPartnerSideA="d55ad38e-2f70-563f-aa8b-ad8f2b1daba4:PowerOut" RefPartnerSideB="4aee5277-f38f-5e72-b89a-2ccf754333a0:PowerIn" />
+      <InternalLink Name="c3-line-&gt;c3-star" RefPartnerSideA="d55ad38e-2f70-563f-aa8b-ad8f2b1daba4:PowerOut" RefPartnerSideB="f5aa6e6e-47fe-5eb7-8f77-f784e654f4dd:PowerIn" />
+      <InternalLink Name="c3-line-&gt;c3-overload" RefPartnerSideA="d55ad38e-2f70-563f-aa8b-ad8f2b1daba4:PowerOut" RefPartnerSideB="a2069668-836a-5231-b382-ae837905690b:PowerIn" />
+      <InternalLink Name="incomer-&gt;c4-fuses" RefPartnerSideA="94d4ca7b-8379-5a82-bf61-dd02de5bafe6:PowerOut" RefPartnerSideB="192f4d68-4b79-53c4-852a-4eb873f08015:PowerIn" />
+      <InternalLink Name="c4-fuses-&gt;c4-drive" RefPartnerSideA="192f4d68-4b79-53c4-852a-4eb873f08015:PowerOut" RefPartnerSideB="35ed281c-7978-5330-a8ef-a353a50c5d8b:PowerIn" />
+      <InternalLink Name="c1-breaker-&gt;c1-cable" RefPartnerSideA="2789cca4-bbb9-5235-abf8-ff92172f8884:PowerOut" RefPartnerSideB="f1504004-e055-57cc-be42-4cfab1aae021:PowerIn" />
+      <InternalLink Name="c2-overload-&gt;c2-cable" RefPartnerSideA="3f96e6d2-1e01-5ad1-8b1c-a88af4161e39:PowerOut" RefPartnerSideB="fe62de70-e401-5e48-afc1-fa6869c0b39d:PowerIn" />
+      <InternalLink Name="c3-overload-&gt;c3-cable" RefPartnerSideA="a2069668-836a-5231-b382-ae837905690b:PowerOut" RefPartnerSideB="e063d375-6347-5cb4-b674-74b9f32a3289:PowerIn" />
+      <InternalLink Name="c4-drive-&gt;c4-cable" RefPartnerSideA="35ed281c-7978-5330-a8ef-a353a50c5d8b:PowerOut" RefPartnerSideB="0fafbd34-3cab-5379-94cb-263153ef19be:PowerIn" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>

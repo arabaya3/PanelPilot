@@ -124,6 +124,12 @@ export function Tabs<K extends string>({
   idBase: string;
 }) {
   const refs = useRef(new Map<K, HTMLButtonElement>());
+  // The one tab in the page's tab order. A disabled button cannot take focus,
+  // so if the selected tab is disabled the first enabled one stands in;
+  // otherwise the whole tab list would be unreachable by keyboard.
+  const selectedItem = items.find((item) => item.key === selected);
+  const tabStop =
+    selectedItem && !selectedItem.disabled ? selected : items.find((item) => !item.disabled)?.key;
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const enabled = items.filter((item) => !item.disabled);
@@ -161,7 +167,7 @@ export function Tabs<K extends string>({
             // Only the selected tab's panel is guaranteed to exist: screens
             // that render one panel at a time would otherwise point at nothing.
             aria-controls={active ? tabPanelId(idBase, item.key) : undefined}
-            tabIndex={active ? 0 : -1}
+            tabIndex={item.key === tabStop ? 0 : -1}
             disabled={item.disabled}
             onClick={() => {
               onSelect(item.key);
@@ -393,6 +399,9 @@ export function TableFrame({ label, children }: { label: string; children: React
 
 /* ------------------------------------------------------- Dialog / Drawer --- */
 
+/** A double click is two clicks within roughly this long. */
+const BACKDROP_GRACE_MS = 400;
+
 /**
  * A modal dialog or side drawer on the native `<dialog>`, which gives focus
  * trapping, Escape and the inert background for free. Focus returns to the
@@ -419,6 +428,9 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
+  // When it last opened. The second click of a double click on whatever
+  // opened it lands on the backdrop and must not count as dismissing it.
+  const openedAt = useRef(0);
   const headingId = useId();
 
   useEffect(() => {
@@ -428,6 +440,7 @@ export function Dialog({
       returnTo.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
       // jsdom lacks showModal; fall back to the attribute so tests can render.
+      openedAt.current = Date.now();
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
     } else if (!open && dialog.open) {
@@ -448,7 +461,9 @@ export function Dialog({
       }}
       onClick={(event) => {
         // A click on the backdrop lands on the dialog element itself.
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current && Date.now() - openedAt.current > BACKDROP_GRACE_MS) {
+          onClose();
+        }
       }}
     >
       <div className="dialog-surface">

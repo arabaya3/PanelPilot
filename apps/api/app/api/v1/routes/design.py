@@ -33,9 +33,10 @@ from app.models.schemas.design import (
     PriceListEntry,
     ProjectDesignRequest,
     ProjectPage,
-    Quotation,
+    QuotationEstimate,
     QuotationRequest,
     ReviseProjectRequest,
+    RevisionExportRequest,
     SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
@@ -44,6 +45,10 @@ from app.models.schemas.design import (
 
 # Every design route costs CPU (drawing sets, PDF table scans) and is open to a
 # trial session, so all of them share one per-address budget.
+#: The largest revision number a path or query may name: the column is a
+#: Postgres ``integer``, so a larger number is a 422, not a database error.
+_MAX_REVISION = 2_147_483_647
+
 router = APIRouter(dependencies=[Depends(enforce_design_rate_limit)])
 
 
@@ -122,12 +127,17 @@ def suggest_load_schedule(
     return result
 
 
-@router.post("/quotation", response_model=Quotation)
+@router.post("/quotation", response_model=QuotationEstimate)
 def price_design(
     payload: QuotationRequest,
     session: SessionDep,
     user: CurrentUserDep,
-) -> Quotation:
+) -> QuotationEstimate:
+    """Price an unsaved design as a provisional estimate, with its findings.
+
+    Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
+    revision (``POST /design/projects/{id}/revisions/{n}/export``).
+    """
     del session
     return design_domain.price_design(user=user, request=payload)
 
@@ -177,7 +187,7 @@ def open_project(
     project_id: str,
     session: SessionDep,
     user: CurrentUserDep,
-    revision: Annotated[int | None, Query(ge=1)] = None,
+    revision: Annotated[int | None, Query(ge=1, le=_MAX_REVISION)] = None,
 ) -> SavedProject:
     """Open a saved project at its latest revision, or the one asked for."""
     return design_projects.open_project(
@@ -198,7 +208,7 @@ def revise_project(
 @router.post("/projects/{project_id}/revisions/{number}/approval", response_model=SavedProject)
 def approve_revision(
     project_id: str,
-    number: Annotated[int, Path(ge=1)],
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
     payload: ApproveRevisionRequest,
     session: SessionDep,
     user: CurrentUserDep,
@@ -206,6 +216,38 @@ def approve_revision(
     """Approve one revision of a saved project, once; it then cannot be deleted."""
     return design_projects.approve_revision(
         session=session, user=user, project_id=project_id, number=number, request=payload
+    )
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/export",
+    response_class=Response,
+    responses={
+        200: {"description": "The exported file", "content": {"application/octet-stream": {}}},
+        404: {"description": "No such revision is the caller's (`revision_not_found`)"},
+        409: {
+            "description": (
+                "`revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, "
+                "or `execution_package_incomplete`"
+            )
+        },
+    },
+)
+def export_revision(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    payload: RevisionExportRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> Response:
+    """Export a saved revision from the design the server stored and checked for it."""
+    exported = design_projects.export_revision(
+        session=session, user=user, project_id=project_id, number=number, request=payload
+    )
+    return Response(
+        content=exported.content,
+        media_type=exported.media_type,
+        headers={"Content-Disposition": _disposition(exported.filename, exported.display_name)},
     )
 
 

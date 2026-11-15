@@ -1,0 +1,41 @@
+{
+  "commit": "a1bff09",
+  "web": "http://127.0.0.1:3000",
+  "browser": "Playwright Chromium, one context (5 tabs) + separate contexts for step 6",
+  "notes": [
+    "Token and cookie values were never printed; cookie identities below are the first 4 bytes of SHA-256 of the value.",
+    "The API design rate limit (240 requests / 300 s per IP) produced 429 rate_limited on GET /design/projects during the first round; step 2 projects checks were re-run after the window cleared (round 2)."
+  ],
+  "step1_open_tabs": {"tabs2": "signed-in x2", "tabs3": "signed-in x3", "tabs5": "signed-in x5"},
+  "step2_round1": {
+    "tabs2": {"a_simultaneous_reload": ["signed-in","signed-in"], "b_raw_refresh": [200,200], "projects": [200,200], "session_ended_seen": false},
+    "tabs3": {"a_simultaneous_reload": ["signed-in","signed-in","signed-in"], "b_raw_refresh": [200,200,200], "projects": [200,200,200], "session_ended_seen": false},
+    "tabs5": {"a_simultaneous_reload": ["signed-in","signed-in","signed-in","signed-in","signed-in"], "b_raw_refresh": [200,200,200,200,200], "projects": [200,200,200,200,200], "session_ended_seen": false}
+  },
+  "step2_round2_after_rate_window": {
+    "tabs2": {"b_raw_refresh": [200,200], "projects": [200,200]},
+    "tabs3": {"b_raw_refresh": [200,200,200], "projects": [200,200,200]},
+    "tabs5": {"b_raw_refresh": [200,200,200,200,200], "projects": [200,200,200,200,200]}
+  },
+  "step3_simultaneous_reload_x2": {
+    "round1": {"reload1": "signed-in x5", "reload2": "signed-in x5"},
+    "round2": {"reload1": {"state": "signed-in x5", "refresh": [200,200,200,200,200], "projects": [200,200,200,200,200]},
+               "reload2": {"state": "signed-in x5", "refresh": [200,200,200,200,200], "projects": [200,200,200,200,200]}}
+  },
+  "step4_delayed_out_of_order": {
+    "run1": {"routes": "t1 response +5s, t3 request +2s, t4 response +3s", "refresh": [200,200,200,200,200], "finish_order": ["t0","t2","t3","t4","t1"], "refresh_15s_later": "401 session_ended", "reload_after": "signed-out x5"},
+    "run2_A_request_delays_only": {"routes": "t1 request +2s, t3 request +4s, t4 request +3s", "refresh": [200,200,200,200,200], "finish_order": ["t0","t2","t1","t4","t3"], "refresh_15s_later": 200,
+      "cookie_trace": ["t0 presented 8ec3c1ab -> set 26f3d607 @108ms","t2 presented 8ec3c1ab -> set 26f3d607 @123ms","t1 -> set e2ff8607 @2093ms","t4 -> set d4fe8840 @3111ms","t3 -> set 5ba10b3a @4106ms","15s later t2 presented 5ba10b3a -> 200"]},
+    "run2_B_response_delays": {"routes": "t1 response +5s, t3 request +2s, t4 response +3s", "refresh": [200,200,200,200,200], "finish_order": ["t2","t0","t3","t4","t1"], "refresh_15s_later": "401 session_ended",
+      "cookie_trace": ["t2,t0 presented 9e33249f -> set 9a84f57b @146/178ms","t3 (sent @2018ms with jar=9a84f57b) -> rotated, set ceaf4848 @2095ms","t4 (served @7ms, delivered @3203ms) -> Set-Cookie 9a84f57b applied late","t1 (served @7ms, delivered @5207ms) -> Set-Cookie 9a84f57b applied late","@21065ms t2 presented 9a84f57b (spent at ~2s, >10s ago) -> 401 session_ended, session revoked"]}
+  },
+  "step5_refresh_vs_logout": {"refresh_t0": 200, "refresh_t1": 200, "refresh_t2": "401 session_ended", "logout_t3": 204,
+    "race_access_tokens_projects": [401,401,"no-token"], "cookie_left_in_jar": false,
+    "refresh_each_tab_after": ["401","401","401","401","401"], "reloaded_tabs_t1_t4": "signed-out x4",
+    "t0_not_reloaded": "UI still showed 'Signed in' (logout was a raw fetch, not the app's button); its refresh and access token were both 401"},
+  "step6_stale_replay_other_context": {"ctx1_rotation": 200, "cookie_changed": true, "wait_s": 11, "replay_from_fresh_context": "401 session_ended",
+    "ctx1_old_access_token_projects": 401, "ctx1_refresh_after": "401 session_ended", "ctx1_reloaded_state": "signed-out",
+    "ctx2_state": "signed-in", "ctx2_refresh": 200, "ctx2_projects": 200},
+  "step7_unsaved_design": {"after_step2_raw_refreshes": "field still holds edit", "after_simultaneous_reload": "beforeunload prompt shown; after leaving, 'Unsaved work was kept' banner offered", "after_restore": "Project name = edit (restored)",
+    "after_session_ended_in_step4": "draft gone, page in trial workspace (expected sign-out behaviour, not re-tested)"}
+}

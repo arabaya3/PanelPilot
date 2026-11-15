@@ -64,6 +64,12 @@ def db() -> Iterator[Session]:
             )
         )
         session.execute(text(f"DELETE FROM refresh_tokens WHERE tenant_id IN {tenants}"))
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                f"(SELECT id FROM users WHERE tenant_id IN {tenants})"
+            )
+        )
         session.execute(text(f"DELETE FROM users WHERE tenant_id IN {tenants}"))
         session.execute(text(f"DELETE FROM tenants WHERE slug LIKE '{_PREFIX}%'"))
         session.commit()
@@ -358,3 +364,17 @@ def test_a_deactivated_reviewer_is_refused(db: Session) -> None:
 def test_no_account_is_not_found(db: Session) -> None:
     with pytest.raises(NotFoundError):
         roles.reviewer_by_email(session=db, email=_email())
+
+
+@requires_db
+def test_an_access_token_of_an_inactive_tenant_is_refused(db: Session) -> None:
+    """Login and refresh refuse a deactivated tenant; its live access token must too."""
+    from app.models.tables.tenant import TenantRow
+
+    email, token = _account(db)
+    tenant_id = db.query(User).filter(User.email == email).one().tenant_id
+    db.query(TenantRow).filter(TenantRow.id == tenant_id).update({"is_active": False})
+    db.commit()
+
+    with _as_request(db, token) as request, pytest.raises(AuthenticationError):
+        auth.authenticate(session=request, caller=decode_access_token(token))

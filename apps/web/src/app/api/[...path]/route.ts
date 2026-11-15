@@ -35,7 +35,44 @@ const PROXIED_PREFIX = '/api/v1/';
  * API needs these and nothing else, and forwarding the browser's cookies or
  * `host` to a service that never asked for them is how a proxy leaks.
  */
-const FORWARDED_REQUEST_HEADERS = ['authorization', 'content-type', 'accept', 'x-correlation-id'];
+const FORWARDED_REQUEST_HEADERS = [
+  'authorization',
+  'content-type',
+  'accept',
+  'x-correlation-id',
+  // What the API's cross-site check reads on the session endpoints.
+  'origin',
+  'referer',
+  'x-panelpilot-csrf',
+];
+
+/**
+ * The session cookie, by either of its names, and the only endpoints it goes to.
+ *
+ * Over HTTPS the API names it `__Host-pp_refresh` with `Path=/`, so the browser
+ * sends it with every request; over plain http (dev) it is `pp_refresh` on the
+ * session path. Either way it is forwarded to these three endpoints and no
+ * other, matched exactly, and no other cookie on the origin ever reaches the API.
+ */
+const SESSION_COOKIES = new Set(['__Host-pp_refresh', 'pp_refresh']);
+const SESSION_ENDPOINTS = new Set([
+  '/api/v1/auth/session/refresh',
+  '/api/v1/auth/session/logout',
+  '/api/v1/auth/session/logout-everywhere',
+]);
+
+/** The session cookies in a `Cookie` header, re-serialised, or null when there are none. */
+function sessionCookies(header: string | null): string | null {
+  if (header === null) return null;
+  const kept: string[] = [];
+  for (const pair of header.split(';')) {
+    const [name, ...rest] = pair.trim().split('=');
+    if (name !== undefined && SESSION_COOKIES.has(name) && rest.length > 0) {
+      kept.push(`${name}=${rest.join('=')}`);
+    }
+  }
+  return kept.length > 0 ? kept.join('; ') : null;
+}
 
 /**
  * Response headers that describe this hop rather than the body, and must not
@@ -97,6 +134,10 @@ async function proxy(request: Request): Promise<Response> {
   }
   const chain = clientChain(request);
   if (chain !== null) headers.set('x-forwarded-for', chain);
+  if (SESSION_ENDPOINTS.has(incoming.pathname)) {
+    const session = sessionCookies(request.headers.get('cookie'));
+    if (session !== null) headers.set('cookie', session);
+  }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.body !== null;
   const init: StreamingInit = {
@@ -123,8 +164,14 @@ async function proxy(request: Request): Promise<Response> {
 
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, name) => {
-    if (!DROPPED_RESPONSE_HEADERS.has(name.toLowerCase())) responseHeaders.set(name, value);
+    const lower = name.toLowerCase();
+    if (lower === 'set-cookie' || DROPPED_RESPONSE_HEADERS.has(lower)) return;
+    responseHeaders.set(name, value);
   });
+  // Each cookie its own header: `set` would fold several into one, which a
+  // browser reads as a single cookie.
+  for (const cookie of upstream.headers.getSetCookie())
+    responseHeaders.append('set-cookie', cookie);
   if (responseHeaders.get('content-type')?.startsWith('text/event-stream')) {
     // `no-transform` is what stops Next's gzip middleware from buffering the
     // event stream until it closes, which would deliver every progress stage

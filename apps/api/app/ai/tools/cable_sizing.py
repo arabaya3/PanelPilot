@@ -376,6 +376,93 @@ def size_conductor(
     )
 
 
+def derated_capacity(
+    *,
+    cross_section_mm2: Decimal,
+    installation_method: InstallationMethod,
+    ambient_temp_c: Decimal,
+    grouped_circuits: int,
+    conductor_material: ConductorMaterial,
+    insulation_rating_c: int,
+    three_phase: bool = True,
+) -> Decimal | None:
+    """The capacity in place ``Iz = I0 k1 k2`` of one tabulated section.
+
+    The same tables and factors :func:`size_conductor` sizes with, read for a
+    section already chosen, so a design's cable can be re-checked against the
+    breaker protecting it.
+
+    Source:
+        ABB, *Electrical installation handbook* Vol. 2 (1SDC010001D0204),
+        §2.2.1: Table 4 (k1), Table 5 item 1 (k2), Table 8 (I0).
+
+    Args:
+        cross_section_mm2: The section.
+        installation_method: Reference installation method.
+        ambient_temp_c: Ambient air temperature at the run.
+        grouped_circuits: Loaded circuits in the same grouping.
+        conductor_material: Copper or aluminium.
+        insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR) °C.
+        three_phase: Three loaded conductors if true, two if not.
+
+    Returns:
+        Iz in amperes; ``None`` when the method or section is not tabulated.
+
+    Raises:
+        ValidationError: If the ambient, grouping or insulation is outside the
+            tables.
+    """
+    table = _AMPACITY[conductor_material].get(installation_method)
+    if table is None:
+        return None
+    row = table.get(format(cross_section_mm2.normalize(), "f"))
+    if row is None:
+        return None
+    k1, _ = _ambient_factor(ambient_temp_c, insulation_rating_c)
+    k2, _ = _grouping_factor(grouped_circuits)
+    index = (0 if insulation_rating_c == 90 else 2) + (1 if three_phase else 0)
+    return Decimal(row[index]) * k1 * k2
+
+
+def largest_tabulated_capacity(
+    *, cross_section_mm2: Decimal, conductor_material: ConductorMaterial, insulation_rating_c: int
+) -> Decimal | None:
+    """The most any tabulated installation gives one section: an upper bound on its Iz.
+
+    The largest I0 over every method and both loaded-conductor columns of its
+    insulation, times the largest k1 tabulated for that insulation (the
+    coldest row) and k2 = 1. No arrangement the tables cover carries more, so
+    a breaker rated above it is above the cable's capacity however it is laid.
+
+    Source:
+        ABB, *Electrical installation handbook* Vol. 2 (1SDC010001D0204),
+        §2.2.1: Table 4, Table 8.
+
+    Args:
+        cross_section_mm2: The section.
+        conductor_material: Copper or aluminium.
+        insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR) °C.
+
+    Returns:
+        The bound in amperes; ``None`` when no method tabulates the section or
+        the insulation is not tabulated.
+    """
+    column = _AMBIENT_K1.get(insulation_rating_c)
+    if column is None:
+        return None
+    key = format(cross_section_mm2.normalize(), "f")
+    columns = (0, 1) if insulation_rating_c == 90 else (2, 3)
+    found = [
+        Decimal(table[key][index])
+        for table in _AMPACITY[conductor_material].values()
+        if key in table
+        for index in columns
+    ]
+    if not found:
+        return None
+    return max(found) * max(Decimal(k1) for k1 in column.values())
+
+
 def ampacity_citation(installation_method: InstallationMethod) -> Citation:
     """Cite the Table 8 page for an installation method.
 

@@ -60,8 +60,11 @@ def test_altitude_is_one_point_per_100_m_above_1000() -> None:
     assert vfd_selection.altitude_derate(altitude_m=Decimal("1500")) == Decimal("0.95")
     assert vfd_selection.altitude_derate(altitude_m=Decimal("1000")) == 1
     assert vfd_selection.altitude_derate(altitude_m=Decimal("4000")) == Decimal("0.70")
-    with pytest.raises(ValidationError, match="4000"):
+    with pytest.raises(ValidationError, match="4000") as caught:
         vfd_selection.altitude_derate(altitude_m=Decimal("4001"))
+    # Coded, so the page can say it in the reader's language at the field.
+    assert caught.value.code == "drive_altitude"
+    assert caught.value.params == {"altitude": "4001", "low": "0", "high": "4000"}
 
 
 def test_temperature_is_one_percent_per_degree_above_40() -> None:

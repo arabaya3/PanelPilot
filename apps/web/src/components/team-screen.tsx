@@ -1,8 +1,9 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
+import { useAccountSession } from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
 import { PageHeader, Panel, StatusBadge } from '@/components/ui';
 import { SignInForm } from '@/components/sign-in-form';
@@ -13,6 +14,7 @@ import {
   listInvitations,
   removeMember,
   revokeInvitation,
+  transferOwnership,
   type InvitationOut,
   type Team,
   type TeamRefusal,
@@ -31,6 +33,11 @@ type Loaded =
  * first engineer) invites by email and gets a link to send, shown once;
  * the colleague opens it, signs up and joins. Once billing is enforced the
  * plan's seats bound how many.
+ *
+ * The token is the app's shared account session (`AccountSessionProvider`,
+ * restored from the session cookie on every load), as on `/design`; a
+ * sign-in here signs the whole app in. `initialToken` stands in only where
+ * no session is shared (tests).
  */
 export function TeamScreen({
   teamImpl = getTeam,
@@ -38,6 +45,7 @@ export function TeamScreen({
   invitationsImpl = listInvitations,
   revokeImpl = revokeInvitation,
   removeImpl = removeMember,
+  transferImpl = transferOwnership,
   initialToken = null,
 }: {
   teamImpl?: typeof getTeam;
@@ -45,15 +53,37 @@ export function TeamScreen({
   invitationsImpl?: typeof listInvitations;
   revokeImpl?: typeof revokeInvitation;
   removeImpl?: typeof removeMember;
+  transferImpl?: typeof transferOwnership;
   initialToken?: string | null;
 }) {
   const t = useTranslations('team');
   const id = useId();
-  const [token, setToken] = useState<string | null>(initialToken);
+  const account = useAccountSession();
+  const [ownToken, setOwnToken] = useState<string | null>(initialToken);
+  const token = account?.state.status === 'signed-in' ? account.state.tokens.accessToken : ownToken;
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'idle' });
+  // The token a renewal was already asked for, so a server that refuses the
+  // renewed token too is said as an error rather than renewed in a loop.
+  const renewedFor = useRef<string | null>(null);
+
+  /**
+   * After a 401: renew the shared session, as `/design` does. A renewed
+   * token reloads the team (the token changes); one that cannot be renewed
+   * ends the session, and the page asks for a sign-in. True when renewed.
+   */
+  const reauthorize = useCallback(
+    async (access: string): Promise<boolean> => {
+      if (account === null || renewedFor.current === access) return false;
+      renewedFor.current = access;
+      return (await account.renew()) === 'refreshed';
+    },
+    [account],
+  );
   const [email, setEmail] = useState('');
   const [link, setLink] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // The member a transfer awaits confirmation for: ownership is not undone by the caller.
+  const [transferTo, setTransferTo] = useState<string | null>(null);
 
   const say = useCallback(
     (outcome: { kind: string }) => {
@@ -70,6 +100,7 @@ export function TeamScreen({
     async (access: string) => {
       setLoaded({ kind: 'loading' });
       const shown = await teamImpl({ token: access });
+      if (shown.kind === 'unauthorized' && (await reauthorize(access))) return;
       if (shown.kind !== 'team') {
         setLoaded({ kind: 'failed' });
         return;
@@ -81,7 +112,7 @@ export function TeamScreen({
         invitations: open?.kind === 'listed' ? open.invitations : [],
       });
     },
-    [teamImpl, invitationsImpl],
+    [teamImpl, invitationsImpl, reauthorize],
   );
 
   useEffect(() => {
@@ -97,6 +128,8 @@ export function TeamScreen({
       setLink(joinLink(window.location.origin, outcome.invitation.token));
       setEmail('');
       void load(token);
+    } else if (outcome.kind === 'unauthorized' && (await reauthorize(token))) {
+      setMessage(t('renewed'));
     } else {
       setMessage(say(outcome));
     }
@@ -107,7 +140,29 @@ export function TeamScreen({
     setMessage(null);
     const outcome = await run();
     if (outcome.kind === 'done') void load(token);
+    else if (outcome.kind === 'unauthorized' && (await reauthorize(token)))
+      setMessage(t('renewed'));
     else setMessage(say(outcome));
+  }
+
+  async function transfer(memberId: string) {
+    if (token === null) return;
+    setMessage(null);
+    setTransferTo(null);
+    const outcome = await transferImpl({ token, memberId });
+    if (outcome.kind === 'team') {
+      // The team as the caller now sees it. A caller who still manages it (an
+      // admin) keeps the open invitations; one who no longer does sees none.
+      setLoaded((previous) => ({
+        kind: 'ready',
+        team: outcome.team,
+        invitations: outcome.team.owner && previous.kind === 'ready' ? previous.invitations : [],
+      }));
+    } else if (outcome.kind === 'unauthorized' && (await reauthorize(token))) {
+      setMessage(t('renewed'));
+    } else {
+      setMessage(say(outcome));
+    }
   }
 
   return (
@@ -119,15 +174,19 @@ export function TeamScreen({
           <p className="mb-3 text-sm">{t('signIn')}</p>
           <SignInForm
             onSignedIn={(tokens) => {
-              setToken(tokens.accessToken);
+              if (account) account.signedIn(tokens);
+              else setOwnToken(tokens.accessToken);
             }}
             onCancel={() => undefined}
           />
         </div>
       )}
 
-      {loaded.kind === 'loading' && <p className="text-text-muted">{t('loading')}</p>}
-      {loaded.kind === 'failed' && (
+      {/* Signed out (the session ended): only the sign-in, not what the old token left. */}
+      {token !== null && loaded.kind === 'loading' && (
+        <p className="text-text-muted">{t('loading')}</p>
+      )}
+      {token !== null && loaded.kind === 'failed' && (
         <p role="alert" className="text-severity-critical">
           {t('error')}
         </p>
@@ -152,6 +211,18 @@ export function TeamScreen({
                     {member.full_name ? `${member.full_name} · ${member.email}` : member.email}
                   </span>
                   {member.owner && <StatusBadge tone="accent">{t('owner')}</StatusBadge>}
+                  {loaded.team.owns && !member.owner && transferTo !== member.id && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => {
+                        setMessage(null);
+                        setTransferTo(member.id);
+                      }}
+                    >
+                      {t('makeOwner')}
+                    </button>
+                  )}
                   {loaded.team.owner && !member.owner && (
                     <button
                       type="button"
@@ -160,6 +231,33 @@ export function TeamScreen({
                     >
                       {t('remove')}
                     </button>
+                  )}
+                  {loaded.team.owns && transferTo === member.id && (
+                    <div
+                      className="flex w-full flex-wrap items-center gap-2 text-sm"
+                      data-testid="team-transfer-confirm"
+                    >
+                      <p className="min-w-0 flex-1 break-words">
+                        {t('transferConfirm', { member: member.full_name ?? member.email })}{' '}
+                        <span dir="ltr">({member.email})</span>
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => void transfer(member.id)}
+                      >
+                        {t('transfer')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => {
+                          setTransferTo(null);
+                        }}
+                      >
+                        {t('cancel')}
+                      </button>
+                    </div>
                   )}
                 </li>
               ))}

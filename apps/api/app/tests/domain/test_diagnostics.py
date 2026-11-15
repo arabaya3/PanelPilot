@@ -361,6 +361,87 @@ def test_a_refusal_still_reports_its_confidence(
     assert response.confidence.retrieval_score == pytest.approx(0.01)
 
 
+# --- a refusal's closest match reaches the engineer, or is not promised -----
+
+
+def _claims_a_citation(text: str | None) -> bool:
+    lowered = (text or "").lower()
+    return "cited" in lowered or "nearest passage" in lowered
+
+
+def test_a_not_in_sources_refusal_carries_the_closest_passage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model declined; the passage it was shown is returned to judge.
+
+    The regression: the closest citation was passed to the response under a
+    name it did not declare and silently dropped, while the text said "the
+    nearest passage is cited" -- a promise beside an empty reference list.
+    """
+    client = _CountingClient(payload={**_valid_tool_payload(), "evidence_answers_question": False})
+    monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
+    monkeypatch.setattr(
+        "app.ai.guardrails.cite_or_refuse._resolve_threshold",
+        lambda threshold: 0.6 if threshold is None else threshold,
+    )
+
+    class _Settings:
+        llm_model = "claude-sonnet-5"
+        generation_model = "claude-sonnet-5"
+        llm_max_output_tokens = 4096
+
+    monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
+    _retrieving(monkeypatch, [_passage()])
+
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+
+    assert client.calls == 1
+    assert response.diagnosis is None
+    assert response.refusal_citations == [_CITATION]
+    assert response.evidence == []
+    assert not _claims_a_citation(response.refusal_message)
+    # On the wire as well: the field the frontend reads is really there.
+    assert response.model_dump(mode="json")["refusal_citations"][0]["page"] == _CITATION.page
+
+
+def test_a_below_threshold_refusal_carries_the_closest_passage(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Close enough to name, not to answer from: named, and not generated from."""
+    _retrieving(monkeypatch, [_passage(score=0.5)])
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+    assert wired.calls == 0
+    assert response.diagnosis is None
+    assert response.refusal_citations == [_CITATION]
+    assert not _claims_a_citation(response.refusal_message)
+
+
+def test_a_no_evidence_refusal_neither_carries_nor_claims_a_citation(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    _retrieving(monkeypatch, [])
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+    assert response.refusal_citations == []
+    assert not _claims_a_citation(response.refusal_message)
+
+
+def test_an_answer_carries_no_refusal_citations(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    _retrieving(monkeypatch, [_passage()])
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+    assert response.diagnosis is not None
+    assert response.refusal_citations == []
+
+
 # --- (c) malformed generation degrades, never 500s -------------------------
 
 

@@ -205,3 +205,60 @@ def test_the_object_store_is_built_from_configuration(monkeypatch: pytest.Monkey
     root = Path("./var/test-images")
     if root.is_dir():
         root.rmdir()
+
+
+# --- the refresh-session cookie's guards ----------------------------------------
+
+
+@pytest.fixture
+def cookie_client() -> Iterator[TestClient]:
+    from app.core.config import Environment, Settings
+
+    app = FastAPI()
+    app.state.settings = Settings(
+        environment=Environment.STAGING,
+        database_url="postgresql+psycopg://u:p@localhost:5432/x",
+        opensearch_url="http://localhost:9200",
+        anthropic_api_key="k",
+        openai_api_key="k",
+        jwt_secret="s" * 48,
+        redis_url="redis://localhost:6379/0",
+        web_origins="https://app.example.com",
+    )
+
+    @app.post("/cookie", dependencies=[Depends(deps.require_same_site_request)])
+    def cookie() -> dict[str, bool]:
+        return {"ok": True}
+
+    install_exception_handlers(app)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_the_same_site_guard_reads_the_apps_own_settings(cookie_client: TestClient) -> None:
+    passed = cookie_client.post(
+        "/cookie", headers={"Origin": "https://app.example.com", "X-PanelPilot-CSRF": "1"}
+    )
+    assert passed.status_code == 200
+    refused = cookie_client.post(
+        "/cookie", headers={"Origin": "http://localhost:3000", "X-PanelPilot-CSRF": "1"}
+    )
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "csrf_origin_refused"
+
+
+def test_no_credentials_is_no_caller_rather_than_a_refusal() -> None:
+    """Sign-out must work with the cookie alone."""
+    from app.core.db import get_session
+
+    app = FastAPI()
+    # Never reached without credentials; overridden so no database is needed.
+    app.dependency_overrides[get_session] = lambda: None
+
+    @app.get("/who")
+    def who(user: deps.OptionalCurrentUserDep) -> dict[str, bool]:
+        return {"anonymous": user is None}
+
+    install_exception_handlers(app)
+    with TestClient(app) as test_client:
+        assert test_client.get("/who").json() == {"anonymous": True}

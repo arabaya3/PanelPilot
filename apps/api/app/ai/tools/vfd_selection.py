@@ -619,7 +619,9 @@ def altitude_derate(*, altitude_m: Decimal, drive_range: str | None = None) -> D
     if not altitude_m.is_finite() or altitude_m < rule.floor or altitude_m > rule.limit:
         raise ValidationError(
             f"altitude {altitude_m} m is outside {rule.floor}-{rule.limit} m, the maximum "
-            "permitted installation altitude"
+            "permitted installation altitude",
+            code="drive_altitude",
+            params={"altitude": altitude_m, "low": rule.floor, "high": rule.limit},
         )
     return _derate(altitude_m, rule, what="altitude", unit="m")
 

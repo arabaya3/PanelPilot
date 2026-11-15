@@ -424,6 +424,16 @@
   /* The paper a drawing sits on: paper and ink in both themes, so a schematic
    * reads the same on screen as on the printout. */
   .sheet-frame {
+    /* Paper in both themes, so everything drawn on it uses ink. Re-pointing
+     * the role tokens here, rather than recolouring each table and label,
+     * keeps any component placed on the sheet legible in the dark theme,
+     * where the page's text and borders are light and would vanish. */
+    --color-text: var(--color-sheet-ink);
+    --color-text-muted: var(--color-sheet-ink-muted);
+    --color-border: var(--color-sheet-rule);
+    --color-border-subtle: var(--color-sheet-rule-subtle);
+    --color-surface: var(--color-sheet);
+    --color-surface-raised: var(--color-sheet-raised);
     @apply max-w-full overflow-auto rounded-sm border border-border bg-sheet p-4 text-sheet-ink shadow-md;
   }
 }

@@ -1,0 +1,43 @@
+PASS 1.1 save project (revision 1) -> 201
+PASS 1.2a revision export with client-supplied project -> 422 request_invalid
+PASS 1.2b revision export with tampered snapshot_sha256 -> 422 request_invalid
+PASS 1.2c revision export with approved_by/checked_by -> 422 request_invalid
+PASS 1.2d revision export with rules_version -> 422 request_invalid
+PASS 1.3 revision export carries snapshot hash and rules version (JSON; PDF checked by inspect.py) -> pdf 200, json 200, json has hash=true rules=true
+PASS 1.4 draft export, 200 A breaker on 1.5 mm2: DRAFT-marked with blocking finding (JSON; PDF by inspect.py) -> pdf 200, calc 200, json 200 label=DRAFT — NOT FOR EXECUTION blocking=true
+PASS 1.5 forged approved_by/checked_by in draft never printed (JSON; PDFs by inspect.py) -> json contains FORGED=false
+PASS 2.1a approval with extra field approved_snapshot_sha256 -> 422 request_invalid
+PASS 2.1b approval with extra approved_at/approved_account -> 422 request_invalid
+PASS 2.2 whitespace approver -> 422 request_invalid
+PASS 2.5 unapproved revision never says REVIEW APPROVED (DXF/JSON raw; PDFs by inspect.py) -> statuses {"pdf":200,"calculations_pdf":200,"quotation_pdf":200,"dxf":200,"json":200}, stamp REVIEW APPROVED (case-sensitive; the DXF title-block field label 'Review approved' is not the stamp) =false
+PASS 2.3a first approval -> 200
+PASS 2.3b second approval -> 409 revision_already_approved
+PASS 2.4 approved export shows approver, hash, rules; no "@" in JSON (PDFs by inspect.py) -> statuses {"pdf":200,"calculations_pdf":200,"quotation_pdf":200,"dxf":200,"json":200}; json approver=true hash=true rules=true at=false
+PASS 3.1 B -> A's project: GET -> 404 project_not_found
+PASS 3.2 B -> A's project: export pdf -> 404 revision_not_found
+PASS 3.3 B -> A's project: approve -> 404 revision_not_found
+PASS 3.4 B -> A's project: revise -> 404 project_not_found
+PASS 3.5 B -> A's project: delete -> 404 project_not_found
+PASS 3.6 B -> A's project: quotation_pdf via revision export -> 404 revision_not_found
+PASS 3.7 B project list -> 200 items=0
+PASS 3.8 B receives no approval identity -> approver=false email=false
+PASS 5.1-1 purpose=execution, approved rev 1, all 18 formats -> all 409 execution_package_incomplete
+PASS 5.1-2 purpose=execution, unapproved rev 2, all 18 formats -> all 409 execution_package_incomplete
+PASS 5.2 draft /design/export 13 CSV/QET/AML/PLC formats on draft /design/export -> all 409 export_format_unprotected
+PASS 5.2 revision export (approved rev 1) 13 CSV/QET/AML/PLC formats on revision export (approved rev 1) -> all 409 export_format_unprotected
+PASS 5.2 revision export (unapproved rev 2) 13 CSV/QET/AML/PLC formats on revision export (unapproved rev 2) -> all 409 export_format_unprotected
+PASS 5.3 /design/plc -> 409 export_format_unprotected
+PASS 6.1 /design/quotation with tampered project -> 200 status=provisional_estimate blocking=true
+PASS 6.2 out-of-bound pricing -> {"markup_percent=501":422,"vat_percent=101":422,"vat_percent=-1":422,"labour_per_board=1e+30":422,"currency=jod":422}
+PASS 7.1 4 parallel revision saves -> statuses 201,201,201,201 numbers 3,5,4,6
+PASS 7.2 3 parallel approvals of rev 6 -> statuses 200,409,409
+PASS 4.7a refresh without X-PanelPilot-CSRF (trusted Origin) -> 403 csrf_header_missing
+PASS 4.7b refresh with foreign Origin -> 403 csrf_origin_refused
+PASS 4.7c refresh with foreign Origin, direct to API -> 403 csrf_origin_refused
+PASS 7.3 5 parallel refreshes, same cookie -> statuses 200,200,200,200,200; distinct cookies set=1
+PASS 4.1 logout session 1 -> 204
+PASS 4.2 replay session-1 access token -> 401 session_ended
+PASS 4.3 replay session-1 refresh cookie -> 401 session_ended
+PASS 4.4 session 2 survives logout of session 1 -> api 200, refresh 200
+PASS 4.5 logout-everywhere ends sessions 2 and 3 -> logout 204; tokens 401/401 (session_ended/session_ended); cookies 401/401
+done: 0 FAIL of 42

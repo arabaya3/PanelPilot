@@ -721,7 +721,9 @@ def _refusal_response(
     return DiagnosticResponse(
         session_id=str(conversation_id),
         refusal_message=render_refusal(decision),
-        citations=list(decision.citations),
+        # The closest passage, when the guardrail named one. Shown as a
+        # reference to judge, never as support: there is no answer here.
+        refusal_citations=list(decision.citations),
         confidence=ConfidenceBreakdown(
             overall=decision.score,
             retrieval_score=top,

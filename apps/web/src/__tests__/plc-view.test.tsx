@@ -252,12 +252,64 @@ describe('the verdict banner', () => {
     );
   });
 
-  it('shows no banner at all when the code passed cleanly', () => {
-    // A banner on every result is a banner nobody reads, which is how the
-    // failing one stops working.
+  it('says a clean pass, and only what the checker covers, without alerting', () => {
+    // No banner on a clean pass left the reader unsure anything was checked.
+    // The pass is a status, not an alert, so the failing banner keeps its weight,
+    // and it names its scope so it is not read as "the program is correct".
     renderApp(<PlcView language="structured-text" source={VALID_ST} validation={validation()} />);
 
-    expect(screen.queryByTestId('verdict-banner')).toBeNull();
+    const banner = screen.getByRole('status');
+    expect(banner.getAttribute('data-status')).toBe('valid');
+    expect(banner.textContent).toContain('Passed — the checker found no problems');
+    expect(banner.textContent).toContain('syntax, that every tag is declared');
+    expect(banner.textContent).toContain('does not test what the program does when it runs');
+    expect(banner.textContent).toContain('that the machine is safe');
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The section is named by the verdict.
+    const section = banner.closest('section');
+    expect(
+      document.getElementById(section?.getAttribute('aria-labelledby') ?? '')?.textContent,
+    ).toBe('Passed — the checker found no problems');
+  });
+
+  it('tells the reader what to do about a failure, and where a syntax error stopped', () => {
+    renderApp(
+      <PlcView
+        language="structured-text"
+        source={VALID_ST}
+        validation={validation({
+          status: 'invalid',
+          findings: [
+            finding({
+              code: 'syntax-error',
+              message: 'could not parse: UnexpectedToken',
+              line: 3,
+            }),
+          ],
+        })}
+      />,
+    );
+
+    const banner = screen.getByRole('alert');
+    expect(banner.textContent).toContain('Validation failed — 1 error');
+    expect(banner.textContent).toContain('Correct the errors marked below, then check again.');
+    expect(screen.getByTestId('finding-line-3').textContent).toContain(
+      'Look on this line or the one before it for a missing ;, THEN, END_IF or bracket.',
+    );
+  });
+
+  it('treats a verdict it does not know as not verified, never as a pass', () => {
+    renderApp(
+      <PlcView
+        language="structured-text"
+        source={VALID_ST}
+        validation={validation({ status: 'pending' })}
+      />,
+    );
+    const banner = screen.getByRole('alert');
+    expect(banner.getAttribute('data-status')).toBe('incomplete');
+    expect(banner.textContent).toContain('Not verified');
+    expect(banner.textContent).not.toContain('Passed');
   });
 
   it('shows a non-alerting banner when only warnings were found', () => {

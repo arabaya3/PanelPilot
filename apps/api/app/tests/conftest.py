@@ -37,6 +37,26 @@ def _keep_tests_off_real_indices() -> None:
 # Before the app imports below: settings are read once and cached.
 _keep_tests_off_real_indices()
 
+
+def _refuse_unsafe_database() -> None:
+    """Stop the run before any test can create or drop tables in the wrong place.
+
+    Only an explicitly named, disposable database is accepted
+    (``app.tests.db_target``). Without ``TEST_DATABASE_URL`` the database
+    tests skip or fail on their own; nothing falls back to ``DATABASE_URL``.
+    """
+    from app.tests import db_target
+
+    url = os.environ.get("TEST_DATABASE_URL", "")
+    if url:
+        try:
+            db_target.require_disposable(url)
+        except db_target.UnsafeDatabaseTargetError as exc:
+            raise SystemExit(f"pytest: {exc}") from None
+
+
+_refuse_unsafe_database()
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 

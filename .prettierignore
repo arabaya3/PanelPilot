@@ -2,3 +2,6 @@ node_modules
 .next
 dist
 apps/api
+
+# Raw Phase 1 evidence: exports and probe results kept byte for byte as produced.
+docs/design-readiness/phase-1/**/*.json

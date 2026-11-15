@@ -4,11 +4,12 @@ import { useTranslations } from 'next-intl';
 import { useId, useRef, useState } from 'react';
 
 import { round } from '@/components/cable-sizing-panel';
+import { splitLtrRuns, useIsolatingTranslations, useRightToLeft } from '@/components/design/bidi';
 import { useNoteText } from '@/components/design/note-text';
 import { fitZoom, stepZoom } from '@/components/design/workspace';
 import { DownloadIcon, FitIcon, ZoomInIcon, ZoomOutIcon } from '@/components/icons';
 import { Notice } from '@/components/ui';
-import type { BoardDesignResponse, ExportFormat } from '@/lib/design';
+import { isUnprotected, type BoardDesignResponse, type ExportFormat } from '@/lib/design';
 
 /** Every export the API offers for a designed project, in the order shown. */
 export const FORMATS: ExportFormat[] = [
@@ -40,8 +41,30 @@ function protectionText(device: Device): string {
   return `${product} ${device.curve ?? ''}${rating}${breaking}`;
 }
 
+/**
+ * A note's sentence, each always-English run in it (a catalogue citation)
+ * laid out left to right as one unit: as an inline block, a line break
+ * cannot split it so that its halves land at opposite ends of an RTL line.
+ */
+function NoteSentence({ text }: { text: string }) {
+  return (
+    <>
+      {splitLtrRuns(text).map((part, index) =>
+        part.ltr ? (
+          <bdi key={index} dir="ltr" className="inline-block" data-testid="note-ltr-run">
+            {part.text}
+          </bdi>
+        ) : (
+          part.text
+        ),
+      )}
+    </>
+  );
+}
+
 function BoardTable({ board }: { board: Board }) {
-  const t = useTranslations('design');
+  const t = useIsolatingTranslations('design');
+  const rtl = useRightToLeft();
   const noteText = useNoteText();
   const devices = new Map((board.devices ?? []).map((device) => [device.id, device]));
   const cables = new Map((board.cables ?? []).map((cable) => [cable.id, cable]));
@@ -107,11 +130,16 @@ function BoardTable({ board }: { board: Board }) {
         </table>
       </div>
       {(board.notes ?? []).length > 0 && (
-        <div>
+        // The sheet stays left to right, as drawn; its notes are sentences in
+        // the reader's language, laid out in its direction. A note the page
+        // has no sentence for is the server's English, laid out as it reads.
+        <div dir={rtl ? 'rtl' : undefined} data-testid="design-notes-block">
           <h4 className="mb-2 text-sm font-semibold">{t('notes')}</h4>
           <ul className="list-disc ps-5 text-sm" data-testid="design-notes">
             {(board.notes ?? []).map((note, index) => (
-              <li key={index}>{noteText(note)}</li>
+              <li key={index} dir={rtl && t.has(`note.${note.code}`) ? 'rtl' : 'auto'}>
+                <NoteSentence text={noteText(note)} />
+              </li>
             ))}
           </ul>
         </div>
@@ -277,19 +305,30 @@ export function DrawingSheets({ response }: { response: BoardDesignResponse }) {
 export function ExportPanel({
   onExport,
   exportError,
+  testIdPrefix = 'design-export',
+  busy = false,
 }: {
   onExport: (format: ExportFormat) => Promise<void>;
   exportError: string | null;
+  /** An export is in flight: the buttons wait for it. */
+  busy?: boolean;
+  /** Tells a draft export's buttons from a revision export's. */
+  testIdPrefix?: string;
 }) {
   const t = useTranslations('design');
+  const unavailableId = useId();
+  const available = FORMATS.filter((format) => !isUnprotected(format));
+  const unavailable = FORMATS.filter((format) => isUnprotected(format));
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {FORMATS.map((format) => (
+        {available.map((format) => (
           <button
             key={format}
             type="button"
-            data-testid={`design-export-${format}`}
+            data-testid={`${testIdPrefix}-${format}`}
+            disabled={busy}
+            aria-busy={busy || undefined}
             onClick={() => {
               void onExport(format);
             }}
@@ -300,6 +339,33 @@ export function ExportPanel({
           </button>
         ))}
       </div>
+      {unavailable.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* Shown, not hidden, so it is clear these exist and why they cannot be had yet. */}
+            {unavailable.map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled
+                aria-describedby={unavailableId}
+                data-testid={`${testIdPrefix}-${format}`}
+                data-unavailable="true"
+                className="btn btn-sm btn-secondary"
+              >
+                {t(`format.${format}`)}
+              </button>
+            ))}
+          </div>
+          <p
+            id={unavailableId}
+            className="text-sm text-text-muted"
+            data-testid={`${testIdPrefix}-unavailable`}
+          >
+            {t('errors.export_format_unprotected')}
+          </p>
+        </div>
+      )}
       {exportError && (
         <div className="mt-3">
           <Notice tone="critical">{exportError}</Notice>

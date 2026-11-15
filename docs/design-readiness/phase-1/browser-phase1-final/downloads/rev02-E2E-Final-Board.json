@@ -1,0 +1,414 @@
+{
+  "export_status": {
+    "label": "REVIEW APPROVED — STUDY, NOT FOR EXECUTION",
+    "identity": "E2E Final Board, revision 02, approved by Eng. Final Reviewer on 2026-10-27, design 4f93e7528f93, rules 2026.10.23.1"
+  },
+  "findings": [
+    {
+      "code": "discrimination_group_raised",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "after": "16",
+        "group": "1",
+        "rated": "32",
+        "ratio": "1.6"
+      },
+      "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "phase_imbalance",
+      "severity": "warning",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "limit": "10",
+        "imbalance": "100"
+      },
+      "message": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+      "requires_engineering_confirmation": true,
+      "source": "company max_phase_imbalance_percent"
+    },
+    {
+      "code": "discrimination_incomer_raised",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "after": "32",
+        "rated": "63",
+        "ratio": "1.6"
+      },
+      "message": "Incomer raised to 63 A, 1.6 x the 32 A breaker after it, for discrimination.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "no_fault_level",
+      "severity": "warning",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "No fault level given: every breaker's breaking capacity is left to be confirmed.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "spare_ways",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "count": "1",
+        "percent": "20"
+      },
+      "message": "Leave 1 spare outgoing ways (20 %).",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "default_power_factor",
+      "severity": "warning",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "Loads without a power factor were taken at cos phi 0.9.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "discrimination",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "ratio": "1.6"
+      },
+      "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "cable_conditions",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "method": "B1",
+        "ambient": "30",
+        "grouped": "1",
+        "insulation": "70"
+      },
+      "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "market_rules",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "market": "Palestine",
+        "regulation": "IEC 60364 (adopted by the Palestine Standards Institution)",
+        "market_code": "PS",
+        "regulation_code": "PS"
+      },
+      "message": "Designed for Palestine, under IEC 60364 (adopted by the Palestine Standards Institution): its stated limits apply beneath the company's own settings.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "rules_unconfirmed",
+      "severity": "warning",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "enclosure_selected",
+      "severity": "info",
+      "board_id": "DB1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "free": "20",
+        "rows": "2",
+        "size": "498 x 400 x 117",
+        "type": "GDMS332 RX",
+        "order": "2CVA250001P0001",
+        "source": "ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7",
+        "product": "ABB Mini Center compact GDMS332 RX"
+      },
+      "message": "Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001), 2 rows of 16 modules, H x W x D 498 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 20 modules are left for spare ways (ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7). The outgoing terminal strip is not counted.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    }
+  ],
+  "project": {
+    "info": {
+      "name": "E2E Final Board",
+      "number": "",
+      "customer": "Final Customer",
+      "consultant": "",
+      "contractor": "",
+      "revisions": [
+        {
+          "index": "01",
+          "date": "2026-10-27",
+          "description": "first",
+          "drawn_by": "",
+          "checked_by": "",
+          "approved_by": "",
+          "approval_note": ""
+        },
+        {
+          "index": "02",
+          "date": "2026-10-27",
+          "description": "second",
+          "drawn_by": "",
+          "checked_by": "",
+          "approved_by": "Eng. Final Reviewer",
+          "approval_note": "Checked against site survey 27 Oct"
+        }
+      ]
+    },
+    "profile": "iec-default",
+    "boards": [
+      {
+        "id": "DB1",
+        "name": "DB1",
+        "function": null,
+        "location": null,
+        "supply": {
+          "voltage_v": "400",
+          "phases": 3,
+          "frequency_hz": "50",
+          "earthing": "TN-S",
+          "fault_level_ka": null,
+          "earth_loop_ohm": null
+        },
+        "incomer_ids": [
+          "incomer"
+        ],
+        "devices": [
+          {
+            "id": "incomer",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "DB1",
+              "location": null,
+              "product": "Q1"
+            },
+            "part_key": null,
+            "poles": 4,
+            "rated_current_a": "63",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": null,
+            "description": "Main incomer",
+            "upstream_id": null
+          },
+          {
+            "id": "g1-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "DB1",
+              "location": null,
+              "product": "Q2"
+            },
+            "part_key": null,
+            "poles": 3,
+            "rated_current_a": "32",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": null,
+            "description": "Group 1 supply",
+            "upstream_id": "incomer"
+          },
+          {
+            "id": "g1-rcd",
+            "kind": "residual_current_device",
+            "designation": {
+              "function": "DB1",
+              "location": null,
+              "product": "F1"
+            },
+            "part_key": null,
+            "poles": 4,
+            "rated_current_a": "40",
+            "residual_current_ma": "30",
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Group 1 residual current",
+            "upstream_id": "g1-breaker"
+          },
+          {
+            "id": "c1-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "DB1",
+              "location": null,
+              "product": "Q3"
+            },
+            "part_key": null,
+            "poles": 1,
+            "rated_current_a": "16",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": null,
+            "description": "Sockets kitchen",
+            "upstream_id": "g1-rcd"
+          }
+        ],
+        "cables": [
+          {
+            "id": "c1-cable",
+            "designation": {
+              "function": "DB1",
+              "location": null,
+              "product": "W1"
+            },
+            "cores": 3,
+            "cross_section_mm2": "2.5",
+            "material": "Cu",
+            "insulation": "PVC",
+            "length_m": "20",
+            "part_key": null,
+            "withstand_ka2s": "0.083",
+            "parallel": 1
+          }
+        ],
+        "circuits": [
+          {
+            "id": "c1",
+            "description": "Sockets kitchen",
+            "load": "socket",
+            "power_kw": "3",
+            "design_current_a": "14.43",
+            "phase": "L1",
+            "upstream_id": "g1-rcd",
+            "device_ids": [
+              "c1-breaker"
+            ],
+            "cable_id": "c1-cable",
+            "feeds": null,
+            "starter": null,
+            "voltage_drop_percent": "2.25",
+            "earth_loop_ohm": null
+          }
+        ],
+        "notes": [
+          {
+            "code": "discrimination_group_raised",
+            "params": {
+              "after": "16",
+              "group": "1",
+              "rated": "32",
+              "ratio": "1.6"
+            },
+            "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+          },
+          {
+            "code": "phase_imbalance",
+            "params": {
+              "limit": "10",
+              "imbalance": "100"
+            },
+            "text": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+          },
+          {
+            "code": "discrimination_incomer_raised",
+            "params": {
+              "after": "32",
+              "rated": "63",
+              "ratio": "1.6"
+            },
+            "text": "Incomer raised to 63 A, 1.6 x the 32 A breaker after it, for discrimination."
+          },
+          {
+            "code": "no_fault_level",
+            "params": {},
+            "text": "No fault level given: every breaker's breaking capacity is left to be confirmed."
+          },
+          {
+            "code": "spare_ways",
+            "params": {
+              "count": "1",
+              "percent": "20"
+            },
+            "text": "Leave 1 spare outgoing ways (20 %)."
+          },
+          {
+            "code": "default_power_factor",
+            "params": {},
+            "text": "Loads without a power factor were taken at cos phi 0.9."
+          },
+          {
+            "code": "discrimination",
+            "params": {
+              "ratio": "1.6"
+            },
+            "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+          },
+          {
+            "code": "cable_conditions",
+            "params": {
+              "method": "B1",
+              "ambient": "30",
+              "grouped": "1",
+              "insulation": "70"
+            },
+            "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+          },
+          {
+            "code": "market_rules",
+            "params": {
+              "market": "Palestine",
+              "regulation": "IEC 60364 (adopted by the Palestine Standards Institution)",
+              "market_code": "PS",
+              "regulation_code": "PS"
+            },
+            "text": "Designed for Palestine, under IEC 60364 (adopted by the Palestine Standards Institution): its stated limits apply beneath the company's own settings."
+          },
+          {
+            "code": "rules_unconfirmed",
+            "params": {},
+            "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+          },
+          {
+            "code": "enclosure_selected",
+            "params": {
+              "free": "20",
+              "rows": "2",
+              "size": "498 x 400 x 117",
+              "type": "GDMS332 RX",
+              "order": "2CVA250001P0001",
+              "source": "ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7",
+              "product": "ABB Mini Center compact GDMS332 RX"
+            },
+            "text": "Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001), 2 rows of 16 modules, H x W x D 498 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 20 modules are left for spare ways (ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7). The outgoing terminal strip is not counted."
+          }
+        ],
+        "fed_from": null
+      }
+    ],
+    "parts": []
+  }
+}

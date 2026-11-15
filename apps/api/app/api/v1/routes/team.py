@@ -10,7 +10,13 @@ from fastapi import APIRouter, Response, status
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.domain import team as team_domain
-from app.models.schemas.team import InvitationCreated, InvitationOut, InviteRequest, Team
+from app.models.schemas.team import (
+    InvitationCreated,
+    InvitationOut,
+    InviteRequest,
+    Team,
+    TransferOwnershipRequest,
+)
 
 router = APIRouter()
 
@@ -49,3 +55,13 @@ def remove(member_id: str, session: SessionDep, user: CurrentUserDep) -> Respons
     team_domain.remove(session=session, user=user, member_id=member_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/owner", response_model=Team)
+def transfer_ownership(
+    payload: TransferOwnershipRequest, session: SessionDep, user: CurrentUserDep
+) -> Team:
+    """Hand the tenant's ownership to another active member; the owner only."""
+    team_domain.transfer_ownership(session=session, user=user, member_id=payload.member_id)
+    session.commit()
+    return team_domain.team(session=session, user=user)

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import CurrentUserDep, SessionDep
-from app.core.observability import StreamTimer
+from app.core.observability import StreamTimer, current_correlation_id, with_correlation_id
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.diagnostics import (
     DiagnosticRequest,
@@ -80,7 +80,11 @@ def stream_diagnosis(
     """
     events = diagnostics_domain.stream_diagnosis(session=session, user=user, request=payload)
     return StreamingResponse(
-        _with_keepalive(_timed_frames(events)),
+        # The id is read now, while the request middleware still has it bound:
+        # the body is produced after that middleware has returned, on a worker
+        # thread, and every retrieval, generation and rejection line of a
+        # streamed turn was otherwise logged with no correlation id at all.
+        _with_keepalive(_timed_frames(events), correlation_id=current_correlation_id()),
         media_type="text/event-stream",
         # Proxies buffer by default, which defeats the point: the client would
         # receive every event at once, at the end.
@@ -135,7 +139,10 @@ _END = object()
 
 
 def _with_keepalive(
-    frames: Iterator[str], *, interval_s: float = KEEPALIVE_INTERVAL_S
+    frames: Iterator[str],
+    *,
+    interval_s: float = KEEPALIVE_INTERVAL_S,
+    correlation_id: str | None = None,
 ) -> Generator[str, None, None]:
     """Pass frames through, filling long silences with keep-alive comments.
 
@@ -148,14 +155,23 @@ def _with_keepalive(
     Args:
         frames: The rendered frames.
         interval_s: Silence tolerated before a comment frame is sent.
+        correlation_id: The request's id, bound around each frame's production
+            so the domain's log lines name the request they belong to.
 
     Yields:
         Each frame in order, with comment frames between them while waiting.
     """
     producer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sse")
+
+    def produce() -> object:
+        if correlation_id is None:
+            return next(frames, _END)
+        with with_correlation_id(correlation_id):
+            return next(frames, _END)
+
     try:
         while True:
-            pending = producer.submit(next, frames, _END)
+            pending = producer.submit(produce)
             while True:
                 try:
                     frame = pending.result(timeout=interval_s)

@@ -17,7 +17,7 @@ export function SignInForm({
   onCancel,
   signInImpl = signIn,
 }: {
-  onSignedIn: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onSignedIn: (tokens: { accessToken: string }) => void;
   /** Offered only where there is something to go back to. */
   onCancel?: () => void;
   signInImpl?: typeof signIn;
@@ -42,7 +42,7 @@ export function SignInForm({
     const outcome = await signInImpl({ email: email.trim(), password });
     setBusy(false);
     if (outcome.kind === 'signed-in') {
-      onSignedIn({ accessToken: outcome.accessToken, refreshToken: outcome.refreshToken });
+      onSignedIn({ accessToken: outcome.accessToken });
       return;
     }
     setError(t(`error.${outcome.kind}`));

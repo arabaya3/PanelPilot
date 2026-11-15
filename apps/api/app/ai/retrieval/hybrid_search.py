@@ -186,7 +186,7 @@ def _build_query(
         filter_clauses.append({"term": {"verification_status": VerificationStatus.VERIFIED.value}})
     if filters:
         if filters.manufacturers:
-            filter_clauses.append({"terms": {"brand": filters.manufacturers}})
+            filter_clauses.append(_brand_clause(filters.manufacturers))
         if filters.document_types:
             filter_clauses.append({"terms": {"doc_type": filters.document_types}})
 
@@ -221,6 +221,61 @@ def _build_query(
             }
         },
     }
+
+
+#: What ingestion records as a chunk's model when the crawl cannot know it
+#: (``app.ingestion.staging_pipeline``); a reviewer supplies the real one.
+UNKNOWN_MODEL = "unknown"
+
+
+def _brand_clause(brands: list[str]) -> dict[str, Any]:
+    """Match any of ``brands``, whatever their case.
+
+    ``brand`` is a keyword field holding the manufacturer's own spelling
+    ("ABB", "Siemens"); a caller's "abb" -- an equipment chip, a typed
+    filter -- matched nothing with an exact ``terms`` clause, and the answer
+    path then refused for want of evidence the index did hold.
+    """
+    return {
+        "bool": {
+            "should": [
+                {"term": {"brand": {"value": brand, "case_insensitive": True}}} for brand in brands
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _model_clause(model: str) -> dict[str, Any]:
+    """Restrict to ``model``, keeping chunks whose model is not recorded.
+
+    Every chunk is indexed with model ``unknown`` until a reviewer supplies
+    one, so an exact ``term`` on the model excluded the entire corpus: any
+    question naming its equipment found nothing. A chunk recorded for a
+    *different* model is still excluded -- that would cite the wrong
+    equipment -- while one of unknown model stays a candidate. The preference
+    for a real match is ``_model_preference``.
+    """
+    return {
+        "bool": {
+            "should": [
+                {"term": {"model": {"value": model, "case_insensitive": True}}},
+                {"term": {"model": UNKNOWN_MODEL}},
+                {"bool": {"must_not": {"exists": {"field": "model"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _model_preference(model: str) -> dict[str, Any]:
+    """A lexical-leg clause scoring a chunk recorded for ``model`` above one of unknown model.
+
+    Scored on the lexical leg only: a kNN leg takes a filter, not a scoring
+    clause. Once reviewers record models, the right equipment's passages rank
+    first; until then it matches nothing and changes no score.
+    """
+    return {"term": {"model": {"value": model, "case_insensitive": True}}}
 
 
 def _to_passages(
@@ -364,13 +419,15 @@ def _search(
     # `model` is a keyword field but not part of SearchFilters, so it is applied
     # here rather than widening that schema for one caller.
     if model:
-        for leg in body["query"]["hybrid"]["queries"]:
-            target_filter = (
-                leg["bool"]["filter"]
-                if "bool" in leg
-                else leg["knn"]["content_vector"]["filter"]["bool"]["filter"]
-            )
-            target_filter.append({"term": {"model": model}})
+        lexical, vector_leg = body["query"]["hybrid"]["queries"]
+        # Each leg gets its own copy of the filters: they are one list object
+        # out of _build_query, and appending to it per leg added the clause twice.
+        lexical["bool"]["filter"] = [*lexical["bool"]["filter"], _model_clause(model)]
+        vector_leg["knn"]["content_vector"]["filter"]["bool"]["filter"] = [
+            *vector_leg["knn"]["content_vector"]["filter"]["bool"]["filter"],
+            _model_clause(model),
+        ]
+        lexical["bool"]["should"] = [_model_preference(model)]
 
     # Exactly one pipeline reference, by name, as a query parameter. Both a
     # parameter and a body-level definition would leave which applies to

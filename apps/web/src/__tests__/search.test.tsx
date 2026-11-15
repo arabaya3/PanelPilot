@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SearchScreen } from '@/components/search-screen';
-import { passageSourceUrl, searchDocuments } from '@/lib/search';
+import { matchedTerms, passageSourceUrl, searchDocuments } from '@/lib/search';
 import { acquireTrial } from '@/lib/session';
 import * as trial from '@/lib/trial';
 
@@ -163,6 +163,102 @@ describe('the search page', () => {
     renderSearch(vi.fn());
     const link = await screen.findByRole('link', { name: 'Documents' });
     expect(link.getAttribute('href')).toBe('/search');
+  });
+
+  // Passages as the live index returned them for "asdkjh qwpoeiru zxcmvn": the
+  // nearest by meaning, ranked high, with nothing of the search in them.
+  const NEAREST = [
+    { ...PASSAGE, id: 'g1', text: '1 2 3 4 B A DNGB dleihS', score: 0.7, anchored: false },
+    {
+      ...PASSAGE,
+      id: 'g2',
+      text: 'F-DI 0 DI 1 DI 2 F-DI 1 DI 3 DI 4 F-DI 2 DI 5 DI COM Kl. 34 Kl. 28',
+      score: 0.39,
+      anchored: false,
+    },
+  ];
+
+  it('says when no passage contains what was searched for, rather than implying a match', async () => {
+    renderSearch(vi.fn().mockResolvedValue({ kind: 'loaded', passages: NEAREST }));
+
+    await search('asdkjh qwpoeiru zxcmvn');
+
+    const notice = await screen.findByTestId('search-weak');
+    expect(notice.textContent).toContain('None of these passages contains what you searched for');
+    expect(screen.getByTestId('passage-match-g1').textContent).toBe(
+      'Close in meaning only: none of your search words is in it',
+    );
+    // The passages are still shown: the reader may judge them.
+    expect(screen.getByTestId('passage-g2')).toBeTruthy();
+  });
+
+  it('names the searched-for words each passage contains, and the code when it has it', async () => {
+    const words = {
+      ...PASSAGE,
+      id: 'w1',
+      text: 'F07801 Drive: Motor overcurrent\nThe permissible motor limit current was exceeded.',
+      anchored: false,
+    };
+    renderSearch(
+      vi.fn().mockResolvedValue({ kind: 'loaded', passages: [PASSAGE, words, NEAREST[0]] }),
+    );
+
+    await search('motor draws too much current');
+
+    expect((await screen.findByTestId('passage-match-w1')).textContent).toBe(
+      'Contains: motor, current',
+    );
+    expect(screen.getByTestId('passage-match-c1').textContent).toBe(
+      'Contains the code you searched for',
+    );
+    expect(screen.getByTestId('passage-match-g1').textContent).toContain('Close in meaning only');
+    expect(screen.queryByTestId('search-weak')).toBeNull();
+  });
+
+  it('says it in the page language', async () => {
+    renderApp(
+      <SearchScreen
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+        searchImpl={vi.fn().mockResolvedValue({ kind: 'loaded', passages: NEAREST })}
+      />,
+      { locale: 'he' },
+    );
+    const input = await screen.findByRole('searchbox');
+    fireEvent.change(input, { target: { value: 'איך מאפסים תקלה בממיר' } });
+    const form = input.closest('form') as HTMLFormElement;
+    await waitFor(() => {
+      expect(form.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.submit(form);
+
+    expect((await screen.findByTestId('search-weak')).textContent).toContain(
+      'המדריכים כתובים באנגלית',
+    );
+  });
+});
+
+describe('matchedTerms', () => {
+  it.each([
+    ['F30001', 'F30001 Power unit: Overcurrent', ['f30001']],
+    ['f30001', 'F300010 reserved', []],
+    [
+      'S7-1200 analog input wiring',
+      '3.7.4 Guidelines for wiring the S7-1200 G2',
+      ['s7', '1200', 'wiring'],
+    ],
+    ['how do I acknowledge a fault', 'Acknowledging faults: press OK', ['fault']],
+    [
+      'how do I acknowledge a fault',
+      'To acknowledge the fault, press OK',
+      ['acknowledge', 'fault'],
+    ],
+    ['what is the', 'what is the setting', []],
+    ['lorem ipsum dolor sit amet', '(cid:56)(cid:81)(cid:76)', []],
+    ['خطأ تيار زائد', 'F07801 Drive: Motor overcurrent', []],
+    ['خطأ F07801', 'F07801 Drive: Motor overcurrent', ['f07801']],
+    ['Motor MOTOR motor', 'motor', ['motor']],
+  ])('%j in %j is %j', (query, text, expected) => {
+    expect(matchedTerms(query, text)).toEqual(expected);
   });
 });
 

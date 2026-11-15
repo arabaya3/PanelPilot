@@ -86,6 +86,14 @@ def test_an_issued_token_decodes_to_its_caller() -> None:
     assert caller.id == "user-1"
     assert caller.tenant_id == "tenant-1"
     assert caller.roles == frozenset({Role.REVIEWER})
+    # No sign-in session named: a trial's token, or one from before sessions.
+    assert caller.session_id is None
+
+
+def test_the_sign_in_session_travels_as_the_sid_claim() -> None:
+    token = create_access_token(subject="user-1", tenant_id="tenant-1", session_id="sess-1")
+    assert jwt.decode(token, options={"verify_signature": False})["sid"] == "sess-1"
+    assert decode_access_token(token).session_id == "sess-1"
 
 
 # --- what is refused -----------------------------------------------------------
@@ -190,3 +198,48 @@ def test_claim_secrets_are_stored_only_as_their_hash() -> None:
     secret, secret_hash = generate_claim_secret()
     assert secret_hash == hash_claim_secret(secret)
     assert len(secret_hash) == 64
+
+
+def test_a_derived_refresh_token_is_stable_and_bound_to_every_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-derivable by the server alone, and by nothing short of the key."""
+    from app.core.security import derive_refresh_token, generate_session_salt
+
+    salt = generate_session_salt()
+    first = derive_refresh_token(session_id="s1", salt=salt, generation=1)
+    assert first == derive_refresh_token(session_id="s1", salt=salt, generation=1)
+    assert first[1] == hash_refresh_token(first[0])
+    others = {
+        derive_refresh_token(session_id="s1", salt=salt, generation=2)[0],
+        derive_refresh_token(session_id="s2", salt=salt, generation=1)[0],
+        derive_refresh_token(session_id="s1", salt=generate_session_salt(), generation=1)[0],
+    }
+    assert first[0] not in others
+    assert len(others) == 3
+
+    monkeypatch.setenv("JWT_SECRET", "another-key-entirely-" + "k" * 32)
+    get_settings.cache_clear()
+    assert derive_refresh_token(session_id="s1", salt=salt, generation=1) != first
+
+
+def test_refresh_tokens_are_derived_under_their_own_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not the access-token signing key: HKDF of it, or REFRESH_TOKEN_KEY when set."""
+    import hashlib
+    import hmac
+
+    from app.core.security import derive_refresh_token, refresh_token_key
+
+    key = refresh_token_key()
+    assert len(key) == 32
+    assert key != _SECRET.encode()
+    # The previous derivation, straight under JWT_SECRET, gives a different token.
+    message = b"panelpilot-refresh-token|s1|salt|1"
+    under_jwt_secret = hmac.new(_SECRET.encode(), message, hashlib.sha256).digest()
+    token, _ = derive_refresh_token(session_id="s1", salt="salt", generation=1)
+    assert base64.urlsafe_b64decode(token + "=") != under_jwt_secret
+
+    monkeypatch.setenv("REFRESH_TOKEN_KEY", "a-separate-refresh-key-" + "r" * 32)
+    get_settings.cache_clear()
+    assert refresh_token_key() != key
+    assert derive_refresh_token(session_id="s1", salt="salt", generation=1)[0] != token

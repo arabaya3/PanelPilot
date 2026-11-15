@@ -91,3 +91,36 @@ export function moved(list: string[], item: string, step: -1 | 1): string[] {
 export function toggled(list: string[], item: string): string[] {
   return list.includes(item) ? list.filter((entry) => entry !== item) : [...list, item];
 }
+
+/** What a refused save says: its code, and the values it names (lists included). */
+type SaveRefusal = {
+  code?: string;
+  params?: Record<string, string>;
+  values?: Record<string, unknown>;
+};
+
+/**
+ * The setting a refused save names, as its dotted path (`key`,
+ * `max_voltage_drop_percent.lighting`), so the form can mark that field; null
+ * where the refusal is about the settings as a whole (the plan, the role,
+ * unknown settings, the market).
+ */
+export function refusedSetting(refusal: SaveRefusal): string | null {
+  if (refusal.code === 'profile_no_key') return 'key';
+  if (refusal.code === 'profile_setting_invalid') {
+    const setting = refusal.params?.setting;
+    return typeof setting === 'string' && setting !== '' ? setting : null;
+  }
+  return null;
+}
+
+/**
+ * The refusal with a list it names (`profile_unknown_settings`' settings)
+ * joined into its sentence's params, which hold only scalars as sent.
+ */
+export function withListedSettings<T extends SaveRefusal>(refusal: T): T {
+  const listed = refusal.values?.settings;
+  if (!Array.isArray(listed)) return refusal;
+  const names = listed.filter((name): name is string => typeof name === 'string');
+  return { ...refusal, params: { ...refusal.params, settings: names.join(', ') } };
+}

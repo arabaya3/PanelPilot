@@ -1,0 +1,409 @@
+{
+  "meta": {
+    "api": "http://127.0.0.1:8000/api/v1",
+    "web": "http://127.0.0.1:3000/api/v1",
+    "at": "2026-10-27T13:26:53.799Z",
+    "cookie_attributes": [
+      "HttpOnly",
+      "Max-Age=2592000",
+      "Path=/api/v1/auth/session",
+      "SameSite=strict"
+    ],
+    "signup_body_keys": "access_token only (refresh in cookie)",
+    "saved": {
+      "status": 201,
+      "export_status": "draft",
+      "validated": true,
+      "rules_version": "2026.10.23.1",
+      "has_sha": true
+    },
+    "snapshot_prefix": "40beff92fcac",
+    "cable_fields_tampered": [
+      "cross_section_mm2"
+    ],
+    "approval_response_contains_at": false,
+    "approval_response_contains_account_email": false,
+    "a_project_after_b_delete": 200,
+    "design_429_retries": 0
+  },
+  "results": [
+    {
+      "id": "1.1",
+      "attack": "save project (revision 1)",
+      "expected": "201 with snapshot hash",
+      "status": 201,
+      "code": null,
+      "actual": "201",
+      "result": "PASS"
+    },
+    {
+      "id": "1.2a",
+      "attack": "revision export with client-supplied project",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "1.2b",
+      "attack": "revision export with tampered snapshot_sha256",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "1.2c",
+      "attack": "revision export with approved_by/checked_by",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "1.2d",
+      "attack": "revision export with rules_version",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "1.3",
+      "attack": "revision export carries snapshot hash and rules version (JSON; PDF checked by inspect.py)",
+      "expected": "200, hash and rules in file",
+      "status": 200,
+      "code": null,
+      "actual": "pdf 200, json 200, json has hash=true rules=true",
+      "result": "PASS"
+    },
+    {
+      "id": "1.4",
+      "attack": "draft export, 200 A breaker on 1.5 mm2: DRAFT-marked with blocking finding (JSON; PDF by inspect.py)",
+      "expected": "200, draft status, blocking finding",
+      "status": 200,
+      "code": null,
+      "actual": "pdf 200, calc 200, json 200 label=DRAFT — NOT FOR EXECUTION blocking=true",
+      "result": "PASS"
+    },
+    {
+      "id": "1.5",
+      "attack": "forged approved_by/checked_by in draft never printed (JSON; PDFs by inspect.py)",
+      "expected": "absent",
+      "status": 200,
+      "code": null,
+      "actual": "json contains FORGED=false",
+      "result": "PASS"
+    },
+    {
+      "id": "2.1a",
+      "attack": "approval with extra field approved_snapshot_sha256",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "2.1b",
+      "attack": "approval with extra approved_at/approved_account",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "2.2",
+      "attack": "whitespace approver",
+      "expected": "422",
+      "status": 422,
+      "code": "request_invalid",
+      "actual": "422 request_invalid",
+      "result": "PASS"
+    },
+    {
+      "id": "2.5",
+      "attack": "unapproved revision never says REVIEW APPROVED (DXF/JSON raw; PDFs by inspect.py)",
+      "expected": "absent",
+      "status": null,
+      "code": null,
+      "actual": "statuses {\"pdf\":200,\"calculations_pdf\":200,\"quotation_pdf\":200,\"dxf\":200,\"json\":200}, stamp REVIEW APPROVED (case-sensitive; the DXF title-block field label 'Review approved' is not the stamp) =false",
+      "result": "PASS"
+    },
+    {
+      "id": "2.3a",
+      "attack": "first approval",
+      "expected": "200",
+      "status": 200,
+      "code": null,
+      "actual": "200",
+      "result": "PASS"
+    },
+    {
+      "id": "2.3b",
+      "attack": "second approval",
+      "expected": "409",
+      "status": 409,
+      "code": "revision_already_approved",
+      "actual": "409 revision_already_approved",
+      "result": "PASS"
+    },
+    {
+      "id": "2.4",
+      "attack": "approved export shows approver, hash, rules; no \"@\" in JSON (PDFs by inspect.py)",
+      "expected": "approver+hash+rules present, no @",
+      "status": null,
+      "code": null,
+      "actual": "statuses {\"pdf\":200,\"calculations_pdf\":200,\"quotation_pdf\":200,\"dxf\":200,\"json\":200}; json approver=true hash=true rules=true at=false",
+      "result": "PASS"
+    },
+    {
+      "id": "3.1",
+      "attack": "B -> A's project: GET",
+      "expected": "404",
+      "status": 404,
+      "code": "project_not_found",
+      "actual": "404 project_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.2",
+      "attack": "B -> A's project: export pdf",
+      "expected": "404",
+      "status": 404,
+      "code": "revision_not_found",
+      "actual": "404 revision_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.3",
+      "attack": "B -> A's project: approve",
+      "expected": "404",
+      "status": 404,
+      "code": "revision_not_found",
+      "actual": "404 revision_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.4",
+      "attack": "B -> A's project: revise",
+      "expected": "404",
+      "status": 404,
+      "code": "project_not_found",
+      "actual": "404 project_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.5",
+      "attack": "B -> A's project: delete",
+      "expected": "404",
+      "status": 404,
+      "code": "project_not_found",
+      "actual": "404 project_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.6",
+      "attack": "B -> A's project: quotation_pdf via revision export",
+      "expected": "404",
+      "status": 404,
+      "code": "revision_not_found",
+      "actual": "404 revision_not_found",
+      "result": "PASS"
+    },
+    {
+      "id": "3.7",
+      "attack": "B project list",
+      "expected": "200, empty",
+      "status": 200,
+      "code": null,
+      "actual": "200 items=0",
+      "result": "PASS"
+    },
+    {
+      "id": "3.8",
+      "attack": "B receives no approval identity",
+      "expected": "no approver/email in any B response",
+      "status": null,
+      "code": null,
+      "actual": "approver=false email=false",
+      "result": "PASS"
+    },
+    {
+      "id": "5.1-1",
+      "attack": "purpose=execution, approved rev 1, all 18 formats",
+      "expected": "409 execution_package_incomplete, no file",
+      "status": null,
+      "code": null,
+      "actual": "all 409 execution_package_incomplete",
+      "result": "PASS"
+    },
+    {
+      "id": "5.1-2",
+      "attack": "purpose=execution, unapproved rev 2, all 18 formats",
+      "expected": "409 execution_package_incomplete, no file",
+      "status": null,
+      "code": null,
+      "actual": "all 409 execution_package_incomplete",
+      "result": "PASS"
+    },
+    {
+      "id": "5.2 draft /design/export",
+      "attack": "13 CSV/QET/AML/PLC formats on draft /design/export",
+      "expected": "409 export_format_unprotected",
+      "status": null,
+      "code": null,
+      "actual": "all 409 export_format_unprotected",
+      "result": "PASS"
+    },
+    {
+      "id": "5.2 revision export (approved rev 1)",
+      "attack": "13 CSV/QET/AML/PLC formats on revision export (approved rev 1)",
+      "expected": "409 export_format_unprotected",
+      "status": null,
+      "code": null,
+      "actual": "all 409 export_format_unprotected",
+      "result": "PASS"
+    },
+    {
+      "id": "5.2 revision export (unapproved rev 2)",
+      "attack": "13 CSV/QET/AML/PLC formats on revision export (unapproved rev 2)",
+      "expected": "409 export_format_unprotected",
+      "status": null,
+      "code": null,
+      "actual": "all 409 export_format_unprotected",
+      "result": "PASS"
+    },
+    {
+      "id": "5.3",
+      "attack": "/design/plc",
+      "expected": "409 export_format_unprotected",
+      "status": 409,
+      "code": "export_format_unprotected",
+      "actual": "409 export_format_unprotected",
+      "result": "PASS"
+    },
+    {
+      "id": "6.1",
+      "attack": "/design/quotation with tampered project",
+      "expected": "200 provisional_estimate, blocking true",
+      "status": 200,
+      "code": null,
+      "actual": "200 status=provisional_estimate blocking=true",
+      "result": "PASS"
+    },
+    {
+      "id": "6.2",
+      "attack": "out-of-bound pricing",
+      "expected": "422 each",
+      "status": null,
+      "code": null,
+      "actual": "{\"markup_percent=501\":422,\"vat_percent=101\":422,\"vat_percent=-1\":422,\"labour_per_board=1e+30\":422,\"currency=jod\":422}",
+      "result": "PASS"
+    },
+    {
+      "id": "7.1",
+      "attack": "4 parallel revision saves",
+      "expected": "4 x 201, distinct numbers",
+      "status": null,
+      "code": null,
+      "actual": "statuses 201,201,201,201 numbers 3,5,4,6",
+      "result": "PASS"
+    },
+    {
+      "id": "7.2",
+      "attack": "3 parallel approvals of rev 6",
+      "expected": "one 200, two 409",
+      "status": null,
+      "code": null,
+      "actual": "statuses 200,409,409",
+      "result": "PASS"
+    },
+    {
+      "id": "4.7a",
+      "attack": "refresh without X-PanelPilot-CSRF (trusted Origin)",
+      "expected": "403 csrf_header_missing",
+      "status": 403,
+      "code": "csrf_header_missing",
+      "actual": "403 csrf_header_missing",
+      "result": "PASS"
+    },
+    {
+      "id": "4.7b",
+      "attack": "refresh with foreign Origin",
+      "expected": "403 csrf_origin_refused",
+      "status": 403,
+      "code": "csrf_origin_refused",
+      "actual": "403 csrf_origin_refused",
+      "result": "PASS"
+    },
+    {
+      "id": "4.7c",
+      "attack": "refresh with foreign Origin, direct to API",
+      "expected": "403 csrf_origin_refused",
+      "status": 403,
+      "code": "csrf_origin_refused",
+      "actual": "403 csrf_origin_refused",
+      "result": "PASS"
+    },
+    {
+      "id": "7.3",
+      "attack": "5 parallel refreshes, same cookie",
+      "expected": "5 x 200",
+      "status": null,
+      "code": null,
+      "actual": "statuses 200,200,200,200,200; distinct cookies set=1",
+      "result": "PASS"
+    },
+    {
+      "id": "4.1",
+      "attack": "logout session 1",
+      "expected": "204",
+      "status": 204,
+      "code": null,
+      "actual": "204",
+      "result": "PASS"
+    },
+    {
+      "id": "4.2",
+      "attack": "replay session-1 access token",
+      "expected": "401 session_ended",
+      "status": 401,
+      "code": "session_ended",
+      "actual": "401 session_ended",
+      "result": "PASS"
+    },
+    {
+      "id": "4.3",
+      "attack": "replay session-1 refresh cookie",
+      "expected": "401",
+      "status": 401,
+      "code": "session_ended",
+      "actual": "401 session_ended",
+      "result": "PASS"
+    },
+    {
+      "id": "4.4",
+      "attack": "session 2 survives logout of session 1",
+      "expected": "200 / 200",
+      "status": 200,
+      "code": null,
+      "actual": "api 200, refresh 200",
+      "result": "PASS"
+    },
+    {
+      "id": "4.5",
+      "attack": "logout-everywhere ends sessions 2 and 3",
+      "expected": "204; then 401 for both tokens and cookies",
+      "status": 204,
+      "code": null,
+      "actual": "logout 204; tokens 401/401 (session_ended/session_ended); cookies 401/401",
+      "result": "PASS"
+    }
+  ]
+}

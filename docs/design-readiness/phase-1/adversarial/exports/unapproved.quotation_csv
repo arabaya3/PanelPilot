@@ -1,0 +1,23 @@
+﻿# DRAFT — NOT FOR EXECUTION | ADV unapproved, revision 01, not approved, design 40beff92fcac, rules 2026.10.23.1 | findings: 0 blocking, 9 warning, 10 info
+Description,Designations,Quantity,Unit,Unit price,Total,Key
+Circuit-breaker 4P C100,'-Q1,1,pcs,not priced,,circuit_breaker:4P:C100
+Circuit-breaker 3P C16,'-Q2,1,pcs,not priced,,circuit_breaker:3P:C16
+Residual current circuit-breaker 4P 16A 30mA,'-F1,1,pcs,not priced,,residual_current_device:4P:16A:30mA
+Circuit-breaker 1P C10,'-Q3,1,pcs,not priced,,circuit_breaker:1P:C10
+ABB T2S160 MA 20,'-Q4,1,pcs,not priced,,T2S160 MA 20
+ABB A30,'-Q5 -Q9,2,pcs,not priced,,A30
+ABB TA25DU19,'-F2,1,pcs,not priced,,TA25DU19
+ABB T2S160 MA80,'-Q6,1,pcs,not priced,,T2S160 MA80
+ABB A63,'-Q7 -Q8,2,pcs,not priced,,A63
+ABB TA75DU42,'-F3,1,pcs,not priced,,TA75DU42
+Bussmann 170M1311,'-F4,1,pcs,not priced,,170M1311
+ABB ACS880-01-12A6-3,'-T1,1,pcs,not priced,,ACS880-01-12A6-3
+Cable 3G1.5 Cu PVC,'-W1,10,m,not priced,,cable:3G1.5:Cu:PVC
+Cable 4G1.5 Cu PVC,'-W2 -W4,50,m,not priced,,cable:4G1.5:Cu:PVC
+Cable 7G6 Cu PVC,'-W3,30,m,not priced,,cable:7G6:Cu:PVC
+Materials,,,,,0,
+Labour and enclosure,,,,,0,
+Markup,,,,,0,
+VAT,,,,,0,
+Total (JOD),,,,,0,
+Not priced: circuit_breaker:4P:C100 (no price); circuit_breaker:3P:C16 (no price); residual_current_device:4P:16A:30mA (no price); circuit_breaker:1P:C10 (no price); T2S160 MA 20 (no price); A30 (no price); TA25DU19 (no price); T2S160 MA80 (no price); A63 (no price); TA75DU42 (no price); 170M1311 (no price); ACS880-01-12A6-3 (no price); cable:3G1.5:Cu:PVC (no price); cable:4G1.5:Cu:PVC (no price); cable:7G6:Cu:PVC (no price)

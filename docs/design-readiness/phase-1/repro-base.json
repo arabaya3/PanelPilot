@@ -1,0 +1,50 @@
+{
+  "label": "base",
+  "api": "http://127.0.0.1:8000/api/v1",
+  "at": "2026-10-23T11:27:26.020Z",
+  "probes": {
+    "tampered_rating": {
+      "original_breaker_a": "10",
+      "sent_breaker_a": "200",
+      "cable": "1.5",
+      "export_status": 200,
+      "exported_contains_200A": true
+    },
+    "forged_approval": {
+      "calc_status": 200,
+      "pdf_status": 200,
+      "note": "inspect the saved PDFs for FORGED APPROVER"
+    },
+    "failure_ignored": {
+      "design_status": 200,
+      "note_codes": [
+        "voltage_drop_upsized",
+        "short_circuit_min_upsized",
+        "discrimination_group_raised",
+        "motor_current_table",
+        "starter_table",
+        "motor_current_table",
+        "starter_table",
+        "star_delta_interlock",
+        "motor_current_formula",
+        "drive_selected",
+        "drive_fuse_fault_level",
+        "breaking_capacity",
+        "spare_ways",
+        "default_power_factor",
+        "discrimination",
+        "earth_fault_no_ze",
+        "short_circuit_withstand",
+        "cable_conditions",
+        "rules_unconfirmed",
+        "enclosure_unknown_widths"
+      ],
+      "export_status": 200
+    },
+    "unknown_fields": {
+      "status": 200,
+      "detail": "accepted"
+    }
+  },
+  "design_status": 200
+}

@@ -17,6 +17,7 @@ from app.models.schemas.diagnostics import (
     VerifiedAnswer,
 )
 from app.models.schemas.responses import DiagnosisStep, Severity, StructuredDiagnosis
+from app.models.schemas.search import Citation
 
 # --- the response either diagnoses or refuses, never both -------------------
 
@@ -149,6 +150,50 @@ def test_a_diagnosis_must_bring_its_prose_answer() -> None:
             diagnosis=_structured(),
             confidence=_confidence(),
             low_confidence=False,
+        )
+
+
+_CLOSEST = Citation(
+    document_id="abb-acs880-fw", document_title="ACS880 firmware manual", manufacturer="ABB"
+)
+
+
+def test_a_refusal_can_carry_its_closest_match() -> None:
+    response = DiagnosticResponse(
+        session_id="s1",
+        refusal_message="The documentation found is related, but does not answer this.",
+        refusal_citations=[_CLOSEST],
+        confidence=_confidence(),
+        low_confidence=True,
+    )
+    assert response.refusal_citations == [_CLOSEST]
+
+
+def test_an_answer_cannot_carry_refusal_citations() -> None:
+    """Beside the real citations, a closest-match reference would pass for one."""
+    with pytest.raises(ValidationError, match="must not carry refusal citations"):
+        DiagnosticResponse(
+            session_id="s1",
+            answer=_verified(),
+            diagnosis=_structured(),
+            refusal_citations=[_CLOSEST],
+            confidence=_confidence(),
+            low_confidence=False,
+        )
+
+
+def test_an_undeclared_field_is_rejected_not_dropped() -> None:
+    """A citation passed under the wrong name was silently discarded once.
+
+    The refusal text then promised a reference the response did not carry.
+    """
+    with pytest.raises(ValidationError, match="citations"):
+        DiagnosticResponse(
+            session_id="s1",
+            refusal_message="No verified source.",
+            citations=[_CLOSEST],  # type: ignore[call-arg]
+            confidence=_confidence(),
+            low_confidence=True,
         )
 
 

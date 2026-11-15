@@ -3,6 +3,7 @@ import type { components } from '@panelpilot/shared-types';
 type Citation = components['schemas']['Citation'];
 type StructuredDiagnosis = components['schemas']['StructuredDiagnosis'];
 type DiagnosticResponse = components['schemas']['DiagnosticResponse'];
+type RetrievedPassage = components['schemas']['RetrievedPassage'];
 
 /**
  * Resolving citation ids to the citations behind them.
@@ -33,7 +34,7 @@ export interface ResolvedStep {
 
 /** What the card should render, decided once rather than at each zone. */
 export type CardVariant =
-  | { kind: 'refusal'; message: string }
+  | { kind: 'refusal'; message: string; closest: Citation[] }
   | { kind: 'uncertain'; reason: UncertainReason; citations: Citation[] }
   | {
       kind: 'diagnosis';
@@ -89,19 +90,57 @@ function isUsableId(value: unknown): value is string {
  * as cited.
  */
 function citationsById(citations: Citation[]): Map<string, Citation> {
+  return indexBy(
+    citations,
+    (entry) => entry.document_id,
+    (entry) => entry as Citation,
+  );
+}
+
+/**
+ * Index the passages an answer was built from by passage id.
+ *
+ * What a live diagnosis actually cites: `citation_ids` name the *passages*
+ * the model was shown (`evidence[].id`), not documents. Joining them against
+ * `answer.citations` by `document_id` resolved nothing on a real answer --
+ * a chunk id is never a document URL -- so every real, fully cited diagnosis
+ * rendered as "not certain". A passage also carries its own page, where two
+ * passages of one manual share a `document_id` and would be ambiguous.
+ *
+ * The same rules as `citationsById`: no usable id, not indexed; duplicated,
+ * neither entry wins; and a passage with no citation object is not indexed.
+ */
+function citationsByPassageId(evidence: RetrievedPassage[]): Map<string, Citation> {
+  return indexBy(
+    evidence,
+    (entry) => entry.id,
+    (entry) => {
+      const citation: unknown = entry.citation;
+      return typeof citation === 'object' && citation !== null ? (citation as Citation) : null;
+    },
+  );
+}
+
+function indexBy(
+  entries: readonly unknown[],
+  idOf: (entry: Record<string, unknown>) => unknown,
+  citationOf: (entry: Record<string, unknown>) => Citation | null,
+): Map<string, Citation> {
   const index = new Map<string, Citation>();
   const ambiguous = new Set<string>();
 
-  for (const citation of citations) {
+  for (const item of entries) {
     // Read through `unknown` rather than the declared type. The declaration
-    // says this is a `Citation` with a `string` id; the runtime value is
+    // says this is an object with a `string` id; the runtime value is
     // whatever the server sent, and the entire point of the guard below is
-    // that those two disagree. A `?.` here would say the same thing, but the
-    // type says the object is non-nullable, so lint reads it as dead code.
-    const entry: unknown = citation;
+    // that those two disagree.
+    const entry: unknown = item;
     if (typeof entry !== 'object' || entry === null) continue;
-    const id: unknown = (entry as { document_id?: unknown }).document_id;
+    const record = entry as Record<string, unknown>;
+    const id = idOf(record);
     if (!isUsableId(id)) continue;
+    const citation = citationOf(record);
+    if (citation === null) continue;
     if (index.has(id)) {
       ambiguous.add(id);
       continue;
@@ -150,11 +189,25 @@ export function decideVariant(response: DiagnosticResponse): CardVariant {
     return {
       kind: 'refusal',
       message: response.refusal_message ?? '',
+      // The closest passage the backend found, shown so the engineer can judge
+      // it -- never as support, since there is no answer. Run through the same
+      // index as an answer's citations, so one with no usable id, or an
+      // ambiguous duplicate, is not shown as a reference either. Absent on a
+      // refusal that found nothing close, and on a replayed turn.
+      closest: [...citationsById(response.refusal_citations ?? []).values()],
     };
   }
 
   const diagnosis = response.diagnosis;
-  const index = citationsById(response.answer?.citations ?? []);
+  // A live answer cites passages, and carries them as `evidence`. A turn with
+  // no evidence -- replayed from history, or older payloads -- falls back to
+  // document ids on `answer.citations`. Never both: an id that names no
+  // passage must not get a second chance to resolve against a document.
+  const evidence = response.evidence ?? [];
+  const index =
+    evidence.length > 0
+      ? citationsByPassageId(evidence)
+      : citationsById(response.answer?.citations ?? []);
   const summaryCitations = resolveAll(diagnosis.summary_citation_ids, index);
 
   // Order matters below only in which reason gets reported; every branch

@@ -155,9 +155,7 @@ describe('the review page’s second tab', () => {
         fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
         fetchStaleImpl={fetchStaleImpl}
         dismissStaleImpl={dismissStaleImpl}
-        signInImpl={vi
-          .fn()
-          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+        signInImpl={vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'tok' })}
       />,
     );
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'r@example.com' } });
@@ -207,9 +205,7 @@ describe('the review page’s second tab', () => {
         fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
         fetchStaleImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [CHANGED, GONE] })}
         retractStaleImpl={retractStaleImpl}
-        signInImpl={vi
-          .fn()
-          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+        signInImpl={vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'tok' })}
       />,
     );
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'r@example.com' } });
@@ -241,6 +237,19 @@ describe('the review page’s second tab', () => {
     expect(await screen.findByTestId('review-tab-queue')).toBeTruthy();
     fireEvent.click(screen.getByTestId('review-tab-stale'));
     expect(screen.getByTestId('stale-failed').textContent).toMatch(/could not be loaded/);
+  });
+
+  // The verifier queue is open to every account, but the flags are for
+  // reviewers: a 403 is a permission boundary, not a fault to report.
+  it('tells a non-reviewer the flags need the reviewer role, not that loading failed', async () => {
+    renderReview(vi.fn().mockResolvedValue({ kind: 'forbidden' }));
+
+    expect(await screen.findByTestId('review-tab-queue')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('review-tab-stale'));
+    expect(screen.queryByTestId('stale-failed')).toBeNull();
+    const notice = screen.getByTestId('stale-forbidden');
+    expect(notice.textContent).toMatch(/reviewer role/);
+    expect(notice.getAttribute('role')).not.toBe('alert');
   });
 });
 

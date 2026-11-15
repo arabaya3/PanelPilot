@@ -36,3 +36,19 @@ def test_an_unclaimed_session_is_the_normal_state() -> None:
     columns = Base.metadata.tables["anonymous_sessions"].columns
     assert columns["claimed_by_user_id"].nullable
     assert columns["claimed_at"].nullable
+
+
+def test_a_sign_in_session_is_revoked_not_deleted() -> None:
+    """A logout must be recognisable afterwards, so a replay is refused as one."""
+    columns = Base.metadata.tables["auth_sessions"].columns
+    assert columns["revoked_at"].nullable
+    assert not columns["user_id"].nullable
+
+
+def test_a_refresh_token_names_its_session_and_older_ones_may_not() -> None:
+    """Nullable for tokens issued before sessions existed; those are refused, not adopted."""
+    column = Base.metadata.tables["refresh_tokens"].columns["session_id"]
+    assert column.nullable
+    (foreign_key,) = column.foreign_keys
+    assert foreign_key.column.table.name == "auth_sessions"
+    assert foreign_key.ondelete == "CASCADE"

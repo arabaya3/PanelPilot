@@ -9,6 +9,7 @@ every source it came from.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any, cast
 
@@ -71,6 +72,65 @@ def test_a_non_positive_supply_voltage_is_refused() -> None:
         calculations.size_cable(
             session=_NO_SESSION, user=_USER, request=_cable_request(supply_voltage_v=Decimal(0))
         )
+
+
+def _bom_request(load: LoadScheduleItem) -> PanelBomRequest:
+    return PanelBomRequest(
+        loads=[load],
+        constraints=EnclosureConstraints(
+            width_mm=800,
+            height_mm=2000,
+            depth_mm=600,
+            ingress_rating="IP54",
+            placement=EnclosurePlacement.SINGLE_WALL,
+            cable_installation_method=InstallationMethod.C,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: calculations.size_cable(
+            session=_NO_SESSION,
+            user=_USER,
+            request=_cable_request(design_current_a=Decimal("1e999")),
+        ),
+        lambda: calculations.select_vfd(
+            session=_NO_SESSION,
+            user=_USER,
+            request=VfdSelectionRequest(
+                motor_power_kw=Decimal("1e999"),
+                supply_voltage_v=Decimal("400"),
+                motor_efficiency=Decimal("0.93"),
+                motor_power_factor=Decimal("0.85"),
+            ),
+        ),
+        lambda: calculations.build_panel_bom(
+            session=_NO_SESSION,
+            user=_USER,
+            request=_bom_request(
+                LoadScheduleItem(tag="M-1", description="pump", current_a=Decimal("1e999"))
+            ),
+        ),
+        lambda: calculations.build_panel_bom(
+            session=_NO_SESSION,
+            user=_USER,
+            request=_bom_request(
+                LoadScheduleItem(tag="H-1", description="heater", dissipation_w=Decimal("1e999"))
+            ),
+        ),
+    ],
+    ids=["cable", "vfd", "bom-current", "bom-dissipation"],
+)
+def test_an_input_too_large_to_calculate_with_is_refused_not_a_server_fault(
+    run: Callable[[], object],
+) -> None:
+    # Decimal("1e999") is finite, so it passes every positivity check, but
+    # quantizing anything that large overflows the 28-digit context.
+    with pytest.raises(ValidationError) as caught:
+        run()
+    assert caught.value.code == "number_too_large"
 
 
 def test_a_drive_is_selected_with_the_motor_current_and_every_source() -> None:
@@ -153,3 +213,19 @@ def test_a_bom_is_built_with_each_source_once() -> None:
         "ABB",
         "Rittal",
     ]
+
+
+def test_a_division_by_zero_in_a_calculation_is_not_blamed_on_the_input() -> None:
+    """Only oversized inputs become ``number_too_large``; a real fault stays one."""
+    from decimal import Decimal, DivisionByZero, localcontext
+
+    from app.domain.calculations import _within_decimal_precision
+
+    @_within_decimal_precision()
+    def divide() -> Decimal:
+        with localcontext() as context:
+            context.traps[DivisionByZero] = True
+            return Decimal(1) / Decimal(0)
+
+    with pytest.raises(DivisionByZero):
+        divide()

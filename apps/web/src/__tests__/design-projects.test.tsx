@@ -10,6 +10,7 @@ import {
   openProject,
   type reviseProject,
   type saveProject,
+  type Permission,
   type ProjectDesignRequest,
   type SavedProject,
   type SavedRequest,
@@ -74,11 +75,17 @@ function project(revision: number): SavedProject {
     id: 'p1',
     name: 'Tower',
     revision,
+    validated: false,
+    export_status: 'not_validated',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
       author: 'e',
+      approver_account_recorded: false,
       created_at: '2026-10-02T10:00:00Z',
+      validated: false,
+      export_status: 'not_validated' as const,
     })),
     request: SAVED_REQUEST,
   };
@@ -90,7 +97,16 @@ function approvedProject(): SavedProject {
   return first
     ? {
         ...saved,
-        revisions: [{ ...first, approved_by: 'A. Rabaya', approved_at: '2026-10-02T12:00:00Z' }],
+        revisions: [
+          {
+            ...first,
+            approved_by: 'Rana Haddad',
+            approver_name: 'Rana Haddad',
+            approver_account_recorded: true,
+            approval_note: 'Site check',
+            approved_at: '2026-10-02T12:00:00Z',
+          },
+        ],
       }
     : saved;
 }
@@ -120,10 +136,17 @@ describe('a saved project back as the form', () => {
 });
 
 describe('the projects panel', () => {
-  function render(opened: Parameters<typeof ProjectsPanel>[0]['opened'] = null) {
+  function render(
+    opened: Parameters<typeof ProjectsPanel>[0]['opened'] = null,
+    dirty = false,
+    permissions: Permission[] = ['approve_revision', 'delete_project', 'edit_company_settings'],
+  ) {
     const list = vi.fn<typeof listProjects>().mockResolvedValue({
       kind: 'listed',
-      page: { projects: [{ id: 'p1', name: 'Tower', revisions: 2, updated_at: 'now' }] },
+      page: {
+        permissions,
+        projects: [{ id: 'p1', name: 'Tower', revisions: 2, updated_at: 'now' }],
+      },
     });
     const save = vi
       .fn<typeof saveProject>()
@@ -145,6 +168,7 @@ describe('the projects panel', () => {
         token="tok"
         current={{ name: 'Tower', request: REQUEST }}
         opened={opened}
+        dirty={dirty}
         onOpened={onOpened}
         impls={{ list, save, revise, open, remove, approve }}
       />,
@@ -203,13 +227,19 @@ describe('the projects panel', () => {
   });
 
   it('saves the open project as a new revision, and opens an earlier one', async () => {
-    const { revise, open, onOpened } = render({
-      id: 'p1',
-      name: 'Tower',
-      revision: 2,
-      revisions: [1, 2],
-      approval: null,
-    });
+    // Changed since revision 2: an unchanged revision is not saved again.
+    const { revise, open, onOpened } = render(
+      {
+        id: 'p1',
+        name: 'Tower',
+        revision: 2,
+        revisions: [1, 2],
+        approval: null,
+        approvingAs: 'Rana Haddad',
+        canApprove: true,
+      },
+      true,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Save as new revision' }));
     await waitFor(() => {
       expect(revise).toHaveBeenCalled();
@@ -222,31 +252,38 @@ describe('the projects panel', () => {
     expect(onOpened).toHaveBeenLastCalledWith(project(2), true);
   });
 
-  it('approves the open revision by name, then says who approved it', async () => {
+  it('approves as the signed-in account, with an optional note, asking no name', async () => {
     const { approve, onOpened } = render({
       id: 'p1',
       name: 'Tower',
       revision: 1,
       revisions: [1],
       approval: null,
+      approvingAs: 'Rana Haddad',
+      canApprove: true,
     });
+    // No field asks who approves: the server names the account.
+    expect(screen.queryByLabelText('Approving engineer')).toBeNull();
+    expect(screen.getByTestId('approving-as').textContent).toBe(
+      'You are approving as Rana Haddad.',
+    );
     const button = screen.getByRole('button', { name: 'Approve revision 1' });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Approving engineer'), {
-      target: { value: ' A. Rabaya ' },
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('Approval note (optional)'), {
+      target: { value: ' Site check ' },
     });
     fireEvent.click(button);
     await waitFor(() => {
       expect(onOpened).toHaveBeenCalledWith(approvedProject(), false);
     });
-    expect(approve.mock.calls[0]?.[0]).toMatchObject({
-      id: 'p1',
-      revision: 1,
-      approver: 'A. Rabaya',
-    });
+    const sent = approve.mock.calls[0]?.[0];
+    expect(sent).toMatchObject({ id: 'p1', revision: 1, note: 'Site check' });
+    expect(sent).not.toHaveProperty('approver');
+    // The approver shown is the server's, never the note.
     expect(approvalOf(approvedProject())).toEqual({
-      by: 'A. Rabaya',
+      by: 'Rana Haddad',
       at: '2026-10-02T12:00:00Z',
+      note: 'Site check',
     });
     expect(approvalOf(project(1))).toBeNull();
   });
@@ -257,12 +294,49 @@ describe('the projects panel', () => {
       name: 'Tower',
       revision: 1,
       revisions: [1],
-      approval: { by: 'A. Rabaya', at: '2026-10-02T12:00:00Z' },
+      approval: { by: 'Rana Haddad', at: '2026-10-02T12:00:00Z', note: 'A. Rabaya' },
+      approvingAs: 'Rana Haddad',
+      canApprove: true,
     });
     expect(screen.getByTestId('project-approval').textContent).toBe(
-      'Revision 1 approved by A. Rabaya on 2026-10-02.',
+      'Revision 1 approved by Rana Haddad on 2026-10-02.',
     );
-    expect(screen.queryByLabelText('Approving engineer')).toBeNull();
+    // The note is labelled as a note, apart from who approved.
+    expect(screen.getByTestId('project-approval-note').textContent).toBe(
+      'Approval note: A. Rabaya',
+    );
+    expect(screen.queryByLabelText('Approval note (optional)')).toBeNull();
+  });
+
+  it('names a team member when the approving account has no display name', () => {
+    render({
+      id: 'p1',
+      name: 'Tower',
+      revision: 1,
+      revisions: [1],
+      approval: { by: null, at: '2026-10-02T12:00:00Z', note: null },
+      approvingAs: null,
+      canApprove: true,
+    });
+    expect(screen.getByTestId('project-approval').textContent).toBe(
+      'Revision 1 approved by a team member on 2026-10-02.',
+    );
+    expect(screen.queryByTestId('project-approval-note')).toBeNull();
+  });
+
+  it('says a team member is approving when the account has no display name', () => {
+    render({
+      id: 'p1',
+      name: 'Tower',
+      revision: 1,
+      revisions: [1],
+      approval: null,
+      approvingAs: null,
+      canApprove: true,
+    });
+    expect(screen.getByTestId('approving-as').textContent).toBe(
+      'You are approving as a team member.',
+    );
   });
 
   it('asks before deleting', async () => {
@@ -273,6 +347,56 @@ describe('the projects panel', () => {
     await waitFor(() => {
       expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
     });
+  });
+
+  it('offers no delete to an account that is not the owner', async () => {
+    render(null, false, ['approve_revision']);
+    expect(await screen.findByText('Tower')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('says why a delete was refused, and lists again', async () => {
+    const { remove, list } = render();
+    remove.mockResolvedValue({
+      kind: 'refused',
+      code: 'project_delete_not_permitted',
+      detail: "only the account's owner deletes a project",
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete for good?' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('projects-message').textContent).toBe(
+        "Only the account's owner or an administrator can delete a project.",
+      );
+    });
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('holds approval, saying why, for an account that is neither owner nor reviewer', () => {
+    const { approve } = render(
+      {
+        id: 'p1',
+        name: 'Tower',
+        revision: 1,
+        revisions: [1],
+        approval: null,
+        approvingAs: 'Rana Haddad',
+        canApprove: false,
+      },
+      false,
+      [],
+    );
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve revision 1' });
+    expect(button.disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>('Approval note (optional)').disabled).toBe(true);
+    expect(screen.getByTestId('approve-not-permitted').textContent).toContain(
+      "Only the account's owner, an administrator or a reviewer can approve a revision.",
+    );
+    fireEvent.click(button);
+    expect(approve).not.toHaveBeenCalled();
   });
 });
 

@@ -311,14 +311,19 @@ def _rows(path: Path) -> Iterator[dict[str, str]]:
 
     A large field limit is set because a single product's long description can
     run to several kilobytes -- the SICK datasheets in this export exceed the
-    csv module's default and would otherwise raise mid-file.
+    csv module's default and would otherwise raise mid-file. The limit is
+    process-wide, so it is restored once the file is read, rather than left
+    raised for every other CSV reader in the process.
     """
-    csv.field_size_limit(10_000_000)
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
-            part = (row.get("Part number") or "").strip()
-            if part and part != "#":
-                yield {key: (value or "") for key, value in row.items() if key}
+    previous = csv.field_size_limit(10_000_000)
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                part = (row.get("Part number") or "").strip()
+                if part and part != "#":
+                    yield {key: (value or "") for key, value in row.items() if key}
+    finally:
+        csv.field_size_limit(previous)
 
 
 #: Maps the portal's class names onto the roles PD-003 reasons about.

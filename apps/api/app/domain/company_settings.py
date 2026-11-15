@@ -18,9 +18,9 @@ from sqlalchemy.orm import Session
 from app.core.errors import NotFoundError
 from app.core.tenancy import bind_tenant
 from app.design import profile
-from app.domain import billing
+from app.domain import billing, permissions
 from app.domain.plans import Feature
-from app.models.schemas.auth import CurrentUser
+from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import CompanySettings
 from app.models.tables.design_projects import CompanySettingsRow
 
@@ -44,14 +44,22 @@ def get_settings(*, session: Session, user: CurrentUser) -> CompanySettings:
         user: The authenticated caller.
 
     Returns:
-        The settings as saved; ``None`` settings while none are.
+        The settings as saved; ``None`` settings while none are. Every member
+        reads them; ``permissions`` says whether the caller may change them.
     """
     _scope_to(session, user)
+    editable = permissions.can(
+        session=session, user=user, permission=Permission.EDIT_COMPANY_SETTINGS
+    )
+    held = [Permission.EDIT_COMPANY_SETTINGS] if editable else []
     row = session.scalars(select(CompanySettingsRow)).one_or_none()
     if row is None:
-        return CompanySettings()
+        return CompanySettings(permissions=held)
     return CompanySettings(
-        settings=row.settings, updated_by=row.updated_by, updated_at=row.updated_at.isoformat()
+        settings=row.settings,
+        updated_by=row.updated_by,
+        updated_at=row.updated_at.isoformat(),
+        permissions=held,
     )
 
 
@@ -70,10 +78,12 @@ def save_settings(
 
     Raises:
         ValidationError: If a setting is unknown or malformed, naming it.
-        AuthorizationError: If the caller's plan does not include them.
+        AuthorizationError: If the caller's plan does not include them, or
+            the caller is not the tenant's owner (``settings_not_permitted``).
     """
     tenant = _scope_to(session, user)
     billing.require_feature(session=session, user=user, feature=Feature.COMPANY_SETTINGS)
+    permissions.require(session=session, user=user, permission=Permission.EDIT_COMPANY_SETTINGS)
     profile.load_profile(settings)
     row = session.scalars(select(CompanySettingsRow)).one_or_none()
     if row is None:

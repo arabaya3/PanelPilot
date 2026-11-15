@@ -33,6 +33,7 @@ export async function acquireTrial(): Promise<TrialAcquired> {
       return { kind: 'ready', ...active };
     }
     if (resumed.kind === 'failed') return { kind: 'failed' };
+    if (resumed.kind === 'rate-limited') return { kind: 'rate-limited' };
     clearTrial();
   }
 

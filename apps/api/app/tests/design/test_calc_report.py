@@ -60,7 +60,7 @@ def test_render_calculations_pdf_lists_every_circuit_and_its_figures() -> None:
     assert data.startswith(b"%PDF")
     text = _text(data)
     assert "Calculations report: Tower" in text
-    assert "Approved by A. Rabaya" in text
+    assert "Review approved by A. Rabaya: a study, not for execution." in text
     assert "Board MDB" in text
     assert "Server room" in text
     # The breaker's C16 and the most Zs it allows at U0 231 V.
@@ -71,7 +71,7 @@ def test_render_calculations_pdf_lists_every_circuit_and_its_figures() -> None:
 
 def test_an_unapproved_report_says_so() -> None:
     text = _text(calc_report.render_calculations_pdf(_project(), profile.default_profile()))
-    assert "NOT APPROVED" in text
+    assert "NOT APPROVED: for review only, not for execution." in text
 
 
 def test_every_phrase_has_an_arabic_one() -> None:
@@ -93,3 +93,29 @@ def test_an_arabic_company_gets_the_report_in_arabic() -> None:
     assert "Basis of calculation" not in text
     assert "MDB" in text
     assert "1.372" in text
+
+
+def test_an_unnamed_approver_is_said_in_the_report_language() -> None:
+    """The approver fallback is a phrase of the drawing, not an English name."""
+    from app.design.drawing_text import APPROVER_FALLBACK, Words
+
+    approved = Revision(index="01", date="2026-10-02", approved_by=APPROVER_FALLBACK)
+    english = _text(
+        calc_report.render_calculations_pdf(_project(approved), profile.default_profile())
+    )
+    assert APPROVER_FALLBACK in english
+    for language in ("ar", "he"):
+        company = profile.default_profile().model_copy(update={"language": language})
+        text = _text(calc_report.render_calculations_pdf(_project(approved), company))
+        assert APPROVER_FALLBACK not in text, language
+        assert Words(language)(APPROVER_FALLBACK) != APPROVER_FALLBACK, language
+    # Hebrew needs no shaping: drawn in visual order, it extracts reversed.
+    hebrew = profile.default_profile().model_copy(update={"language": "he"})
+    text = _text(calc_report.render_calculations_pdf(_project(approved), hebrew))
+    assert Words("he")(APPROVER_FALLBACK)[::-1] in text
+
+
+def test_a_named_approver_is_never_translated() -> None:
+    from app.design.drawing_text import Words
+
+    assert Words("ar").person("A. Rabaya") == "A. Rabaya"

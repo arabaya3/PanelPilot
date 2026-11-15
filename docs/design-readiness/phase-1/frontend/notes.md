@@ -1,0 +1,7 @@
+# Phase 1 frontend notes
+
+- Types: `packages/shared-types` had not been regenerated with the Phase 1 fields when this was written, so `components/design/readiness.ts` reads `findings`, `validated`, `snapshot_sha256`, `approved_snapshot_sha256`, `rules_version` and `export_status` from the saved project defensively (top level, falling back to the open revision's summary) and parses each finding. Switch to the generated `ValidationFinding`/`SavedProject` fields once they land. Watch the name clash: the generated file already has a PLC `ValidationFinding`.
+- Aligned to the backend's in-progress code: integrity finding codes (`integrity_*`), `execution_package_incomplete` params (`missing`, `approval`, `blocking_findings` as comma-separated strings), `revision_stale` / `revision_not_validated` / `revision_has_blocking_findings` / `snapshot_integrity_failed` / `revision_conflict`, and `export_status: "stale"`.
+- Circuit ids `c<n>` map to load row n-1 of the board named by `board_id` (`distribution.py`); "Go to row" relies on that.
+- Browser check (anonymous trial, 2026-10-23): draft design and draft export work; the live API had not yet reloaded the new revision-export route, and the draft CSV it returned carried no DRAFT mark yet (backend not live). Saved-project, approval and revision-export flows need an account; left to the lead/adversarial agent.
+- Screenshots: `01-review-unsaved-draft-export.png`, `02-review-after-edit-stale.png`, `03-review-arabic.png`; log in `browser-check.log`.

@@ -1,0 +1,889 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DRAFT — NOT FOR EXECUTION | ADV unapproved, revision 01, not approved, design 40beff92fcac, rules 2026.10.23.1 | findings: 0 blocking, 9 warning, 10 info -->
+<project title="TEST INPUT - readiness trace pump panel" version="0.90">
+    <properties>
+        <property name="savedfilename" show="1">TEST INPUT - readiness trace pump panel</property>
+    </properties>
+    <newdiagrams>
+        <border cols="17" colsize="60" rows="8" rowsize="80" displaycols="true" displayrows="true" />
+        <inset folio="%id/%total" displayAt="bottom" title="" author="" date="null" filename="" plant="" locmach="" indexrev="" version="" auto_page_num="" />
+        <conductors type="multi" num="_" condsize="1" numsize="9" displaytext="1" />
+    </newdiagrams>
+    <diagram title="PP1 - Main power" order="1" folio="%id/%total" cols="17" colsize="60" rows="8" rowsize="80" height="660" displaycols="true" displayrows="true" displayAt="bottom" version="0.90" author="TEST INPUT - readiness trace pump panel" date="null" filename="" plant="" locmach="" indexrev="01" freezeNewElement="false" freezeNewConductor="false" auto_page_num="">
+        <defaultconductor type="multi" num="_" />
+        <elements>
+            <element type="embed://import/panelpilot/pp_supply.elmt" x="60" y="80" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{92c74426-72af-5210-80af-e1bf6dafe5bd}">
+                <terminals>
+                    <terminal x="0" y="20" orientation="2" id="0" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">PP1</elementInformation>
+                    <elementInformation name="comment" show="1">400 V</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{e28d8292-37ab-59be-9e09-1729737e75d2}">
+                        <text>PP1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a67964e4-9325-5ae8-9ca2-d3fa01324561}">
+                        <text>400 V</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="60" y="160" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{a801befe-38af-5bb8-98a4-ba0874e7e6b7}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="1" />
+                    <terminal x="0" y="20" orientation="2" id="2" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q1</elementInformation>
+                    <elementInformation name="comment" show="1">C100 4P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{85422826-061b-5b9c-9923-fd366bc764f3}">
+                        <text>Q1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{f6281987-344e-5bbd-9937-6f4d697dd1b4}">
+                        <text>C100 4P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="180" y="320" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{7578fbd4-c0a3-51b0-b487-a8b810465475}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="3" />
+                    <terminal x="0" y="20" orientation="2" id="4" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q2</elementInformation>
+                    <elementInformation name="comment" show="1">C16 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{55967796-0cdf-5b93-9ed5-ee35b6b2c015}">
+                        <text>Q2</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{95c07c01-937f-53dc-864b-dce48c0c53e5}">
+                        <text>C16 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_rcd.elmt" x="180" y="400" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{17d2f55c-958d-5c2d-907e-68d9e2d3c489}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="5" />
+                    <terminal x="0" y="20" orientation="2" id="6" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F1</elementInformation>
+                    <elementInformation name="comment" show="1">16 A 30 mA 4P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a9dde724-52de-5159-a9f1-f56f7de57deb}">
+                        <text>F1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{0f9dc267-378e-5bb8-b6d6-8f3c48624761}">
+                        <text>16 A 30 mA 4P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="180" y="490" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{f2ec8c58-8ba9-5c67-a9d9-cc939d8bddf6}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="7" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Group</elementInformation>
+                    <elementInformation name="comment" show="1" />
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{b4c28351-bbf3-5907-990c-ab22f8688f21}">
+                        <text>Group</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{3f576754-3e72-5d68-88c8-7ef9b8081111}">
+                        <text />
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="270" y="320" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{162f6510-a5d6-5f3a-9573-89c4bae70720}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="8" />
+                    <terminal x="0" y="20" orientation="2" id="9" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q4</elementInformation>
+                    <elementInformation name="comment" show="1">MA20 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{44209229-7f0e-51e6-903f-f911af9b8ca1}">
+                        <text>Q4</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a9cbeb3f-a3df-5917-a850-15f0885f3a27}">
+                        <text>MA20 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="270" y="410" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{6bd31013-cd28-50ef-b71b-84fba47b3978}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="10" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Duty pump (test)</elementInformation>
+                    <elementInformation name="comment" show="1" />
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{f8e55833-118e-5dad-8d56-128de345ad6f}">
+                        <text>Duty pump (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{63d7988e-346f-502d-8b96-9948b3cc1af6}">
+                        <text />
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="360" y="320" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{047c6ef0-8978-586a-911e-960c66fd9f9d}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="11" />
+                    <terminal x="0" y="20" orientation="2" id="12" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q6</elementInformation>
+                    <elementInformation name="comment" show="1">MA80 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{fd59f0a8-b9fa-5e75-afd4-fd144fbb846f}">
+                        <text>Q6</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{8320c69a-f2f0-57e7-8782-b63993362d3c}">
+                        <text>MA80 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="360" y="410" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{5bd54923-5bc0-5ab1-987e-98992be0dfaf}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="13" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Standby pump (test)</elementInformation>
+                    <elementInformation name="comment" show="1" />
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{cef808be-c587-5054-b74d-17d4ba1c6974}">
+                        <text>Standby pump (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{92e49cb6-27d8-58a4-bb5f-2c168c729445}">
+                        <text />
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_fuse.elmt" x="450" y="320" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{734878e5-bb6c-5fee-8a3c-04b424b47fd9}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="14" />
+                    <terminal x="0" y="20" orientation="2" id="15" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F4</elementInformation>
+                    <elementInformation name="comment" show="1">25 A aR 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{0d55fe49-de42-59ab-afd5-d0f61461fe63}">
+                        <text>F4</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{33b945cf-1a39-5190-826a-122cfc66baff}">
+                        <text>25 A aR 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="450" y="410" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{00574cb4-3c38-579e-9553-c10c5e4f8586}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="16" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Booster (test)</elementInformation>
+                    <elementInformation name="comment" show="1" />
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{48bef492-e12c-5e69-a8b4-d4404ae7f24a}">
+                        <text>Booster (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{e9e80fb0-2edd-5627-b597-c78706a5f27a}">
+                        <text />
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+        </elements>
+        <conductors>
+            <conductor element1="{92c74426-72af-5210-80af-e1bf6dafe5bd}" terminal1="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" element2="{a801befe-38af-5bb8-98a4-ba0874e7e6b7}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{7578fbd4-c0a3-51b0-b487-a8b810465475}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{17d2f55c-958d-5c2d-907e-68d9e2d3c489}" terminal2="{fc22a9e9-a1ab-5dac-ac1e-1668364de0a4}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{a801befe-38af-5bb8-98a4-ba0874e7e6b7}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{7578fbd4-c0a3-51b0-b487-a8b810465475}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{17d2f55c-958d-5c2d-907e-68d9e2d3c489}" terminal1="{63082c35-cb1c-5983-8984-4af5bb1c63fc}" element2="{f2ec8c58-8ba9-5c67-a9d9-cc939d8bddf6}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{7578fbd4-c0a3-51b0-b487-a8b810465475}" terminal1="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" element2="{162f6510-a5d6-5f3a-9573-89c4bae70720}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{162f6510-a5d6-5f3a-9573-89c4bae70720}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{6bd31013-cd28-50ef-b71b-84fba47b3978}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{162f6510-a5d6-5f3a-9573-89c4bae70720}" terminal1="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" element2="{047c6ef0-8978-586a-911e-960c66fd9f9d}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{047c6ef0-8978-586a-911e-960c66fd9f9d}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{5bd54923-5bc0-5ab1-987e-98992be0dfaf}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{047c6ef0-8978-586a-911e-960c66fd9f9d}" terminal1="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" element2="{734878e5-bb6c-5fee-8a3c-04b424b47fd9}" terminal2="{b833c520-d189-5f61-8f4d-7cc588dfe0bc}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{734878e5-bb6c-5fee-8a3c-04b424b47fd9}" terminal1="{29cccc7c-17ea-5ef8-aa90-1acd06b6d263}" element2="{00574cb4-3c38-579e-9553-c10c5e4f8586}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+        </conductors>
+        <inputs />
+    </diagram>
+    <diagram title="PP1 - Distribution" order="2" folio="%id/%total" cols="17" colsize="60" rows="8" rowsize="80" height="660" displaycols="true" displayrows="true" displayAt="bottom" version="0.90" author="TEST INPUT - readiness trace pump panel" date="null" filename="" plant="" locmach="" indexrev="01" freezeNewElement="false" freezeNewConductor="false" auto_page_num="">
+        <defaultconductor type="multi" num="_" />
+        <elements>
+            <element type="embed://import/panelpilot/pp_supply.elmt" x="60" y="80" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{aede3af8-b9e7-500f-b800-0359162f81ef}">
+                <terminals>
+                    <terminal x="0" y="20" orientation="2" id="0" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F1</elementInformation>
+                    <elementInformation name="comment" show="1">16 A 30 mA 4P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{066d3acd-93db-5814-ad2b-b8e75d255d67}">
+                        <text>F1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{8831165b-1d9b-544b-afe2-2dc42dd04c8d}">
+                        <text>16 A 30 mA 4P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="120" y="200" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{11ac43e0-2e71-559b-99f8-f38dc3f02ef3}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="1" />
+                    <terminal x="0" y="20" orientation="2" id="2" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q3</elementInformation>
+                    <elementInformation name="comment" show="1">C10 1P L1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{300b273a-48ae-5291-afb5-de406d0ae50d}">
+                        <text>Q3</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{75f27043-cbc1-5f06-b357-e1adc719fd2e}">
+                        <text>C10 1P L1</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="120" y="330" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{7298008e-d377-5add-b73b-a0cc4988d79c}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="3" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Panel lighting (test)</elementInformation>
+                    <elementInformation name="comment" show="1">0.2 kW</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{2a82e247-50ec-51f8-8105-53a8535ff6f4}">
+                        <text>Panel lighting (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{4c8b0be7-b5ef-54bc-99cb-0e6ae4ecd995}">
+                        <text>0.2 kW</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+        </elements>
+        <conductors>
+            <conductor element1="{aede3af8-b9e7-500f-b800-0359162f81ef}" terminal1="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" element2="{11ac43e0-2e71-559b-99f8-f38dc3f02ef3}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{11ac43e0-2e71-559b-99f8-f38dc3f02ef3}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{7298008e-d377-5add-b73b-a0cc4988d79c}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="3G1.5 Cu" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+        </conductors>
+        <inputs />
+    </diagram>
+    <diagram title="PP1 - Distribution" order="3" folio="%id/%total" cols="17" colsize="60" rows="8" rowsize="80" height="660" displaycols="true" displayrows="true" displayAt="bottom" version="0.90" author="TEST INPUT - readiness trace pump panel" date="null" filename="" plant="" locmach="" indexrev="01" freezeNewElement="false" freezeNewConductor="false" auto_page_num="">
+        <defaultconductor type="multi" num="_" />
+        <elements>
+            <element type="embed://import/panelpilot/pp_supply.elmt" x="60" y="80" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}">
+                <terminals>
+                    <terminal x="0" y="20" orientation="2" id="0" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Busbar</elementInformation>
+                    <elementInformation name="comment" show="1">PP1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a35b747e-0e91-565e-b092-3114c162ce23}">
+                        <text>Busbar</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{edab444a-52ff-544e-9fd1-b153f7a0315e}">
+                        <text>PP1</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="120" y="200" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{40f65499-ef84-5bf7-b571-25ee3f7d42e2}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="1" />
+                    <terminal x="0" y="20" orientation="2" id="2" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q4</elementInformation>
+                    <elementInformation name="comment" show="1">MA20 3P L1L2L3</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{5d4e0e4a-0336-561f-9044-6c7a6cc84d05}">
+                        <text>Q4</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{e26c40f1-6c93-5005-903d-c95691653683}">
+                        <text>MA20 3P L1L2L3</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_contactor.elmt" x="120" y="280" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{ae60f5da-dfef-5cb6-8c7f-d4368fbd39a0}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="3" />
+                    <terminal x="0" y="20" orientation="2" id="4" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q5</elementInformation>
+                    <elementInformation name="comment" show="1">A30 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{59f358e3-6a8e-5964-858f-6403105608c0}">
+                        <text>Q5</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{de80dd55-b4d6-50cc-aba7-5fdf887393c4}">
+                        <text>A30 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_overload.elmt" x="120" y="360" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{66cc5430-0e2f-53a1-8243-e9a4cfa57ce0}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="5" />
+                    <terminal x="0" y="20" orientation="2" id="6" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F2</elementInformation>
+                    <elementInformation name="comment" show="1">TA25DU19 set 15.2 A</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{ee764cba-65d6-528d-9a47-78b5cd2f25f7}">
+                        <text>F2</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{06bd31a3-8454-5a3d-a346-c572fe814e1a}">
+                        <text>TA25DU19 set 15.2 A</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="120" y="490" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{8f213a6a-4b7f-5432-8b16-cc0c992c5e35}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="7" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Duty pump (test)</elementInformation>
+                    <elementInformation name="comment" show="1">7.5 kW</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{73b967e5-0681-5e2f-a07c-bc180f5ee2ea}">
+                        <text>Duty pump (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{228c4471-92fe-563f-b6d3-e349aba6c4ee}">
+                        <text>7.5 kW</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+        </elements>
+        <conductors>
+            <conductor element1="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}" terminal1="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" element2="{40f65499-ef84-5bf7-b571-25ee3f7d42e2}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{40f65499-ef84-5bf7-b571-25ee3f7d42e2}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{ae60f5da-dfef-5cb6-8c7f-d4368fbd39a0}" terminal2="{e7bf2315-a81e-591d-b9be-e52f20056441}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{ae60f5da-dfef-5cb6-8c7f-d4368fbd39a0}" terminal1="{0225b776-3ec2-53bd-8d0c-5f05fa5adf01}" element2="{66cc5430-0e2f-53a1-8243-e9a4cfa57ce0}" terminal2="{6023b3f2-5cbb-5859-94a5-1cfd8ef8fab0}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{66cc5430-0e2f-53a1-8243-e9a4cfa57ce0}" terminal1="{1a6e05f5-1af3-553e-846d-6a82dee3075e}" element2="{8f213a6a-4b7f-5432-8b16-cc0c992c5e35}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="4G1.5 Cu" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+        </conductors>
+        <inputs />
+    </diagram>
+    <diagram title="PP1 - Distribution" order="4" folio="%id/%total" cols="17" colsize="60" rows="8" rowsize="80" height="660" displaycols="true" displayrows="true" displayAt="bottom" version="0.90" author="TEST INPUT - readiness trace pump panel" date="null" filename="" plant="" locmach="" indexrev="01" freezeNewElement="false" freezeNewConductor="false" auto_page_num="">
+        <defaultconductor type="multi" num="_" />
+        <elements>
+            <element type="embed://import/panelpilot/pp_supply.elmt" x="60" y="80" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}">
+                <terminals>
+                    <terminal x="0" y="20" orientation="2" id="0" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Busbar</elementInformation>
+                    <elementInformation name="comment" show="1">PP1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a35b747e-0e91-565e-b092-3114c162ce23}">
+                        <text>Busbar</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{edab444a-52ff-544e-9fd1-b153f7a0315e}">
+                        <text>PP1</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_breaker.elmt" x="120" y="200" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{03a3db88-ede8-5ae6-90c5-d7996b36ec8f}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="1" />
+                    <terminal x="0" y="20" orientation="2" id="2" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q6</elementInformation>
+                    <elementInformation name="comment" show="1">MA80 3P L1L2L3</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{dfa541a8-9b43-5769-a982-0d565673a9f2}">
+                        <text>Q6</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{2dea9d3a-5351-5d1a-86b6-62987ff0ce72}">
+                        <text>MA80 3P L1L2L3</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_contactor.elmt" x="120" y="280" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{df377f7d-8697-5a2e-a515-18a3ffb83fac}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="3" />
+                    <terminal x="0" y="20" orientation="2" id="4" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q7</elementInformation>
+                    <elementInformation name="comment" show="1">A63 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{da7d5d5f-e6ee-5ff2-b8c1-9f75a0fce3ab}">
+                        <text>Q7</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{8a66c647-46c7-5b51-82c1-b8293a44fbf2}">
+                        <text>A63 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_contactor.elmt" x="120" y="360" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{83376e34-25be-5b16-a27e-080ece12f3af}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="5" />
+                    <terminal x="0" y="20" orientation="2" id="6" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q8</elementInformation>
+                    <elementInformation name="comment" show="1">A63 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{42fea529-7562-5f4c-8d93-c2af726023f0}">
+                        <text>Q8</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{74ca740c-33d0-588f-956d-55f92f0ca3c3}">
+                        <text>A63 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_contactor.elmt" x="120" y="440" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{05cbebe7-0a36-5ae9-a569-12e07ff01634}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="7" />
+                    <terminal x="0" y="20" orientation="2" id="8" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Q9</elementInformation>
+                    <elementInformation name="comment" show="1">A30 3P</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{316c11f3-1d28-5f95-b2f7-42ac3dd830f1}">
+                        <text>Q9</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{af303790-b389-5f0f-9e69-b5434a4dd3ed}">
+                        <text>A30 3P</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_overload.elmt" x="120" y="520" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{ac88e69e-da5b-59da-a0ab-b20351c17fd1}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="9" />
+                    <terminal x="0" y="20" orientation="2" id="10" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F3</elementInformation>
+                    <elementInformation name="comment" show="1">TA75DU42 set 32.33 A</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{b4ab0d06-8aa8-5759-9f50-e67fd116dedd}">
+                        <text>F3</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{88a27009-78ed-5950-aa77-c105e97bdc2a}">
+                        <text>TA75DU42 set 32.33 A</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="120" y="650" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{beff5704-9387-5728-8aa4-d0b44bb2c375}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="11" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Standby pump (test)</elementInformation>
+                    <elementInformation name="comment" show="1">30 kW</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{07819619-041a-5ddb-983e-ff3aa26eb34e}">
+                        <text>Standby pump (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{01e5faea-0ffb-58b3-a031-35adeb08a2d9}">
+                        <text>30 kW</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+        </elements>
+        <conductors>
+            <conductor element1="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}" terminal1="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" element2="{03a3db88-ede8-5ae6-90c5-d7996b36ec8f}" terminal2="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{03a3db88-ede8-5ae6-90c5-d7996b36ec8f}" terminal1="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" element2="{df377f7d-8697-5a2e-a515-18a3ffb83fac}" terminal2="{e7bf2315-a81e-591d-b9be-e52f20056441}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{df377f7d-8697-5a2e-a515-18a3ffb83fac}" terminal1="{0225b776-3ec2-53bd-8d0c-5f05fa5adf01}" element2="{83376e34-25be-5b16-a27e-080ece12f3af}" terminal2="{e7bf2315-a81e-591d-b9be-e52f20056441}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{83376e34-25be-5b16-a27e-080ece12f3af}" terminal1="{0225b776-3ec2-53bd-8d0c-5f05fa5adf01}" element2="{05cbebe7-0a36-5ae9-a569-12e07ff01634}" terminal2="{e7bf2315-a81e-591d-b9be-e52f20056441}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{05cbebe7-0a36-5ae9-a569-12e07ff01634}" terminal1="{0225b776-3ec2-53bd-8d0c-5f05fa5adf01}" element2="{ac88e69e-da5b-59da-a0ab-b20351c17fd1}" terminal2="{6023b3f2-5cbb-5859-94a5-1cfd8ef8fab0}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{ac88e69e-da5b-59da-a0ab-b20351c17fd1}" terminal1="{1a6e05f5-1af3-553e-846d-6a82dee3075e}" element2="{beff5704-9387-5728-8aa4-d0b44bb2c375}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="7G6 Cu" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+        </conductors>
+        <inputs />
+    </diagram>
+    <diagram title="PP1 - Distribution" order="5" folio="%id/%total" cols="17" colsize="60" rows="8" rowsize="80" height="660" displaycols="true" displayrows="true" displayAt="bottom" version="0.90" author="TEST INPUT - readiness trace pump panel" date="null" filename="" plant="" locmach="" indexrev="01" freezeNewElement="false" freezeNewConductor="false" auto_page_num="">
+        <defaultconductor type="multi" num="_" />
+        <elements>
+            <element type="embed://import/panelpilot/pp_supply.elmt" x="60" y="80" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}">
+                <terminals>
+                    <terminal x="0" y="20" orientation="2" id="0" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Busbar</elementInformation>
+                    <elementInformation name="comment" show="1">PP1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a35b747e-0e91-565e-b092-3114c162ce23}">
+                        <text>Busbar</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{edab444a-52ff-544e-9fd1-b153f7a0315e}">
+                        <text>PP1</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_fuse.elmt" x="120" y="200" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{6b99da51-2937-5ce9-b253-21684cba6f37}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="1" />
+                    <terminal x="0" y="20" orientation="2" id="2" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">F4</elementInformation>
+                    <elementInformation name="comment" show="1">25 A aR 3P L1L2L3</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{37a8d9c6-ad8d-5dc9-a859-894d3d62fbe5}">
+                        <text>F4</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{fe738657-9489-5da8-99b2-aca06e9a758d}">
+                        <text>25 A aR 3P L1L2L3</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_drive.elmt" x="120" y="280" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{f49a9ad0-127c-5a1c-8e04-15510639d63d}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="3" />
+                    <terminal x="0" y="20" orientation="2" id="4" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">T1</elementInformation>
+                    <elementInformation name="comment" show="1">ACS880-01-12A6-3</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="-12" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{76edd8f2-e666-58db-8974-ffd8dd5921d1}">
+                        <text>T1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="0" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{7561a246-7e5d-5cef-aa6f-37a301c37037}">
+                        <text>ACS880-01-12A6-3</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+            <element type="embed://import/panelpilot/pp_load.elmt" x="120" y="410" z="10" orientation="0" prefix="" freezeLabel="false" uuid="{ad52774c-90d2-5714-8d51-3961e62c0324}">
+                <terminals>
+                    <terminal x="0" y="-20" orientation="0" id="5" />
+                </terminals>
+                <inputs />
+                <elementInformations>
+                    <elementInformation name="label" show="1">Booster (test)</elementInformation>
+                    <elementInformation name="comment" show="1">5.5 kW</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="8" y="4" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{18f62d2e-e398-5467-ae74-d7e8ab43b21f}">
+                        <text>Booster (test)</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="8" y="16" rotation="0" text_from="ElementInfo" Halignment="AlignLeft" Valignment="AlignTop" font="Arial,9,-1,5,50,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{9605787f-57e5-5fd1-b143-e38bb7378c2b}">
+                        <text>5.5 kW</text>
+                        <info_name>comment</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups />
+            </element>
+        </elements>
+        <conductors>
+            <conductor element1="{59f2ea45-1a17-5f30-a943-f25bfd4a6e2b}" terminal1="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" element2="{6b99da51-2937-5ce9-b253-21684cba6f37}" terminal2="{b833c520-d189-5f61-8f4d-7cc588dfe0bc}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{6b99da51-2937-5ce9-b253-21684cba6f37}" terminal1="{29cccc7c-17ea-5ef8-aa90-1acd06b6d263}" element2="{f49a9ad0-127c-5a1c-8e04-15510639d63d}" terminal2="{6784c6a0-5f83-5ada-8bc7-8d15cbef7740}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+            <conductor element1="{f49a9ad0-127c-5a1c-8e04-15510639d63d}" terminal1="{017f7562-3cf0-5c36-a0ea-133b98aff901}" element2="{ad52774c-90d2-5714-8d51-3961e62c0324}" terminal2="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" type="multi" num="" condsize="1" numsize="9" displaytext="1" onetextperfolio="0" vertirotatetext="270" horizrotatetext="0" conductor_color="" conductor_section="4G1.5 Cu" cable="" bus="" function="" tension_protocol="" formula="" bicolor="false" color2="#000000" text_color="#000000" freezeLabel="false" x="0" y="0" />
+        </conductors>
+        <inputs />
+    </diagram>
+    <collection>
+        <category name="import">
+            <names>
+                <name lang="en">Imported elements</name>
+            </names>
+            <category name="panelpilot">
+                <names>
+                    <name lang="en">PanelPilot</name>
+                </names>
+                <element name="pp_breaker.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Circuit-breaker</name>
+                            <name lang="ar">قاطع</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-8" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="-2" y1="-10" x2="2" y2="-6" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="-2" y1="-6" x2="2" y2="-10" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="-6" y2="-7" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{ca85124e-c0d5-5310-ab82-dff4408d02c6}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{8a7c5a0d-a71f-5127-92fc-3de77c4cef97}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_rcd.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Residual current circuit-breaker</name>
+                            <name lang="ar">قاطع تسرّب</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-8" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="4" x2="-6" y2="-7" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="4" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <ellipse x="-5" y="9" width="10" height="4" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="-5" y1="11" x2="-9" y2="11" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:dashed;line-weight:thin;filling:none;color:black" antialias="true" />
+                            <line x1="-9" y1="11" x2="-9" y2="-2" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:dashed;line-weight:thin;filling:none;color:black" antialias="true" />
+                            <line x1="-9" y1="-2" x2="-4" y2="-2" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:dashed;line-weight:thin;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{fc22a9e9-a1ab-5dac-ac1e-1668364de0a4}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{63082c35-cb1c-5983-8984-4af5bb1c63fc}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_switch.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Switch-disconnector</name>
+                            <name lang="ar">مفتاح فاصل</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-10" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="-3" y1="-8" x2="3" y2="-8" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <circle x="-2" y="-12" diameter="4" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="-6" y2="-7" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{03c8536c-b5ca-5780-b377-22704d6f4132}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{9e028b03-fcea-54cf-a8ee-6327c441fbd4}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_contactor.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Contactor</name>
+                            <name lang="ar">كونتاكتر</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-9" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <circle x="-1.5" y="-9" diameter="3" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="-6" y2="-5" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="6" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{e7bf2315-a81e-591d-b9be-e52f20056441}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{0225b776-3ec2-53bd-8d0c-5f05fa5adf01}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_load.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Outgoing circuit</name>
+                            <name lang="ar">مخرج</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-3" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <circle x="-3" y="-3" diameter="6" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{fe505f1c-47ea-5500-a0b3-3d332c72613e}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_fuse.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Fuse</name>
+                            <name lang="ar">فيوز</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <rect x="-3" y="-8" width="6" height="16" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{b833c520-d189-5f61-8f4d-7cc588dfe0bc}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{29cccc7c-17ea-5ef8-aa90-1acd06b6d263}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_overload.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Thermal overload relay</name>
+                            <name lang="ar">ريليه حماية حرارية</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-8" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <rect x="-6" y="-8" width="12" height="16" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="-8" x2="0" y2="-4" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="-4" x2="3" y2="-4" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="3" y1="-4" x2="3" y2="4" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="3" y1="4" x2="0" y2="4" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="4" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{6023b3f2-5cbb-5859-94a5-1cfd8ef8fab0}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{1a6e05f5-1af3-553e-846d-6a82dee3075e}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_drive.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Variable-speed drive</name>
+                            <name lang="ar">مغيّر سرعة</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="0" y1="-20" x2="0" y2="-12" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <rect x="-12" y="-12" width="24" height="24" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="-12" y1="12" x2="12" y2="-12" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="12" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="-20" orientation="n" name="" uuid="{6784c6a0-5f83-5ada-8bc7-8d15cbef7740}" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{017f7562-3cf0-5c36-a0ea-133b98aff901}" />
+                        </description>
+                    </definition>
+                </element>
+                <element name="pp_supply.elmt">
+                    <definition type="element" version="0.3" width="30" height="50" hotspot_x="15" hotspot_y="25">
+                        <names>
+                            <name lang="en">Supply</name>
+                            <name lang="ar">تغذية</name>
+                        </names>
+                        <informations>PanelPilot, IEC 60617 single-line symbol</informations>
+                        <description>
+                            <line x1="-8" y1="-6" x2="8" y2="-6" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <line x1="0" y1="-6" x2="0" y2="20" end1="none" end2="none" length1="1.5" length2="1.5" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="true" />
+                            <terminal x="0" y="20" orientation="s" name="" uuid="{c20d42dc-ee79-5d5b-a4fb-48df7ee67f61}" />
+                        </description>
+                    </definition>
+                </element>
+            </category>
+        </category>
+    </collection>
+</project>

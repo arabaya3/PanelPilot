@@ -1,9 +1,11 @@
 """ORM models for saved design projects, their revisions, and company settings.
 
-A project is saved as what the engineer entered (the request), not as the
-design it produced: the design is computed from the request, so saving the
-request keeps a project openable after a rule or table is corrected, and
-re-designs it under the corrected rule rather than serving a stale result.
+A project is saved as what the engineer entered (the request), which is what
+it is opened and edited from. Since revisions bind approvals, each also holds
+the design the server built from that request when it was saved (its
+snapshot, with its hash and the rules version): an approval and a revision
+export are of that design, and a change of rule makes the revision stale
+rather than silently re-designing what was approved.
 
 Every save is a new revision, never an update: a drawing set issued at
 revision 3 must still be reproducible after revision 7 changes the boards.
@@ -16,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,10 +64,53 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     author: Mapped[str] = mapped_column(String(320), nullable=False, default="")
     request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # Set once, when the engineer approves this revision; never cleared. The
-    # name is the one the title block prints; the account is who signed in.
+    # approver is the signed-in account: its email and (since f8c4a2e6d9b3)
+    # its id, from the token, never from the request. The API and every
+    # export name it by its display name, resolved in the tenant when they are
+    # built. ``approved_by`` is legacy: the free text typed at approval before
+    # then. It is kept for the audit and never shown; a new approval leaves it
+    # NULL.
     approved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     approved_account: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    approved_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # What the engineer added to the approval, optionally; never an identity.
+    approval_note: Mapped[str | None] = mapped_column(String(200), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What the server designed from ``request`` when the revision was saved,
+    # and what binds an approval and an export to it. All NULL on a revision
+    # saved before designs were stored: it opens, but must be saved again to
+    # be approved or exported as a revision.
+    design_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # SHA-256 of the snapshot's canonical JSON (``app.design.snapshot``).
+    snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # SHA-256 of the company profile, as resolved, the design was made under.
+    profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The findings (``DesignFinding``) recorded when it was saved.
+    findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # Set with the approval, in the same locked transaction: the snapshot
+    # hash approved. An approval counts only while it equals snapshot_sha256.
+    approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Also set with the approval (since b4e8d2f6a9c1): the applicable policy it
+    # was granted under, and the approver's display name as it was then. An
+    # approval counts only while each recorded policy value equals the one
+    # that applies now (``app.domain.design_projects``). The rules, catalogue
+    # and profile hash of a row approved before then were backfilled from the
+    # revision's own (checked not stale at approval); its findings policy is
+    # NULL, read as the classification of the revision's stored findings.
+    approved_profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    approved_catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The renderer version it was granted under (since c5d1e8a3f7b2); NULL
+    # for an older approval, read as ``RENDERER_BASELINE``, which matches no version.
+    approved_renderer_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # SHA-256 of the canonical findings classification (code, severity,
+    # engineering confirmation) of the approved design under the policy then.
+    approved_findings_policy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The approver's display name, frozen: "" when the account had none (an
+    # export says "a team member"). Exports never re-read it from the account.
+    approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")
 

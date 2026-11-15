@@ -3,7 +3,13 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 
-import { signupClaimingTrial, type SignupOutcome, type TrialSession } from '@/lib/trial';
+import { useSignupProblemText } from '@/components/signup-problems';
+import {
+  signupClaimingTrial,
+  type SignupOutcome,
+  type SignupProblem,
+  type TrialSession,
+} from '@/lib/trial';
 
 /**
  * The one step between a finished trial and a working account.
@@ -21,11 +27,14 @@ export function TrialLimitModal({
   trial,
   onSignedUp,
   onDismiss,
+  description,
   signupImpl = signupClaimingTrial,
 }: {
   trial: TrialSession | null;
-  onSignedUp: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onSignedUp: (tokens: { accessToken: string }) => void;
   onDismiss: () => void;
+  /** What carries over, where it is not the conversation (on /design, the trial's projects). */
+  description?: string;
   signupImpl?: typeof signupClaimingTrial;
 }) {
   const t = useTranslations('trial');
@@ -33,6 +42,10 @@ export function TrialLimitModal({
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The fields the server refused as entered, marked until they are edited.
+  const [refused, setRefused] = useState<ReadonlySet<SignupProblem['field']>>(new Set());
+  const sayProblems = useSignupProblemText();
+  const errorId = useId();
   const emailId = useId();
   const passwordId = useId();
   const headingId = useId();
@@ -47,6 +60,7 @@ export function TrialLimitModal({
   async function submit() {
     setBusy(true);
     setError(null);
+    setRefused(new Set());
 
     const outcome: SignupOutcome = await signupImpl({
       email: email.trim(),
@@ -56,11 +70,17 @@ export function TrialLimitModal({
 
     setBusy(false);
     if (outcome.kind === 'signed-up') {
-      onSignedUp({ accessToken: outcome.accessToken, refreshToken: outcome.refreshToken });
+      onSignedUp({ accessToken: outcome.accessToken });
       return;
     }
     // Named rather than generic. "Something went wrong" on a signup form is
     // the moment someone gives up, and each of these has a different remedy.
+    if (outcome.kind === 'invalid') {
+      // What was typed stays, so only the field at fault needs changing.
+      setRefused(new Set(outcome.problems.map((problem) => problem.field)));
+      setError(sayProblems(outcome.problems));
+      return;
+    }
     setError(t(`error.${outcome.kind}`));
   }
 
@@ -82,7 +102,7 @@ export function TrialLimitModal({
         {/* Says what happens to the conversation, because the fear this
             answers is losing it. */}
         <p className="mt-1 text-sm text-text-muted">
-          {trial ? t('keepsConversation') : t('startsFresh')}
+          {description ?? (trial ? t('keepsConversation') : t('startsFresh'))}
         </p>
 
         <form
@@ -103,7 +123,10 @@ export function TrialLimitModal({
             value={email}
             onChange={(event) => {
               setEmail(event.target.value);
+              setRefused((was) => without(was, 'email'));
             }}
+            aria-invalid={refused.has('email') || undefined}
+            aria-describedby={refused.has('email') ? errorId : undefined}
             className="input"
           />
 
@@ -117,12 +140,20 @@ export function TrialLimitModal({
             value={password}
             onChange={(event) => {
               setPassword(event.target.value);
+              setRefused((was) => without(was, 'password'));
             }}
+            aria-invalid={refused.has('password') || undefined}
+            aria-describedby={refused.has('password') ? errorId : undefined}
             className="input"
           />
 
           {error ? (
-            <p role="alert" data-testid="trial-error" className="text-sm text-severity-critical">
+            <p
+              id={errorId}
+              role="alert"
+              data-testid="trial-error"
+              className="text-sm text-severity-critical"
+            >
               {error}
             </p>
           ) : null}
@@ -139,4 +170,11 @@ export function TrialLimitModal({
       </div>
     </div>
   );
+}
+
+function without<T>(set: ReadonlySet<T>, item: T): ReadonlySet<T> {
+  if (!set.has(item)) return set;
+  const next = new Set(set);
+  next.delete(item);
+  return next;
 }

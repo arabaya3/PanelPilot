@@ -307,6 +307,8 @@ describe('a claim race', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('queue-error').textContent).toBe('Already claimed by Dana');
+      // Announced, not just shown: the Notice must keep the alert role.
+      expect(screen.getByTestId('queue-error').getAttribute('role')).toBe('alert');
     });
   });
 

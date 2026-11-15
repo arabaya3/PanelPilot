@@ -141,16 +141,53 @@ describe('drive selection', () => {
     expect(selectImpl.mock.calls[0]?.[0].request).not.toHaveProperty('drive_range');
   });
 
-  it('shows why a motor was refused', async () => {
+  it('says why a site was refused at the field it is about', async () => {
+    // As the API sends it for an altitude of 9000 m.
     const selectImpl = vi.fn().mockResolvedValue({
       kind: 'refused',
-      detail: '690 V is outside the ACS880-01-xxxx-3 supply range',
+      detail: 'altitude 9000 m is outside 0-4000 m, the maximum permitted installation altitude',
+      code: 'drive_altitude',
+      params: { altitude: '9000', low: '0', high: '4000' },
     });
     await openDriveTab(selectImpl);
+    const altitude = screen.getByLabelText(/^Altitude/);
+    fireEvent.change(altitude, { target: { value: '9000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Select the drive' }));
 
     const alert = await screen.findByTestId('vfd-error');
-    expect(alert.textContent).toContain('690 V is outside');
+    const sentence =
+      'An altitude of 9000 m is outside the drive’s permitted installation altitude (0–4000 m).';
+    expect(alert.textContent).toContain(sentence);
+    expect(alert.textContent).not.toContain('maximum permitted');
+    await waitFor(() => {
+      expect(altitude.getAttribute('aria-invalid')).toBe('true');
+    });
+    expect(
+      document.getElementById(altitude.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toBe(sentence);
+    expect((altitude as HTMLInputElement).value).toBe('9000');
+  });
+
+  it('checks the motor and site before sending', async () => {
+    const selectImpl = vi.fn();
+    await openDriveTab(selectImpl);
+    fireEvent.change(screen.getByLabelText(/^Motor efficiency/), { target: { value: '93' } });
+    fireEvent.change(screen.getByLabelText(/^Motor power factor/), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText(/^Altitude/), { target: { value: '-10' } });
+    fireEvent.change(screen.getByLabelText(/^Ambient temperature/), { target: { value: 'warm' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Select the drive' }));
+
+    const efficiency = screen.getByLabelText(/^Motor efficiency/);
+    await waitFor(() => {
+      expect(efficiency.getAttribute('aria-invalid')).toBe('true');
+    });
+    expect(document.activeElement).toBe(efficiency);
+    expect(screen.getAllByText('Enter a value above 0 and at most 1, such as 0.93.')).toHaveLength(
+      2,
+    );
+    expect(screen.getByText('Enter zero or more.')).toBeTruthy();
+    expect(screen.getByText('Enter a number, such as 12.5.')).toBeTruthy();
+    expect(selectImpl).not.toHaveBeenCalled();
   });
 
   it('opens on cable sizing', () => {

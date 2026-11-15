@@ -7,7 +7,9 @@ live in ``app.domain``.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -85,6 +87,70 @@ def generate_refresh_token() -> tuple[str, str]:
     return token, hash_refresh_token(token)
 
 
+def generate_session_salt() -> str:
+    """Mint the random per-session value refresh tokens are derived with.
+
+    Returns:
+        A URL-safe random string, stored on the session row.
+    """
+    return secrets.token_urlsafe(_REFRESH_TOKEN_BYTES)
+
+
+# The HKDF info label for the refresh-token key. Changing it changes every
+# derived token, so it is versioned rather than edited.
+_REFRESH_KEY_INFO = b"panelpilot refresh-token derivation v1"
+
+
+def refresh_token_key() -> bytes:
+    """Return the key refresh tokens are derived under.
+
+    ``REFRESH_TOKEN_KEY`` when set; otherwise HKDF-SHA256 (RFC 5869) of
+    ``JWT_SECRET`` with its own info label. Either way it is not the
+    access-token signing key, so a use of one key cannot be mistaken for the
+    other. Setting ``REFRESH_TOKEN_KEY`` lets the two be rotated separately.
+
+    Returns:
+        A 32-byte key.
+    """
+    settings = get_settings()
+    if settings.refresh_token_key is not None:
+        material = settings.refresh_token_key.get_secret_value().encode("utf-8")
+    else:
+        material = settings.jwt_secret.get_secret_value().encode("utf-8")
+    return _hkdf_sha256(material, info=_REFRESH_KEY_INFO)
+
+
+def _hkdf_sha256(material: bytes, *, info: bytes, length: int = 32) -> bytes:
+    """HKDF-SHA256 (RFC 5869) with an all-zero salt, for one block or less."""
+    prk = hmac.new(b"\x00" * hashlib.sha256().digest_size, material, hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()[:length]
+
+
+def derive_refresh_token(*, session_id: str, salt: str, generation: int) -> tuple[str, str]:
+    """Derive a session's refresh token for one generation, and its hash.
+
+    HMAC-SHA256 under the refresh-token key (`refresh_token_key`, never the
+    access-token signing key itself), over the session, its random salt and
+    the generation. The same inputs always give the same token, which
+    is what lets the live token be handed again to a tab that raced its
+    rotation without the token ever being stored: the row keeps only the hash
+    and the salt, and neither derives anything without the key.
+
+    Args:
+        session_id: The sign-in session.
+        salt: The session's random salt (`generate_session_salt`).
+        generation: The token's place in the session's chain.
+
+    Returns:
+        ``(token, token_hash)``, shaped like ``generate_refresh_token``'s.
+    """
+    key = refresh_token_key()
+    message = f"panelpilot-refresh-token|{session_id}|{salt}|{generation}"
+    digest = hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+    token = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return token, hash_refresh_token(token)
+
+
 def hash_refresh_token(token: str) -> str:
     """Hash a refresh token for storage and lookup.
 
@@ -103,6 +169,8 @@ def create_access_token(
     tenant_id: str,
     roles: frozenset[Role] | None = None,
     ttl_seconds: int | None = None,
+    session_id: str | None = None,
+    refresh_generation: int | None = None,
 ) -> str:
     """Issue a signed access token for a subject.
 
@@ -115,6 +183,13 @@ def create_access_token(
         tenant_id: The tenant this user belongs to.
         roles: Roles held by the user.
         ttl_seconds: Override for the configured token lifetime.
+        session_id: The server-side sign-in the token belongs to, carried as
+            the `sid` claim so a logout can end the token before it expires.
+            Omitted for a trial, which has no sign-in.
+        refresh_generation: The session's live refresh-token generation
+            when this token was issued, carried as `rgen`. It binds the
+            token, as proof of possession, to that one generation: see
+            `auth._reissue_live_successor`.
 
     Returns:
         The encoded JWT.
@@ -129,6 +204,10 @@ def create_access_token(
         "iat": now,
         "exp": now + timedelta(seconds=lifetime),
     }
+    if session_id is not None:
+        payload["sid"] = session_id
+    if refresh_generation is not None:
+        payload["rgen"] = refresh_generation
     return jwt.encode(
         payload,
         settings.jwt_secret.get_secret_value(),
@@ -184,6 +263,12 @@ def decode_access_token(token: str) -> CurrentUser:
         email=str(payload.get("email", "")),
         tenant_id=str(tenant_id),
         roles=roles,
+        session_id=str(payload["sid"]) if payload.get("sid") else None,
+        refresh_generation=(
+            payload["rgen"]
+            if isinstance(payload.get("rgen"), int) and not isinstance(payload["rgen"], bool)
+            else None
+        ),
     )
 
 

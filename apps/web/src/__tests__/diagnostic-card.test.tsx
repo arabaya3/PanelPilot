@@ -267,6 +267,74 @@ describe('decideVariant', () => {
     expect(decideVariant(payload).kind).toBe('uncertain');
   });
 
+  describe('a live answer, which cites passages rather than documents', () => {
+    // The shape the real API returns (captured from a run of "ACS880 fault
+    // 2310"): `citation_ids` are passage ids from `evidence`, and two of the
+    // passages come from one manual, so `answer.citations` repeats its
+    // document_id. Joined by document_id this rendered every real, fully cited
+    // answer as "not certain".
+    const URL = 'https://library.example/ACS880_FW.pdf';
+    const FAULT_ROW: Citation = {
+      ...MANUAL,
+      document_id: URL,
+      page: 519,
+      section: 'Fault messages',
+    };
+    const PARAMS: Citation = { ...MANUAL, document_id: URL, page: 124, section: 'Parameters' };
+    const live = () => {
+      const built = withDiagnosis({
+        answer: { text: 'Overcurrent.', citations: [FAULT_ROW, PARAMS] },
+        evidence: [
+          {
+            id: 'chunk#row-p519',
+            text: '2310 Overcurrent ...',
+            score: 0.09,
+            citation: FAULT_ROW,
+            anchored: true,
+          },
+          {
+            id: 'chunk#bits-p124',
+            text: 'Bit table ...',
+            score: 1,
+            citation: PARAMS,
+            anchored: true,
+          },
+        ],
+      });
+      built.diagnosis.summary_citation_ids = ['chunk#row-p519', 'chunk#bits-p124'];
+      built.diagnosis.steps = [{ ...step(built.diagnosis, 0), citation_ids: ['chunk#row-p519'] }];
+      return built;
+    };
+
+    it('resolves passage ids against the evidence, page by page', () => {
+      const variant = decideVariant(live().payload);
+      expect(variant.kind).toBe('diagnosis');
+      if (variant.kind !== 'diagnosis') return;
+      expect(variant.summaryCitations.map((c) => c.page)).toEqual([519, 124]);
+      expect(variant.steps[0]?.citations.map((c) => c.page)).toEqual([519]);
+    });
+
+    it('does not let an id outside the evidence resolve against a document', () => {
+      const { payload, diagnosis } = live();
+      // A document id is not a passage the answer was built from.
+      diagnosis.steps = [{ ...step(diagnosis, 0), citation_ids: [URL] }];
+
+      expect(decideVariant(payload)).toMatchObject({
+        kind: 'uncertain',
+        reason: 'unresolved-citation',
+      });
+    });
+
+    it('renders both pages of one manual as source lines', () => {
+      renderApp(<DiagnosticCard response={live().payload} />, { locale: 'en' });
+
+      const card = screen.getByTestId('diagnostic-card');
+      expect(card.getAttribute('data-variant')).toBe('diagnosis');
+      expect(within(card).getAllByText(/page 519/).length).toBeGreaterThan(0);
+      expect(within(card).getByText(/page 124/)).toBeTruthy();
+    });
+  });
+
   it('renders the refusal variant when the backend declined', () => {
     const variant = decideVariant(
       response({ diagnosis: null, refusal_message: 'No supporting passage was found.' }),
@@ -383,6 +451,73 @@ describe('DiagnosticCard', () => {
       />,
     );
     expect(screen.getByText(/No passage in the indexed manuals/)).toBeTruthy();
+  });
+
+  describe('a refusal and the closest match behind it', () => {
+    // The regression: a refusal said "the nearest passage is cited so you can
+    // judge it" while the response carried no reference at all. Whether a
+    // reference shows is now decided by `refusal_citations` alone.
+    const refusal = (overrides: Partial<DiagnosticResponse> = {}) =>
+      response({
+        diagnosis: null,
+        answer: null,
+        refusal_message: 'The documentation found is related, but it does not answer this.',
+        ...overrides,
+      });
+
+    it('shows the real reference the response carries', () => {
+      renderApp(<DiagnosticCard response={refusal({ refusal_citations: [MANUAL] })} />, {
+        locale: 'en',
+      });
+      const card = screen.getByTestId('diagnostic-card');
+
+      expect(card.getAttribute('data-variant')).toBe('refusal');
+      expect(within(card).getByText(/Closest match found/)).toBeTruthy();
+      expect(within(card).getByText('ACS880 Firmware Manual')).toBeTruthy();
+      expect(within(card).getByText(/page 214/)).toBeTruthy();
+      // Still a refusal, not a diagnosis with a source: no steps, no
+      // severity claim, and not labelled as the answer's sources.
+      expect(card.getAttribute('data-severity')).toBeNull();
+      expect(within(card).queryByText(/^Sources$/)).toBeNull();
+      expect(within(card).queryByText(/What to do/)).toBeNull();
+    });
+
+    it('claims no reference when the response carries none', () => {
+      renderApp(<DiagnosticCard response={refusal()} />, { locale: 'en' });
+      const card = screen.getByTestId('diagnostic-card');
+
+      expect(within(card).queryByText(/Closest match found/)).toBeNull();
+      expect(card.textContent).not.toMatch(/cited|nearest passage/i);
+    });
+
+    it("never shows an answer's citations under a refusal", () => {
+      // The default fixture's answer citations, left on a refusal payload,
+      // must not be passed off as the closest match.
+      renderApp(<DiagnosticCard response={refusal({ answer: response().answer ?? null })} />, {
+        locale: 'en',
+      });
+      expect(screen.queryByText(/ACS880 Firmware Manual/)).toBeNull();
+    });
+
+    it('does not show a closest match with no usable id', () => {
+      renderApp(
+        <DiagnosticCard
+          response={refusal({ refusal_citations: [{ ...MANUAL, document_id: '' }] })}
+        />,
+        { locale: 'en' },
+      );
+      expect(screen.queryByText(/Closest match found/)).toBeNull();
+    });
+
+    it.each(LOCALES)('labels the closest match in %s', (locale) => {
+      renderApp(<DiagnosticCard response={refusal({ refusal_citations: [MANUAL] })} />, {
+        locale,
+      });
+      const messages = JSON.parse(
+        readFileSync(resolve(__dirname, `../messages/${locale}.json`), 'utf8'),
+      ) as { diagnosticCard: { refusalClosestSource: string } };
+      expect(screen.getByText(messages.diagnosticCard.refusalClosestSource)).toBeTruthy();
+    });
   });
 
   it('still says something when a refusal arrives with no message', () => {

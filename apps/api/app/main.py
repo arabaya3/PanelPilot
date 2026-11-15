@@ -48,6 +48,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
     )
+    # The settings this app was built with, for the dependencies that must
+    # agree with it (the refresh cookie's attributes and trusted origins)
+    # rather than re-read the environment.
+    app.state.settings = settings
 
     # Starlette inserts each middleware at the FRONT of the stack, so the one
     # added last runs first. Added innermost-first, the order on the wire is:
@@ -69,9 +73,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
-        # Auth is a bearer header, never a cookie, so a cross-origin request
-        # has no ambient credential to carry. Off, a misconfigured origin
-        # list cannot turn into a CSRF against a logged-in browser.
+        # Off: the one cookie (the refresh session) is for the web app, which
+        # reaches the API through its own same-origin proxy and never needs a
+        # credentialed cross-origin request. Off, a misconfigured origin list
+        # cannot carry that cookie cross-site; `app.api.csrf` checks anyway.
         allow_credentials=False,
         # Everything the API serves and everything the frontend sends; see
         # apps/web/src/lib. `Accept` is CORS-safelisted and needs no entry.

@@ -1259,7 +1259,15 @@ def design_distribution_board(
     )
     if profile.market:
         chosen = markets.market(profile.market)
-        notes.append(note("market_rules", market=chosen.name, regulation=chosen.regulation))
+        notes.append(
+            note(
+                "market_rules",
+                market=chosen.name,
+                regulation=chosen.regulation,
+                market_code=chosen.code,
+                regulation_code=chosen.code,
+            )
+        )
     if not profile.rules_confirmed_by:
         notes.append(note("rules_unconfirmed"))
     board = Board(

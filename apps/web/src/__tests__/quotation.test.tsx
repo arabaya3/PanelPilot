@@ -5,7 +5,13 @@ import { QuotationPanel } from '@/components/quotation-panel';
 import type { exportDesign } from '@/lib/design';
 import { importPriceList, priceDesign, type DesignProject, type Quotation } from '@/lib/design';
 
+import ar from '@/messages/ar.json';
+import en from '@/messages/en.json';
+import he from '@/messages/he.json';
+
 import { renderApp } from './helpers';
+
+const MESSAGES = { en, ar, he };
 
 /** The quotation under a designed board: prices in, lines and totals out. */
 
@@ -40,6 +46,27 @@ const QUOTED: Quotation = {
   total: '5.22',
   unpriced: ['residual_current_device:4P:40A:30mA (no price)'],
   complete: false,
+  status: 'provisional_estimate',
+  label: 'Provisional estimate: not a quotation, not for execution.',
+  findings: [],
+  blocking: false,
+};
+
+/** The estimate of a design whose breaker was forged past its cable. */
+const BLOCKED: Quotation = {
+  ...QUOTED,
+  blocking: true,
+  findings: [
+    {
+      code: 'integrity_unknown_device',
+      severity: 'blocking',
+      board_id: 'DB1',
+      values: { device: 'Q9' },
+      message: 'Device Q9 is not on this board.',
+      requires_engineering_confirmation: false,
+      source: 'policy',
+    },
+  ],
 };
 
 function panel(overrides: Partial<Parameters<typeof QuotationPanel>[0]> = {}) {
@@ -70,6 +97,62 @@ describe('quotation', () => {
     expect(pricing?.labour_per_circuit).toBe('5');
     expect(pricing?.vat_percent).toBe('16');
     expect(pricing?.cable_length_m).toBeNull();
+  });
+
+  it.each([
+    ['en', 'Provisional estimate — not a quotation, not for execution'],
+    ['ar', 'تقدير مبدئي — ليس عرض سعر، وليس للتنفيذ'],
+    ['he', 'הערכה זמנית — לא הצעת מחיר, לא לביצוע'],
+  ] as const)('labels the estimate provisional in %s', async (locale, banner) => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    renderApp(
+      <QuotationPanel
+        token="tok"
+        project={PROJECT}
+        profile={null}
+        saveImpl={vi.fn()}
+        priceImpl={priceImpl}
+      />,
+      { locale },
+    );
+    const submit = screen
+      .getByTestId('quotation-panel')
+      .querySelector<HTMLButtonElement>('button.btn-primary');
+    if (!submit) throw new Error('no price button');
+    fireEvent.click(submit);
+    const note = await screen.findByTestId('quote-provisional');
+    expect(note.getAttribute('data-status')).toBe('provisional_estimate');
+    expect(note.textContent).toContain(banner);
+    expect(note.textContent).not.toMatch(/approved|معتمد|מאושר/i);
+  });
+
+  it('shows a blocking finding of the design it priced', async () => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: BLOCKED });
+    panel({ priceImpl });
+    fireEvent.click(screen.getByRole('button', { name: 'Price the board' }));
+    await screen.findByTestId('quote-result');
+    const alerts = screen.getAllByRole('alert').map((node) => node.textContent);
+    expect(alerts).toContain(
+      '1 blocking finding: this estimate prices a design that fails its checks.',
+    );
+    expect(screen.getByTestId('quote-finding-blocking').textContent).toBe(
+      'Blocking: Device Q9 is not on this board.',
+    );
+  });
+
+  it('sends the currency as an ISO code', async () => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    panel({ priceImpl });
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: ' sar ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Price the board' }));
+    await screen.findByTestId('quote-result');
+    expect(priceImpl.mock.calls[0]?.[0].pricing.currency).toBe('SAR');
   });
 
   it('loads a price list and sends it with the pricing', async () => {
@@ -105,6 +188,18 @@ describe('quotation', () => {
     });
     expect(exportImpl.mock.calls[0]?.[0]).toMatchObject({ format: 'quotation_pdf', token: 'tok' });
     expect(exportImpl.mock.calls[0]?.[0].pricing?.currency).toBe('JOD');
+  });
+
+  it('shows the quotation CSV as not exportable yet, and why', () => {
+    const exportImpl = vi.fn<typeof exportDesign>();
+    panel({ exportImpl });
+    const button = screen.getByTestId<HTMLButtonElement>('quote-export-csv');
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(exportImpl).not.toHaveBeenCalled();
+    expect(screen.getByTestId('quote-unavailable').textContent).toBe(
+      'Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.',
+    );
   });
 
   it('shows a refused price list in the server’s words', async () => {
@@ -144,5 +239,57 @@ describe('quotation', () => {
         fetchImpl: ok,
       }),
     ).toEqual({ kind: 'imported', entries: [] });
+  });
+});
+
+describe('the quotation intro', () => {
+  it('shows the example key as left-to-right code in Arabic', () => {
+    renderApp(<QuotationPanel token="tok" project={PROJECT} profile={null} saveImpl={vi.fn()} />, {
+      locale: 'ar',
+    });
+    const code = screen.getByText('circuit_breaker:1P:C16');
+    expect(code.tagName).toBe('CODE');
+    expect(code.getAttribute('dir')).toBe('ltr');
+  });
+});
+
+describe('the estimate in the page language', () => {
+  async function priceIn(locale: 'en' | 'ar' | 'he', profile: Record<string, unknown> | null) {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    renderApp(
+      <QuotationPanel
+        token="tok"
+        project={PROJECT}
+        profile={profile}
+        saveImpl={vi.fn()}
+        priceImpl={priceImpl}
+      />,
+      { locale },
+    );
+    fireEvent.click(screen.getByRole('button', { name: MESSAGES[locale].design.quote.submit }));
+    await screen.findByTestId('quote-total');
+    return priceImpl;
+  }
+
+  it('asks for the lines in the page language, keeping the rest of the profile', async () => {
+    const priceImpl = await priceIn('he', { key: 'iec-default', language: 'ar', spare_ways: 0.2 });
+    expect(priceImpl.mock.calls[0]?.[0].profile).toEqual({
+      key: 'iec-default',
+      language: 'he',
+      spare_ways: 0.2,
+    });
+  });
+
+  it('names the default profile when none was typed', async () => {
+    const priceImpl = await priceIn('ar', null);
+    expect(priceImpl.mock.calls[0]?.[0].profile).toEqual({ key: 'iec-default', language: 'ar' });
+  });
+
+  it('says the unit codes in Arabic', async () => {
+    await priceIn('ar', null);
+    expect(screen.getAllByText('1 قطعة').length).toBeGreaterThan(0);
+    expect(screen.queryByText('1 pcs')).toBeNull();
   });
 });

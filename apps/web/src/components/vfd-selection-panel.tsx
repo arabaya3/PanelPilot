@@ -3,7 +3,20 @@
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
-import { Factors, Field, Figure, round, Sources } from '@/components/cable-sizing-panel';
+import {
+  CalcErrorNotice,
+  checkInputs,
+  clearedFor,
+  Factors,
+  Field,
+  fieldErrorsFrom,
+  Figure,
+  focusFirst,
+  round,
+  Sources,
+  useCalcText,
+  type FieldError,
+} from '@/components/cable-sizing-panel';
 import {
   listDriveRanges,
   selectVfd,
@@ -12,7 +25,7 @@ import {
   type VfdSelectionResponse,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
-import { EmptyState, Notice } from '@/components/ui';
+import { EmptyState, fieldDescribedBy, Notice } from '@/components/ui';
 
 type Session =
   | { kind: 'starting' }
@@ -52,6 +65,34 @@ const INITIAL: Form = {
 
 type NumberKey = Exclude<keyof Form, 'duty' | 'range'>;
 
+/** In the order the form shows them, for focusing the first in error. */
+const NUMBER_KEYS: readonly NumberKey[] = [
+  'power',
+  'voltage',
+  'efficiency',
+  'powerFactor',
+  'altitude',
+  'ambient',
+];
+
+/** The request fields a schema check can reject, by the input that holds them. */
+const API_FIELDS: Partial<Record<string, NumberKey>> = {
+  motor_power_kw: 'power',
+  supply_voltage_v: 'voltage',
+  motor_efficiency: 'efficiency',
+  motor_power_factor: 'powerFactor',
+  altitude_m: 'altitude',
+  ambient_temp_c: 'ambient',
+};
+
+/** The coded refusals that are about one input. */
+const CODE_FIELDS: Partial<Record<string, NumberKey>> = {
+  drive_voltage: 'voltage',
+  drive_altitude: 'altitude',
+  drive_ambient: 'ambient',
+  no_drive_type: 'power',
+};
+
 const UNITS: Record<NumberKey, string> = {
   power: 'kW',
   voltage: 'V',
@@ -83,7 +124,14 @@ export function VfdSelectionPanel({
   const [form, setForm] = useState<Form>(INITIAL);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [ranges, setRanges] = useState<DriveRangeSummary[]>([]);
+  const [errors, setErrors] = useState<Partial<Record<NumberKey, FieldError>>>({});
+  const text = useCalcText();
   const id = useId();
+
+  function set<K extends keyof Form>(key: K, value: Form[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => clearedFor(current, key, !NUMBER_KEYS.includes(key as NumberKey)));
+  }
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -107,10 +155,24 @@ export function VfdSelectionPanel({
     };
   }, [token, listImpl]);
 
-  const complete = form.power.trim() !== '';
-
   async function run() {
-    if (session.kind !== 'ready' || !complete) return;
+    if (session.kind !== 'ready') return;
+    // Altitude: every range's rule starts at sea level (0 m); its ceiling
+    // differs by range, so that is the server's to refuse.
+    const invalid = checkInputs<NumberKey>([
+      ['power', form.power, 'positive'],
+      ['voltage', form.voltage, 'positive'],
+      ['efficiency', form.efficiency, 'fraction'],
+      ['powerFactor', form.powerFactor, 'fraction'],
+      ['altitude', form.altitude, 'nonNegative'],
+      ['ambient', form.ambient, 'finite'],
+    ]);
+    setErrors(invalid);
+    if (Object.keys(invalid).length > 0) {
+      setResult({ kind: 'idle' });
+      focusFirst(id, NUMBER_KEYS, invalid);
+      return;
+    }
     setResult({ kind: 'working' });
     const outcome = await selectImpl({
       token: session.token,
@@ -129,20 +191,27 @@ export function VfdSelectionPanel({
       setResult({ kind: 'selected', response: outcome.response });
     } else {
       setResult({ kind: 'error', outcome });
+      if (outcome.kind === 'refused') {
+        const refused = fieldErrorsFrom(outcome, { codes: CODE_FIELDS, fields: API_FIELDS });
+        setErrors(refused);
+        focusFirst(id, NUMBER_KEYS, refused);
+      }
       if (outcome.kind === 'unauthorized') void connect();
     }
   }
 
   function field(key: NumberKey) {
+    const error = text.fieldError(errors[key]);
     return (
-      <Field id={`${id}-${key}`} label={t(`vfd.field.${key}`)} unit={UNITS[key]}>
+      <Field id={`${id}-${key}`} label={t(`vfd.field.${key}`)} unit={UNITS[key]} error={error}>
         <input
           id={`${id}-${key}`}
           inputMode="decimal"
           dir="ltr"
+          {...fieldDescribedBy(`${id}-${key}`, { error })}
           value={form[key]}
           onChange={(event) => {
-            setForm((current) => ({ ...current, [key]: event.target.value }));
+            set(key, event.target.value);
           }}
           className="input w-full"
         />
@@ -168,7 +237,7 @@ export function VfdSelectionPanel({
               id={`${id}-range`}
               value={form.range}
               onChange={(event) => {
-                setForm((current) => ({ ...current, range: event.target.value }));
+                set('range', event.target.value);
               }}
               className="input w-full"
             >
@@ -191,7 +260,7 @@ export function VfdSelectionPanel({
               id={`${id}-duty`}
               value={form.duty}
               onChange={(event) => {
-                setForm((current) => ({ ...current, duty: event.target.value as Form['duty'] }));
+                set('duty', event.target.value as Form['duty']);
               }}
               className="input w-full"
             >
@@ -204,7 +273,7 @@ export function VfdSelectionPanel({
           <div className="sm:col-span-2">
             <button
               type="submit"
-              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              disabled={session.kind !== 'ready' || result.kind === 'working'}
               className="btn btn-primary"
             >
               {result.kind === 'working' ? t('working') : t('vfd.submit')}
@@ -235,14 +304,11 @@ export function VfdSelectionPanel({
           )}
 
           {result.kind === 'error' && (
-            <Notice tone="critical" testId="vfd-error">
-              <p>{t(`error.${result.outcome.kind}`)}</p>
-              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-                <p dir="ltr" className="mt-2 font-mono text-xs">
-                  {result.outcome.detail}
-                </p>
-              )}
-            </Notice>
+            <CalcErrorNotice
+              outcome={result.outcome}
+              hasFieldErrors={Object.keys(errors).length > 0}
+              testId="vfd-error"
+            />
           )}
 
           {result.kind === 'selected' && (

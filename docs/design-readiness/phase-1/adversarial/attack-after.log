@@ -1,0 +1,260 @@
+{
+  "label": "after",
+  "api": "http://127.0.0.1:8000/api/v1",
+  "at": "2026-10-23T12:24:25.342Z",
+  "probes": {
+    "F1_tampered_rating": {
+      "original_breaker_a": "10",
+      "sent_breaker_a": "200",
+      "cable_mm2": "1.5",
+      "csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "534 bytes"
+      },
+      "csv_first_line": "﻿# DRAFT — NOT FOR EXECUTION | Unsaved draft: not a saved, validated or approved revision | findings: 1 blocking, 9 warning, 10 info",
+      "csv_marked_draft": true,
+      "csv_mentions_blocking": true,
+      "pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "34537 bytes"
+      },
+      "pdf_note": "PDF text inspected with pdfplumber (inspect.py)"
+    },
+    "F2_forged_approval": {
+      "pdf": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": false
+      },
+      "calculations_pdf": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": false
+      },
+      "dxf": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "qet": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "aml": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "devices_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "parts_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "cables_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "circuits_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "terminals_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "eplan_devices_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "ace_components_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "ace_terminals_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "quotation_pdf": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": false
+      },
+      "quotation_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "plc_st": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "plc_io_csv": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      },
+      "json": {
+        "status": 200,
+        "code": null,
+        "raw_contains_forged": false,
+        "raw_contains_draft_mark": true
+      }
+    },
+    "F3_failure_ignored": {
+      "design_status": 200,
+      "export": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "34963 bytes"
+      }
+    },
+    "F4_unknown_fields": {
+      "ats_board_and_load": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"boards\",0,\"loads\",0,\"colour\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"red\"},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"boards\",0,\"standby_supply\"],\"msg\":\"Extra inputs are not permitted\",\"input\":{\"voltage_v\":400,\"phases\":3}},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"boards\",0,\"transfer_switch\"],\"msg\":\"Extra inputs are not permitted\",\"input\":{"
+      },
+      "supply_level": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"boards\",0,\"supply\",\"second_source\"],\"msg\":\"Extra inputs are not permitted\",\"input\":1}]}"
+      },
+      "info_level": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"info\",\"approved\"],\"msg\":\"Extra inputs are not permitted\",\"input\":true}]}"
+      },
+      "export_device_level": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"project\",\"boards\",0,\"devices\",0,\"approved\"],\"msg\":\"Extra inputs are not permitted\",\"input\":true}]}"
+      },
+      "export_revision_row": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"project\",\"info\",\"revisions\",0,\"approved_at\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"2026-10-23\"}]}"
+      },
+      "export_top_level": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_by\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"X\"}]}"
+      },
+      "draft_purpose_execution": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"purpose\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"execution\"}]}"
+      }
+    },
+    "N_revision_export": {
+      "unauthenticated": {
+        "status": 401,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"error\":\"AuthenticationError\",\"detail\":\"no credentials supplied\"}"
+      },
+      "forged_token": {
+        "status": 401,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"error\":\"AuthenticationError\",\"detail\":\"token is not valid\"}"
+      },
+      "random_project": {
+        "status": 404,
+        "type": "application/json",
+        "code": "revision_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+      },
+      "malformed_id": {
+        "status": 404,
+        "type": "application/json",
+        "code": "revision_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+      },
+      "sql_like_id": {
+        "status": 404,
+        "type": "application/json",
+        "code": "revision_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+      },
+      "execution_random": {
+        "status": 404,
+        "type": "application/json",
+        "code": "revision_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+      },
+      "with_client_project": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"project\"],\"msg\":\"Extra inputs are not permitted\",\"input\":{\"info\":{\"name\":\"TEST INPUT - readiness trace pump panel\",\"number\":\"TEST-001\",\"customer\":\"\",\"consultant\":\"\",\"contractor\":\"\",\"revisions\":[]},\"profile\":\"iec-default\",\"boards\":[{\"id\":\"PP1\",\"name\":\"PP1\",\"function\":null,\"location\":null,\"supply\":{\"voltage_v\":\"400\",\"phases\":3,\"frequency_hz\":\"50\",\""
+      },
+      "unknown_purpose": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"purpose\"],\"msg\":\"Input should be 'review' or 'execution'\",\"input\":\"approved\",\"ctx\":{\"expected\":\"'review' or 'execution'\"}}]}"
+      },
+      "approve_random": {
+        "status": 404,
+        "type": "application/json",
+        "code": "project_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such project\",\"code\":\"project_not_found\",\"params\":{}}"
+      },
+      "approve_with_hash": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_snapshot_sha256\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"0000000000000000000000000000000000000000000000000000000000000000\"}]}"
+      },
+      "revision_zero": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"0\",\"ctx\":{\"ge\":1}}]}"
+      }
+    }
+  },
+  "design_status": 200
+}

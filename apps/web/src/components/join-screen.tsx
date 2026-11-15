@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { useSignupProblemText } from '@/components/signup-problems';
 import { Notice, PageHeader } from '@/components/ui';
 import { signupWithInvite, type JoinOutcome } from '@/lib/team';
 
@@ -23,6 +24,7 @@ export function JoinScreen({
   const t = useTranslations('join');
   const tTeam = useTranslations('team');
   const id = useId();
+  const sayProblems = useSignupProblemText();
   const [inviteToken, setInviteToken] = useState(initialInvite ?? '');
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
@@ -43,6 +45,7 @@ export function JoinScreen({
 
   function problem(result: JoinOutcome): string {
     if (result.kind === 'email-taken') return t('emailTaken');
+    if (result.kind === 'invalid') return sayProblems(result.problems);
     if (result.kind === 'refused') {
       const { code, params } = result;
       if (code && tTeam.has(`errors.${code}`)) return tTeam(`errors.${code}`, params);

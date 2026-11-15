@@ -12,6 +12,12 @@ as a blank card, which is the failure the response contract exists to remove.
 **What the engineer is told.** Enough to act: what was searched, why it fell
 short, and what would resolve it. Never the raw validation error — that
 carries the model's own unvalidated output, which is the thing being refused.
+
+The text never says a passage "is cited". Whether a closest match is shown is
+the response's `refusal_citations` alone, and this text is also stored and
+replayed from history, where no citation travels with it -- a sentence
+promising one would be false there, and was false everywhere while the
+citation was being dropped on the way out.
 """
 
 from __future__ import annotations
@@ -26,8 +32,8 @@ _TEMPLATES: dict[RefusalReason, str] = {
     ),
     RefusalReason.BELOW_THRESHOLD: (
         "The closest documentation found is only a partial match, below the "
-        "confidence needed to answer safely. The nearest passage is cited so "
-        "you can judge it yourself."
+        "confidence needed to answer safely, so PanelPilot is stopping here "
+        "rather than guessing."
     ),
     RefusalReason.OUT_OF_VALIDATED_RANGE: (
         "This falls outside the range the calculation has been validated "
@@ -47,8 +53,7 @@ _TEMPLATES: dict[RefusalReason, str] = {
     RefusalReason.NOT_IN_SOURCES: (
         "The documentation found is related, but it does not answer this "
         "question. Rather than answer from general knowledge, PanelPilot is "
-        "stopping here; the nearest passage is cited so you can judge it. "
-        "Adding the manual that covers this would let it answer."
+        "stopping here. Adding the manual that covers this would let it answer."
     ),
 }
 

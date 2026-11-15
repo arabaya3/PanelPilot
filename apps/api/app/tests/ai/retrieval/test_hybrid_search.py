@@ -205,10 +205,51 @@ def test_filters_do_not_contribute_to_score() -> None:
     lexical = legs[0]["bool"]["filter"]
     vector = legs[1]["knn"]["content_vector"]["filter"]["bool"]["filter"]
     for filters in (lexical, vector):
-        assert {"terms": {"brand": ["ABB"]}} in filters
+        assert hybrid_search._brand_clause(["ABB"]) in filters
         assert {"terms": {"doc_type": ["manual"]}} in filters
     # Both legs must filter identically, or they score different candidate sets.
     assert lexical == vector
+
+
+def test_a_brand_matches_whatever_its_case() -> None:
+    """An equipment chip's "abb" matched nothing against the indexed "ABB"."""
+    clause = hybrid_search._brand_clause(["abb", "Siemens"])
+    assert clause == {
+        "bool": {
+            "should": [
+                {"term": {"brand": {"value": "abb", "case_insensitive": True}}},
+                {"term": {"brand": {"value": "Siemens", "case_insensitive": True}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def test_a_model_keeps_chunks_of_unrecorded_model_and_prefers_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every production chunk is model "unknown"; an exact model term found none.
+
+    The model narrows away chunks recorded for other equipment, keeps those
+    whose model is not recorded, and on the lexical leg scores its own above them.
+    """
+    body = _capture_request(monkeypatch, "fault 2310", brand="ABB", model="ACS880")["body"]
+    lexical, vector = body["query"]["hybrid"]["queries"]
+    lexical_filters = lexical["bool"]["filter"]
+    vector_filters = vector["knn"]["content_vector"]["filter"]["bool"]["filter"]
+
+    model_clause = hybrid_search._model_clause("ACS880")
+    allowed = model_clause["bool"]["should"]
+    assert {"term": {"model": "unknown"}} in allowed
+    assert {"term": {"model": {"value": "ACS880", "case_insensitive": True}}} in allowed
+    assert model_clause["bool"]["minimum_should_match"] == 1
+    # Once, on each leg, identically -- not appended twice to a shared list.
+    assert lexical_filters.count(model_clause) == 1
+    assert vector_filters.count(model_clause) == 1
+    assert lexical_filters == vector_filters
+    assert not any(clause == {"term": {"model": "ACS880"}} for clause in lexical_filters)
+    # A scoring preference, not a filter, and only where a leg can score.
+    assert lexical["bool"]["should"] == [hybrid_search._model_preference("ACS880")]
 
 
 def test_passages_below_min_score_are_dropped() -> None:
