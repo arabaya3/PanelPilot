@@ -407,6 +407,13 @@ class OpenItem:
     members: tuple[str, ...] = ()
 
 
+#: What a modelled link end's terminal note starts with when the terminal has
+#: no board-local wire (no net): it takes part in a board-to-board feeder
+#: link, so it is not simply "unconnected". The link is no wire or net of the
+#: board's own model, and none is implied.
+LINK_END_TAG = "LINK END"
+
+
 #: The kinds of open item, in the order they are listed.
 OPEN_KINDS = (
     "unrealised_net",
@@ -414,6 +421,8 @@ OPEN_KINDS = (
     "unconnected_unresolved",
     "unconnected_not_required",
     "unconnected_strip_point",
+    "strip_point_link_end",
+    "terminal_link_end",
     "wire_record_missing",
     "wire_attribute_unset",
     "wire_attribute_assumed",
@@ -757,10 +766,57 @@ def _notes(
     key: Key,
     groups: dict[str, list[set[Key]]],
     has_ends: bool,
+    link_end: str | None = None,
 ) -> list[tuple[str, str]]:
-    """``(open kind, text)`` for each note a row carries; kind ``""`` for a plain note."""
+    """``(open kind, text)`` for each note a row carries; kind ``""`` for a plain note.
+
+    ``link_end`` is what board-to-board links the terminal ends
+    (``links.link_end_notes``): a point side in no net that ends one has no
+    board-local wire but is not unconnected, and says which link it ends
+    (kind ``strip_point_link_end``). A component terminal in no net that ends
+    one leads with the same link note (kind ``terminal_link_end``) and keeps
+    any unmet board-local requirement as a separate note and open item
+    (``unconnected_required`` / ``unconnected_unresolved``): the link does
+    not satisfy it.
+    """
     notes: list[tuple[str, str]] = []
     if row.net_id is None:
+        if link_end is not None:
+            # The link participation leads; the link is no board-local wire.
+            notes.append(
+                (
+                    (
+                        "strip_point_link_end"
+                        if row.owner_kind != "component"
+                        else "terminal_link_end"
+                    ),
+                    f"{LINK_END_TAG}: no board-local wire (in no net); {link_end}",
+                )
+            )
+            if row.owner_kind != "component":
+                return notes
+            # A component terminal's board-local requirement is its own
+            # clause: the feeder link does not meet it, so a required or
+            # unresolved terminal stays an open item of its own.
+            if row.required is True:
+                notes.append(
+                    (
+                        "unconnected_required",
+                        "UNCONNECTED: required (documented); the board-local requirement "
+                        "is not met: the feeder link is not a board-local wire",
+                    )
+                )
+            elif row.required is None:
+                notes.append(
+                    (
+                        "unconnected_unresolved",
+                        "UNCONNECTED: requiredness unresolved; whether a board-local wire "
+                        "is needed is not known: the feeder link is not a board-local wire",
+                    )
+                )
+            else:
+                notes.append(("", "board-local connection not required (documented)"))
+            return notes
         if row.owner_kind != "component":
             notes.append(("unconnected_strip_point", "UNCONNECTED: this point side is in no net"))
         elif row.required is True:
@@ -1075,7 +1131,10 @@ class _Placed:
 
 
 def drawing_set(
-    model: entities.DesignModelV2, *, boards_share_sheets: bool = BOARDS_SHARE_SHEETS
+    model: entities.DesignModelV2,
+    *,
+    boards_share_sheets: bool = BOARDS_SHARE_SHEETS,
+    link_ends: Mapping[Key, str] | None = None,
 ) -> DrawingSet:
     """The connection drawing of a model, laid out.
 
@@ -1083,6 +1142,9 @@ def drawing_set(
         model: A v2 model, as read (anchored).
         boards_share_sheets: D-9: whether a board may continue on the sheet
             of the board before it (always from a new block column).
+        link_ends: A ``pp-design/3`` revision's link ends
+            (``links.link_end_notes``): a terminal ending a board-to-board
+            link says so instead of "unconnected". None for v2.
 
     Returns:
         The drawing set: see the module docstring.
@@ -1096,7 +1158,9 @@ def drawing_set(
     line_sheets: dict[tuple[int, int], int] = {}
     shown: dict[int, frozenset[str]] | None = None
     for _round in range(8):
-        result = _lay_out(model, places, boards_share_sheets, pins_off, line_sheets, shown)
+        result = _lay_out(
+            model, places, boards_share_sheets, pins_off, line_sheets, shown, link_ends or {}
+        )
         found = {
             sheet.number: frozenset((sheet.board_id, *sheet.boards)) for sheet in result.sheets
         }
@@ -1153,6 +1217,7 @@ def _lay_out(
     pins_off: frozenset[tuple[str, str]] = frozenset(),
     line_sheets: dict[tuple[int, int], int] | None = None,
     shown: dict[int, frozenset[str]] | None = None,
+    link_ends: Mapping[Key, str] | None = None,
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1208,7 +1273,9 @@ def _lay_out(
             )
         all_ends.append(found)
     row_notes = {
-        index: _notes(row, keys[index], groups, bool(all_ends[index]))
+        index: _notes(
+            row, keys[index], groups, bool(all_ends[index]), (link_ends or {}).get(keys[index])
+        )
         for index, row in enumerate(terminal_rows)
     }
 
@@ -1413,7 +1480,7 @@ def _blocks(
                     block.specs.append(end_spec(index, n, first, text_room))
                     first = False
             for n, (_kind, note) in enumerate(notes_here):
-                loud = note.startswith(("UNCONNECTED", "UNREALISED"))
+                loud = note.startswith(("UNCONNECTED", "UNREALISED", LINK_END_TAG))
                 lines = halves(
                     note,
                     BODY_PT,

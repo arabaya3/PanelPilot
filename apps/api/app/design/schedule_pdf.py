@@ -37,7 +37,13 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
+from app.design.marking import (
+    ExportMark,
+    foot_reserve,
+    pdf_findings_section,
+    pdf_mark_margins,
+    pdf_page_stamp,
+)
 from app.design.model import links as link_rows
 from app.design.model import schedules
 from app.design.pdf_fonts import font_for
@@ -122,8 +128,12 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
+#: The schedules' own foot label, at the right of every page's foot.
+_FOOT_RIGHT = f"{SCHEDULE_LABEL} — page {{page}}"
+
+
 def _stamp(mark: ExportMark) -> object:
-    base = pdf_page_stamp(mark)
+    base = pdf_page_stamp(mark, reserve=foot_reserve(_FOOT_RIGHT.format(page=9999)))
 
     def stamp(canvas: Canvas, document: BaseDocTemplate) -> None:
         base(canvas, document)
@@ -136,7 +146,7 @@ def _stamp(mark: ExportMark) -> object:
         canvas.drawRightString(
             width - document.rightMargin,
             5 * mm,
-            f"{SCHEDULE_LABEL} — page {canvas.getPageNumber()}",
+            _FOOT_RIGHT.format(page=canvas.getPageNumber()),
         )
         canvas.restoreState()
 
@@ -256,13 +266,22 @@ def _render(
     extra: Sequence[object] = (),
 ) -> bytes:
     buffer = BytesIO()
+    top, bottom = pdf_mark_margins(
+        mark,
+        landscape(A4),
+        left=10 * mm,
+        right=10 * mm,
+        top=22 * mm,
+        bottom=16 * mm,
+        foot_reserve=foot_reserve(_FOOT_RIGHT.format(page=9999)),
+    )
     document = SimpleDocTemplate(
         buffer,
         pagesize=landscape(A4),
         leftMargin=10 * mm,
         rightMargin=10 * mm,
-        topMargin=22 * mm,
-        bottomMargin=16 * mm,
+        topMargin=top,
+        bottomMargin=bottom,
         title=f"{title} - {header.project}",
         creator="PanelPilot",
         invariant=True,

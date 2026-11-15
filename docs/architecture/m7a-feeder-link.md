@@ -134,7 +134,9 @@ Shapes are as §3–§6, with these specifics and deviations:
 - **Provenance**: `entered_by_user_id` (the saving account) and `entered_at`
   (save time, ISO 8601 UTC, seconds) are set only when the link holds a
   user-entered value (terminal, label or attribute); otherwise both `null`.
-  Not carried forward from an earlier revision: each save records its saver.
+  Carried from the previous (latest) revision's link when the link's
+  user-entered content (both ends and all attributes) is identical; stamped
+  with the saving account and time only when that content changed (M7b round 2).
   Client-sent `provenance` → 422 (unknown field, pydantic).
 - **Refusals** (422, `params`: `fed_board`, `board`, `link_index`; terminal
   ones also `end`, `end_board`, and `terminal_board` for off-board):

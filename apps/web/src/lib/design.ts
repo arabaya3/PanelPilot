@@ -49,6 +49,8 @@ export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
  */
 export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
+/** Whether the opened revision's configuration can be carried (M7b §4). */
+export type ConfigurationStatus = components['schemas']['SavedProject']['configuration_status'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
 /** An action the server lets the caller take; it checks again on every request. */
@@ -569,17 +571,30 @@ export function reviseProject(
     request: ProjectDesignRequest;
     note?: string;
     configuration?: Record<string, unknown> | null;
+    /** M7b: remove the stored configuration (sends `configuration: null`, `configuration_removed: true`). */
+    configurationRemoved?: boolean;
     requirementsInput?: RequirementsInput | null;
   },
 ): Promise<ProjectOutcome> {
-  const { id, request, note = '', configuration, requirementsInput } = options;
+  const {
+    id,
+    request,
+    note = '',
+    configuration,
+    configurationRemoved,
+    requirementsInput,
+  } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
     {
       request,
       note,
-      ...(configuration ? { configuration } : {}),
+      ...(configurationRemoved
+        ? { configuration: null, configuration_removed: true }
+        : configuration
+          ? { configuration }
+          : {}),
       ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
     },
     saved,

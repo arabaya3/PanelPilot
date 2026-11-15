@@ -98,6 +98,7 @@ const RECORD: RequirementsRecord = {
 
 function stored(): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'Stored tower',
     revision: 1,

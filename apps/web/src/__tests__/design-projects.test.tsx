@@ -72,6 +72,7 @@ const SAVED_REQUEST = {
 
 function project(revision: number): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'Tower',
     revision,
@@ -404,6 +405,8 @@ describe('the projects panel', () => {
     );
     fireEvent.click(button);
     expect(approve).not.toHaveBeenCalled();
+    // Nobody is told they are approving when they cannot.
+    expect(screen.queryByTestId('approving-as')).toBeNull();
   });
 });
 

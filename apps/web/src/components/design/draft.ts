@@ -1,6 +1,7 @@
 import { CONTROL_NEEDS, type ControlNeed } from '@/lib/design';
 import { DESIGN_DRAFT_STORAGE_KEY } from '@/lib/trial';
 import { parseLink } from '@/components/design/feeder-link-model';
+import { normalized, type Configuration } from '@/components/design/configuration-model';
 import {
   DRAWING_LANGUAGES,
   EARTHING,
@@ -75,7 +76,23 @@ export type DesignDraft = {
    * Absent in an older draft, which restores without them.
    */
   ai?: AiDraft;
+  /**
+   * M7b: unsaved edits to the opened revision's configuration, and whether
+   * "save without that configuration" was ticked. Absent when the
+   * configuration was not edited (the restore then reopens the stored one)
+   * and in an older draft.
+   */
+  configuration?: ConfigurationDraft;
 };
+
+export type ConfigurationDraft = { doc: Configuration; dropUnrecoverable: boolean };
+
+function parseConfiguration(value: unknown): ConfigurationDraft | undefined {
+  if (!isFields(value) || !isFields(value.doc) || typeof value.dropUnrecoverable !== 'boolean') {
+    return undefined;
+  }
+  return { doc: normalized(value.doc), dropUnrecoverable: value.dropUnrecoverable };
+}
 
 export type AiDraft = {
   description: string;
@@ -348,6 +365,8 @@ export function parseDraft(value: unknown): DesignDraft | null {
   }
   const control = parseControl(value.control);
   const ai = parseAi(value.ai);
+  // Edits to a saved revision's configuration only; without a project they are not kept.
+  const configuration = project === null ? undefined : parseConfiguration(value.configuration);
   return {
     ...head,
     project,
@@ -356,5 +375,6 @@ export function parseDraft(value: unknown): DesignDraft | null {
     language,
     ...(control ? { control } : {}),
     ...(ai ? { ai } : {}),
+    ...(configuration ? { configuration } : {}),
   };
 }

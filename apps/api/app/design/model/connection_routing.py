@@ -326,7 +326,9 @@ def _owners(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> list[_Owne
                 m4_place=drawing.owners.get(key, ("", None))[1],
                 order=index,
             )
-        loud = [n for n in row.notes if n.startswith(("UNREALISED", "UNCONNECTED"))]
+        loud = [
+            n for n in row.notes if n.startswith(("UNREALISED", "UNCONNECTED", cd.LINK_END_TAG))
+        ]
         tag = loud[0].split(":")[0] if loud else ""
         owners[key].rows.append(_Row(row, index, [], tag, list(row.ends)))
     return sorted(owners.values(), key=lambda o: (o.board, o.kind != "component", o.order))

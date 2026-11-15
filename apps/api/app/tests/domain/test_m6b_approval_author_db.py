@@ -410,7 +410,11 @@ def test_resave_carries_control_needs_and_acknowledgements_as_recorded(
 def test_a_configured_revision_is_not_resaved_without_its_configuration(
     client: TestClient, engine: Engine, caller: _Caller, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The configuration lives only in the snapshot: a re-save of the request would drop it."""
+    """Saved before M7b, the configuration lives only in the snapshot: a re-save would drop it.
+
+    (Since M7b a configuration is stored in the record and a re-save carries
+    it: ``test_m7b_configuration_db``.) The record is made to look pre-M7b.
+    """
     from app.tests.domain.test_design_projects_configured_db import _configuration, _request
 
     monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
@@ -420,7 +424,16 @@ def test_a_configured_revision_is_not_resaved_without_its_configuration(
         json={"request": _request(), "note": "configured", "configuration": _configuration()},
     )
     assert revised.status_code == 201, revised.text[:500]
-    update_row(engine, saved["id"], 2, author_user_id=None)
+    record = dict(revision_row(engine, saved["id"], 2)["requirements"])
+    record.pop("configuration")
+    update_row(
+        engine,
+        saved["id"],
+        2,
+        author_user_id=None,
+        requirements=record,
+        requirements_sha256=snapshot.sha256_of(record),
+    )
     before = revision_row(engine, saved["id"], 2)
     refused = _resave(client, saved["id"], 2)
     assert refused.status_code == 409, refused.text[:300]

@@ -35,7 +35,7 @@ from reportlab.platypus import (
 
 from app.design import disconnection
 from app.design.drawing_text import Words
-from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
+from app.design.marking import ExportMark, pdf_findings_section, pdf_mark_margins, pdf_page_stamp
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
 from app.models.schemas.design import Board, CompanyProfile, DesignProject, Device, DeviceKind
@@ -244,13 +244,20 @@ def render_calculations_pdf(
         "head": sample["BodyText"].clone("head", fontName="Helvetica-Bold", fontSize=8, leading=10),
     }
     buffer = BytesIO()
+    top, bottom = (
+        pdf_mark_margins(
+            mark, landscape(A4), left=12 * mm, right=12 * mm, top=12 * mm, bottom=12 * mm
+        )
+        if mark is not None
+        else (12 * mm, 12 * mm)
+    )
     document = SimpleDocTemplate(
         buffer,
         pagesize=landscape(A4),
         leftMargin=12 * mm,
         rightMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
+        topMargin=top,
+        bottomMargin=bottom,
         title=f"Calculations - {project.info.name}",
         author=company.name,
         creator="PanelPilot",

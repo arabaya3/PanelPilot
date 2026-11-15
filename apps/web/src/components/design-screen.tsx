@@ -24,7 +24,17 @@ import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
 import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
-import { ConfigurationPanel } from '@/components/design/configuration-panel';
+import {
+  ConfigurationPanel,
+  configurationPayload,
+  isConfigurationRefusal,
+} from '@/components/design/configuration-panel';
+import {
+  emptyConfiguration,
+  isEmptyConfiguration,
+  normalized,
+  type Configuration,
+} from '@/components/design/configuration-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
@@ -165,6 +175,7 @@ import {
   type DesignOutcome,
   type ExportFormat,
   type ExportPurpose,
+  type ConfigurationStatus,
   type Refusal,
   type TooLong,
   type V2ModelSummary,
@@ -313,9 +324,29 @@ export function snapshotOf(
     ? { info, boards, profileText, language, market, control: needs }
     : { info, boards, profileText, language, market };
   if (aiDescription !== '') work.aiDescription = aiDescription;
-  return JSON.stringify(work, (key, value: unknown) =>
-    key === 'key' || key === 'aiItem' ? undefined : value,
-  );
+  // Keys in a stable order: a restored draft rebuilds the same objects with
+  // their keys in another order, which must still compare as the same work.
+  return canonicalJson(work);
+}
+
+/** JSON with every object's keys in a stable order, row keys and AI item ids left out. */
+function canonicalJson(work: unknown): string {
+  return sortedJson(work, (key) => key === 'key' || key === 'aiItem');
+}
+
+/**
+ * JSON with every object's keys in a stable order (nothing left out). A stored
+ * configuration comes back with its keys in the database's order, and an edit
+ * rebuilds objects in another: undoing the edit must still compare equal.
+ */
+function sortedJson(value: unknown, omit: (key: string) => boolean = () => false): string {
+  return JSON.stringify(value, (key, value: unknown) => {
+    if (omit(key)) return undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+    );
+  });
 }
 
 /**
@@ -332,7 +363,7 @@ function cleanWithMarket(clean: string, defaults: SupplyDefaults, code: string):
     return clean;
   }
   if (!Array.isArray(form.boards)) return clean;
-  return JSON.stringify({
+  return canonicalJson({
     ...form,
     boards: form.boards.map((board) => ({ ...board, ...defaults })),
     market: code,
@@ -558,6 +589,13 @@ function DesignWorkspace({
   const [opened, setOpened] = useState<OpenedProject | null>(null);
   /** The opened revision's `pp-design/2` model, or null for a v1 revision. */
   const [openedModel, setOpenedModel] = useState<V2ModelSummary | null>(null);
+  // M7b: the opened revision's configuration as the guided editor edits it,
+  // what was stored (to tell an edit), and whether it can be carried.
+  const [configDoc, setConfigDoc] = useState<Configuration>(emptyConfiguration);
+  const [configBaseline, setConfigBaseline] = useState(() => sortedJson(emptyConfiguration()));
+  const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
+  const [dropUnrecoverable, setDropUnrecoverable] = useState(false);
+  const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
   /**
    * The schema the opened revision's stored design names (from its marker,
    * not a read of it): null when unknown, undefined from an older server.
@@ -614,7 +652,16 @@ function DesignWorkspace({
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
-  const dirty = snapshot !== clean;
+  const configEdited = opened !== null && sortedJson(configDoc) !== configBaseline;
+  // The explicit choice to save without a configuration that cannot be
+  // carried forward is unsaved work too: it is kept in the draft and offered
+  // back after a reload, never acted on by itself.
+  const dropChosen =
+    opened !== null &&
+    configStatus === 'not_recoverable' &&
+    dropUnrecoverable &&
+    isEmptyConfiguration(configDoc);
+  const dirty = snapshot !== clean || configEdited || dropChosen;
   // A layout effect, so a market detected straight after a keystroke cannot
   // read the state from before it.
   useLayoutEffect(() => {
@@ -873,6 +920,10 @@ function DesignWorkspace({
       profileText,
       language: chosenLanguage,
       market,
+      // Unsaved configuration edits come back with the rest after a reload.
+      ...(opened !== null && (configEdited || dropChosen)
+        ? { configuration: { doc: configDoc, dropUnrecoverable } }
+        : {}),
     };
     const text = JSON.stringify(draft);
     if (text === lastWritten.current) return;
@@ -900,6 +951,12 @@ function DesignWorkspace({
       if (outcome.kind === 'saved') {
         onOpened(outcome.project, false);
         reopened = true;
+        // The unsaved edits replace the stored configuration in the editor;
+        // the stored one stays the baseline, so they still read as unsaved.
+        if (draft.configuration) {
+          setConfigDoc(draft.configuration.doc);
+          setDropUnrecoverable(draft.configuration.dropUnrecoverable);
+        }
       }
     }
     setDraftProjectGone(!reopened);
@@ -1070,6 +1127,14 @@ function DesignWorkspace({
     setSavedRequirements(requirements);
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
+    // Reopening a revision (or a save answering with the one stored) loads
+    // its own stored configuration into the editor.
+    const stored = normalized(project.configuration ?? emptyConfiguration());
+    setConfigDoc(stored);
+    setConfigBaseline(sortedJson(stored));
+    setConfigStatus(project.configuration_status);
+    setDropUnrecoverable(false);
+    setConfigRefusal(null);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
     setOpenedLinks(storedLinksOf(project));
@@ -1819,6 +1884,17 @@ function DesignWorkspace({
                     ? {
                         name: info.name.trim(),
                         request: toRequest(info, boards, profile),
+                        // The project's Save stores the configuration shown, so a
+                        // save from an older revision keeps that revision's own.
+                        ...(opened !== null
+                          ? {
+                              configuration: configurationPayload(
+                                configDoc,
+                                configStatus,
+                                dropUnrecoverable,
+                              ),
+                            }
+                          : {}),
                         requirementsInput: aiOpen
                           ? aiRequirementsInput(
                               requirementsInputOf(boards, controlNeeds),
@@ -1845,6 +1921,7 @@ function DesignWorkspace({
                 onNoteChange={setRevisionNote}
                 onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
+                  setConfigRefusal(isConfigurationRefusal(refusal) ? refusal : null);
                   setLinkRefusal(
                     refusal.code?.startsWith('link_')
                       ? { board: refusal.params?.fed_board ?? null, text: say(refusal) }
@@ -2468,18 +2545,17 @@ function DesignWorkspace({
                   token={token}
                   projectId={opened.id}
                   latestRevision={Math.max(opened.revision, ...opened.revisions)}
-                  request={
-                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
-                  }
-                  note={revisionNote}
-                  dirty={designDiffers(snapshot, clean)}
-                  onSaved={forOwner((project: SavedProject) => {
-                    // A configured save stores the form as it stands (held
-                    // while the design differs; link edits go with it), so it rebaselines a design made from
-                    // it exactly as a plain save does.
-                    rebaseOnSave.current = true;
-                    onOpened(project, false);
-                  })}
+                  value={configDoc}
+                  onChange={setConfigDoc}
+                  status={configStatus}
+                  dropUnrecoverable={dropUnrecoverable}
+                  onDropUnrecoverable={setDropUnrecoverable}
+                  boards={boards.map((board) => board.name.trim()).filter((name) => name !== '')}
+                  model={openedModel}
+                  externalRefusal={configRefusal}
+                  findings={validation?.findings ?? []}
+                  findingsRevision={opened.revision}
+                  saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {
                     void reauthorize();
                   })}

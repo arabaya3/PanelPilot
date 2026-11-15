@@ -98,7 +98,7 @@ const REVIEW_TONE: Record<string, Tone> = {
 };
 
 /** A definition's review status as embedded in the data, never more than that. */
-function ReviewStatus({ status }: { status: string }) {
+export function ReviewStatus({ status }: { status: string }) {
   const t = useTranslations('configuration');
   const known = status in REVIEW_TONE ? status : 'unknown';
   return (

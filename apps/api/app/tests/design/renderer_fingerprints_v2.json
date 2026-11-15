@@ -1,12 +1,12 @@
 {
-  "renderer_version": "2026.11.04.v2-24",
+  "renderer_version": "2026.11.11.v2-27",
   "variants": {
     "pe_n_distribution": {
       "pdf": "da3386625f76718a397f36493d8a3f8027c8b23c3c964cbff90b0685380248e6",
       "calculations_pdf": "ab09216e6df159e258d97e1926cc919bcb6390e3934724187c589eecce69e9be",
       "quotation_pdf": "cd46fc7d7fe012598972f74e1adac9e41c68ce56c4002c7097dd5383c2b745a1",
       "dxf": "39e9cf4099f2b1cb3ee70be8d425e49fefc31baddcde2a638c5488556b71f889",
-      "json": "78c9ddc16eb89f4e222ab4d0c687d1628f23e11cebd71e5f6027510e8da1242c",
+      "json": "ae4b0921273126b67037ec73765de16c4bd7a49be2cd0f18ba52a2f7efd47c3b",
       "terminal_schedule_pdf": "bc2e4618031a56d602db9f32fce663902f0d1af3b38a349c6fa90b5c92a31f59",
       "wire_schedule_pdf": "898d06c188095a5303e5013638284828f33dcf3676c6d35eb9ca8c3aadec0fe8",
       "connection_drawing_pdf": "98ff3454a64529b44be0545bf9137dcf5b57a3beb3eff14acfb97004a75bca06"
@@ -16,7 +16,7 @@
       "calculations_pdf": "d356e09e465d295bf8a5d87b92da17e125d382f15af1eec8501e667fc3bc3fe9",
       "quotation_pdf": "b5a082f244373c808b54a95a160e1f851ee01a01fac205b4b29f5d6a7480d06c",
       "dxf": "3cd1469e78b32f4c81a2cb535f53322b10c647dc6aec5c7b755454045eccf11d",
-      "json": "b6588711e2e68cfcffc4ff051f03fc44756e691105219ed91150fbd2cca6449d",
+      "json": "393a6140d35a8677d800237c813fb93039f915f32fd311759f07544b62fe4694",
       "terminal_schedule_pdf": "eb5888281ad5cfc894df4fcda8b951f32ace223918191b05e315c3988a52a6b5",
       "wire_schedule_pdf": "6d334d45ea1c7ecef2de9a7667f0a8b071f90d60f567ee0fbd66cbb2d914d416",
       "connection_drawing_pdf": "d0bebaded53c33d4a73d2c417a435530fa863d4fca68853622bb46b313c215d4"
@@ -26,7 +26,7 @@
       "calculations_pdf": "87847208ce94fd57a5fa1c751c2c8683783f2d62a58d5b3a22dac34f4b8bb37c",
       "quotation_pdf": "00c1829753f29f764a6d4eecdd114652b0875fabebf35245d0c2c83940873726",
       "dxf": "89a758e500e918a12819a1391ca971db86c82f5e9a7f868c3534bfe452e62213",
-      "json": "4a3502f99e70db8b9637c389985fdfc56b25d7ffc7c41484b01481f50a30c887",
+      "json": "b1023fab9787e35eea3dadf5f10535550a7080683b58c8de6d8eb2b5a860a6ac",
       "terminal_schedule_pdf": "0047b99c1b9a380981c282c34f7840c1ec7c82d1c02054c66b438876cb50914c",
       "wire_schedule_pdf": "6ca6a08a3283e46bd382a6b7412bbebb5f14f7bc4406ad70a8b2f3cc20ee8904",
       "connection_drawing_pdf": "d091529007b27d77a072ae8d4feef39ae7468a2b7e3041e455df6281d91792f0"
@@ -36,7 +36,7 @@
       "calculations_pdf": "1bfeb93165019a5c942fa4136f56a1ec2efc36f82d98456f1268304ec374e4a9",
       "quotation_pdf": "4d1e2ab9c76f7d77de22d521f34a6aad262841b64e316c0ca479ec8a83794601",
       "dxf": "1d890769fc7dc2854911262b4d4def83accaca72f15dae8261c199a11d0b977d",
-      "json": "eef99d3a45f1d7adfdec681ee5b987ccfa079a33e868b4dbb311b213edba303c",
+      "json": "980401f4bc430dc62b7cecdd52207163a50c5c3fe87e8409b1eb47d5f90ea26f",
       "terminal_schedule_pdf": "37e791974aed46d6bcea580064a8b3b35c21d48b64aa0be8c320a3a413b3fec8",
       "wire_schedule_pdf": "4b1e163a65210a03e8692c127c28316b968dc45bb20cd4be90207facd3e87709",
       "connection_drawing_pdf": "95dd50a5c7ca054124d37056509a74bcf625220eef55011d5d85b9a763730023"
@@ -46,7 +46,7 @@
       "calculations_pdf": "d0325e258fdc85d8e7de3d568db038d2bf77009e72b8dbd33b86e9e31a012be6",
       "quotation_pdf": "22c96cc6788014bcbd1e01709318c50f6c628f4d9d4a60eeb24fa457d8f75433",
       "dxf": "fb611f840e89b2e9ca3b10adc46cf99d303ed299a89b761df6998c66b56fb9b5",
-      "json": "0ce41e0689daee79d122b64a9e2ce0a06b55d5f2515d8dfb765a11e8502a7e63",
+      "json": "83489eb3eb3a0a0c977884e0ddacf0f17208e9c1e9319e8ded0869689b5acf0f",
       "terminal_schedule_pdf": "9736030d70753615f550c0de8290d26625e2f3232aa80952d850c941cec033cd",
       "wire_schedule_pdf": "7a5178fd11bfde75cc0a84fb81e705569a1a4a2f868cae1e8db0ca7efdf969f7",
       "connection_drawing_pdf": "6aa017d1a556f79b9e39a3bb56edc40d1f745c7b7935733acec6c28bb97236ee"

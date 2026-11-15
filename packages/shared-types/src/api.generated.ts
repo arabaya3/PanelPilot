@@ -5676,7 +5676,12 @@ export interface components {
      *             ``pp-design/2`` deployment stores one (``configuration_requires_v2``
      *             otherwise). Bounded and checked by
      *             ``app.domain.design_configuration``: a client never claims a
-     *             review, and defines ``tenant`` refs only.
+     *             review, and defines ``tenant`` refs only. Stored verbatim in the
+     *             revision's requirements record (M7b). ``None`` carries the latest
+     *             revision's stored configuration, re-composed against ``request``.
+     *         configuration_removed: ``True`` (with ``configuration`` ``None``)
+     *             saves the revision with no configuration: the one explicit way to
+     *             stop carrying it (M7b).
      */
     ReviseProjectRequest: {
       request: components['schemas']['ProjectDesignRequest-Input'];
@@ -5690,6 +5695,11 @@ export interface components {
       configuration?: {
         [key: string]: unknown;
       } | null;
+      /**
+       * Configuration Removed
+       * @default false
+       */
+      configuration_removed: boolean;
     };
     /**
      * Revision
@@ -6199,6 +6209,16 @@ export interface components {
       approval_scope_version?: string | null;
       /** Approved Scope Version */
       approved_scope_version?: string | null;
+      /** Configuration */
+      configuration?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Configuration Status
+       * @default none
+       * @enum {string}
+       */
+      configuration_status: 'none' | 'stored' | 'not_recoverable';
     };
     /**
      * ScheduleSuggestionRequest

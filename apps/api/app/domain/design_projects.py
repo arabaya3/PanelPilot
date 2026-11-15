@@ -35,12 +35,13 @@ existed.
 from __future__ import annotations
 
 import base64
+import copy
 import dataclasses
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from pydantic import ValidationError as PydanticValidationError
@@ -1246,6 +1247,10 @@ class _LinkEntry:
     board_refs: Mapping[str, str]
     entered_by_user_id: str | None
     entered_at: str | None
+    #: The previous revision's links: unchanged user content keeps their provenance.
+    prior_links: Sequence[entities.InterBoardLink] = ()
+    #: The previous revision's v2 model: what its link ends resolved to.
+    prior_model: entities.DesignModelV2 | None = None
 
 
 def _validate(
@@ -1315,6 +1320,8 @@ def _validate(
             entry.board_refs,
             entered_by_user_id=entry.entered_by_user_id,
             entered_at=entry.entered_at,
+            prior=entry.prior_links,
+            prior_model=entry.prior_model,
         )
         stored = snapshot_v3_from_v2(stored, links)
     # The findings of what every later read sees: its reviews anchored to the
@@ -1356,6 +1363,113 @@ def _require_v2_writes() -> None:
         )
 
 
+ConfigurationStatus = Literal["none", "stored", "not_recoverable"]
+
+
+def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictError:
+    """A carried configuration that no longer composes with the new request (M7b).
+
+    Nothing is saved: the configuration is never dropped or regenerated. Other
+    refusals (of the request itself) are returned unchanged.
+    """
+    params = dict(exc.params)
+    if exc.code in ("link_terminal_unknown", "link_end_off_board"):
+        out: dict[str, Any] = {
+            "ref": f"{params.get('end', '')} end of {params.get('fed_board', '')}",
+            "kind": "terminal",
+            "link": str(params.get("fed_board", "")),
+            "reason": exc.code,
+        }
+    elif exc.code == "configuration_refused" and params.get("refusal") == "design_refused":
+        # The request itself is refused, not a carried reference: answered as
+        # the existing configuration_refused, with the design's reason.
+        return exc
+    elif exc.code == "configuration_refused":
+        reason = str(params.pop("refusal", "configuration_refused"))
+        out = {
+            **design_configuration.entry_params(reason, params),
+            "reason": reason,
+        }
+    else:
+        return exc
+    return ConflictError(
+        "the configuration carried from the latest revision no longer fits this project: "
+        f"{exc} — edit or remove the reference it names, then save again; nothing was saved",
+        code="configuration_conflict",
+        params=out,
+    )
+
+
+def _stored_links(row: DesignRevisionRow | None) -> tuple[entities.InterBoardLink, ...]:
+    """A revision's stored feeder links (``()`` for none, v1/v2 or unreadable)."""
+    if row is None or row.design_snapshot is None:
+        return ()
+    try:
+        return tuple(read_snapshot(row.design_snapshot).links)
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return ()
+
+
+def _read_v2(stored: Any) -> entities.DesignModelV2 | None:
+    """A stored design's v2 model, or ``None`` (none, v1, or unreadable)."""
+    if stored is None:
+        return None
+    try:
+        return read_snapshot(stored).v2
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return None
+
+
+def _model_configured(model: entities.DesignModelV2 | None) -> bool:
+    """Whether a v2 model was composed from a configuration (strips, patterns ...)."""
+    if model is None:
+        return False
+    return bool(
+        model.strips
+        or model.nets
+        or model.connections
+        or model.wires
+        or model.patterns
+        or any(component.legacy_device_id is None for component in model.components)
+    )
+
+
+def _configuration_of(
+    row: DesignRevisionRow,
+    record: Mapping[str, Any] | None,
+    read: VersionedModel | bool | None = True,
+) -> tuple[dict[str, Any] | None, ConfigurationStatus]:
+    """A revision's stored configuration and its status (M7b).
+
+    ``stored``: the record holds it; ``not_recoverable``: its design was
+    composed from one that was saved before M7b and so not kept apart;
+    ``none`` otherwise.
+    """
+    if record is not None and isinstance(record.get("configuration"), dict):
+        return copy.deepcopy(record["configuration"]), "stored"
+    # ``read``: the design already read (``None``: none readable); ``True``: read it now.
+    model = _read_v2(row.design_snapshot) if read is True else getattr(read, "v2", None)
+    if _model_configured(model):
+        return None, "not_recoverable"
+    return None, "none"
+
+
+def _carried_configuration(
+    row: DesignRevisionRow, record: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """The configuration a save without one carries from ``row``; refused if lost (M7b)."""
+    configuration, status = _configuration_of(row, record)
+    if status == "not_recoverable":
+        raise ConflictError(
+            f"revision {row.number} was composed from a configuration saved before it was "
+            "stored apart, so it cannot be carried without loss; enter the configuration "
+            "again (or remove it explicitly) and save",
+            code="configuration_not_recoverable",
+            params={"revision": row.number},
+        )
+    return configuration
+
+
 def _add_revision(
     session: Session,
     project: DesignProjectRow,
@@ -1368,25 +1482,40 @@ def _add_revision(
     prior: Mapping[str, Any] | None = None,
     answered: Sequence[Mapping[str, Any]] = (),
     resaved_from: int | None = None,
+    carried: bool = False,
 ) -> None:
+    """Add the project's next revision.
+
+    ``configuration`` is stored verbatim in the revision's requirements record
+    (M7b); ``carried`` says it came from an earlier revision, so a refusal to
+    compose it is a ``configuration_conflict``.
+    """
     if project.revision_count >= MAX_REVISIONS:
         raise ValidationError(
             f"a project holds at most {MAX_REVISIONS} revisions",
             code="project_revisions_full",
             params={"limit": str(MAX_REVISIONS)},
         )
+    previous = _revisions(session, project)[-1] if project.revision_count else None
     project.revision_count += 1
     saving_account = _account_id(user) if user.email else None
-    columns = _validate(
-        request,
-        configuration,
-        engineering_reviews.anchor_for(session=session, tenant_id=tenant),
-        _LinkEntry(
-            board_refs=requirements.board_refs(request, prior),
-            entered_by_user_id=str(saving_account) if saving_account is not None else None,
-            entered_at=_now_iso(),
-        ),
-    )
+    try:
+        columns = _validate(
+            request,
+            configuration,
+            engineering_reviews.anchor_for(session=session, tenant_id=tenant),
+            _LinkEntry(
+                board_refs=requirements.board_refs(request, prior),
+                entered_by_user_id=str(saving_account) if saving_account is not None else None,
+                entered_at=_now_iso(),
+                prior_links=_stored_links(previous),
+                prior_model=_read_v2(previous.design_snapshot) if previous is not None else None,
+            ),
+        )
+    except ValidationError as exc:
+        if carried and configuration is not None:
+            raise _configuration_conflict(exc) from exc
+        raise
     stored_read = (
         read_snapshot(columns["design_snapshot"])
         if columns.get("design_snapshot") is not None
@@ -1431,6 +1560,11 @@ def _add_revision(
     if resaved_from is not None:
         # A pp-req/1 addition: the revision whose stored request this one re-designed.
         record["resaved_from"] = resaved_from
+    if configuration is not None:
+        # M7b: verbatim, so it is carried losslessly and the requirements hash
+        # (the approval binding) covers it. Absent with none: a record without
+        # it stores byte for byte as before.
+        record["configuration"] = copy.deepcopy(dict(configuration))
     revision = DesignRevisionRow(
         tenant_id=tenant,
         project_id=project.id,
@@ -1571,6 +1705,9 @@ def _opened(
     )
     opened.approval_scope_version = approval_scope.APPROVAL_SCOPE_VERSION
     opened.approved_scope_version = chosen.approved_scope_version
+    opened.configuration, opened.configuration_status = _configuration_of(
+        chosen, stored_record, checked.read
+    )
     return opened if readable else opened.as_stored(stored)
 
 
@@ -1659,6 +1796,14 @@ def revise_project(
         check_requirements_input(request.request, request.requirements_input)
         # Raising the revision count updates the row, which moves its
         # ``updated_at`` (the list's order) to now.
+        latest_row = _revisions(session, project)[-1]
+        prior = _stored_record(latest_row)
+        configuration = request.configuration
+        carried = False
+        if configuration is None and not request.configuration_removed:
+            # M7b: a save without a configuration carries the latest one.
+            configuration = _carried_configuration(latest_row, prior)
+            carried = configuration is not None
         _add_revision(
             session,
             project,
@@ -1666,9 +1811,10 @@ def revise_project(
             user,
             request.request,
             request.note,
-            request.configuration,
+            configuration,
             requirements_input=request.requirements_input,
-            prior=_stored_record(_revisions(session, project)[-1]),
+            prior=prior,
+            carried=carried,
         )
         # The number this save took: by the time it is opened, a concurrent
         # save may have added a later one.
@@ -2022,10 +2168,8 @@ def resave_revision(
                 code="revision_not_validated",
                 params={"revision": number, "reason": "request_not_valid"},
             )
-        stored = checked.read.v2 if checked.read is not None else None
-        if stored is not None and any(
-            (stored.strips, stored.nets, stored.connections, stored.wires, stored.patterns)
-        ):
+        configuration, configuration_status = _configuration_of(row, record)
+        if configuration_status == "not_recoverable":
             # The configuration is composed into the snapshot, not kept apart:
             # a re-save of the request alone would silently drop it.
             raise ConflictError(
@@ -2048,8 +2192,10 @@ def resave_revision(
             user,
             entered,
             f"Re-saved from revision {number} for independent review",
+            configuration,
             prior=record if not record.get("derived") else {**record, "acknowledgements": []},
             resaved_from=number,
+            carried=configuration is not None,
         )
         latest = project.revision_count
         session.commit()
@@ -2455,7 +2601,7 @@ def _schedule_export(
     link_rows = link_model.rows(model, read.links)
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
-            connection_drawing.drawing_set(model),
+            connection_drawing.drawing_set(model, link_ends=link_model.link_end_notes(link_rows)),
             connection_drawing_pdf.DrawingHeader(
                 project=header.project,
                 revision=header.revision,
@@ -2989,6 +3135,8 @@ def answer_question(
                     code="question_not_answerable",
                     params={"field": question.get("field") or ""},
                 )
+            # M7b: the answer carries the revision's configuration (refused if lost).
+            configuration = _carried_configuration(row, record)
             entered = ProjectDesignRequest.model_validate(row.request)
             answered = _answered_request(entered, record, question, action.value)
             # A typed feeder an earlier revision holds is refused here too.
@@ -3001,6 +3149,7 @@ def answer_question(
                 user,
                 answered,
                 f"Answered: {question['field']}",
+                configuration,
                 prior=record if not record.get("derived") else {**record, "acknowledgements": []},
                 answered=[
                     {
@@ -3011,6 +3160,7 @@ def answer_question(
                         "at": now,
                     }
                 ],
+                carried=configuration is not None,
             )
             number = project.revision_count
         session.commit()

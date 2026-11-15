@@ -71,7 +71,8 @@ export function FeederLinkForm({
   function end(role: 'from' | 'to') {
     const board = role === 'from' ? supplyBoard : fedBoard;
     const current: LinkEndForm = link[role];
-    const options = terminalOptions(model, board);
+    const options = terminalOptions(model, board, t('unnamed'), (side) => t(`side.${side}`));
+    const chosen = options.find((option) => option.value === current.terminal);
     const set = (patch: Partial<LinkEndForm>) => {
       update({ ...link, [role]: { ...current, ...patch } });
     };
@@ -88,7 +89,7 @@ export function FeederLinkForm({
         <Field id={`${base}-terminal`} label={t('terminal', { board })}>
           <select
             id={`${base}-terminal`}
-            className="input w-full"
+            className="input w-full min-w-0 max-w-full"
             dir="auto"
             value={current.terminal}
             data-testid={`link-${role}-terminal`}
@@ -104,6 +105,15 @@ export function FeederLinkForm({
             ))}
           </select>
         </Field>
+        {chosen && (
+          <p
+            className="min-w-0 break-words text-xs"
+            dir="auto"
+            data-testid={`link-${role}-terminal-chosen`}
+          >
+            {t('terminalChosen', { terminal: chosen.text })}
+          </p>
+        )}
         {options.length === 0 && (
           <p className="text-xs text-text-muted" data-testid={`link-${role}-no-terminals`}>
             {t('noTerminals', { board })}
@@ -283,7 +293,10 @@ export function StoredLinks({
     (LINK_ATTRIBUTES as readonly string[]).includes(key) ? t(`attr.${key as LinkAttribute}`) : key;
 
   function endText(end: StoredLinkEnd): string {
-    if (end.terminal) return t('endTerminal', { terminal: terminalText(end.terminal, model) });
+    if (end.terminal)
+      return t('endTerminal', {
+        terminal: terminalText(end.terminal, model, (side) => t(`side.${side}`)),
+      });
     // A label is the user's text: the end stays not set, and says so first.
     if (end.label) return `${t('endNotSetStored')}; ${t('endLabelStored', { label: end.label })}`;
     return t('endNotSetStored');
