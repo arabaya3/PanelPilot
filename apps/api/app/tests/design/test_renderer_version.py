@@ -260,12 +260,14 @@ RECORDED_V2 = Path(__file__).with_name("renderer_fingerprints_v2.json")
 
 #: The configured synthetic cases a v2 revision's exports are rendered from:
 #: the data-only PE/N distribution, the I/O marshalling strip, and the two
-#: connection drawing cases with symbol data (M4).
+#: connection drawing cases with symbol data (M4), and the crowded routed case
+#: (M5: crossings, continuations across sheets, unrouted connections).
 V2_CASES = (
     "pe_n_distribution",
     "io_marshalling",
     "drawing_control_relay",
     "drawing_heldout_feeder",
+    "drawing_routed_crowded",
 )
 
 #: What a v2 revision exports for review: the v1 formats (printing the v2

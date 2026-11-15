@@ -204,6 +204,7 @@ def test_the_held_out_configuration_is_data_only() -> None:
         for path in (
             DESIGN_DIR / "connection_drawing_pdf.py",
             DESIGN_DIR / "model" / "connection_drawing.py",
+            DESIGN_DIR / "model" / "connection_routing.py",
         )
     )
     names: set[str] = set()

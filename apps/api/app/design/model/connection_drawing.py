@@ -37,6 +37,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
@@ -64,6 +65,9 @@ BODY_PT = 6.0
 #: Secondary text only: the grey wire-detail and net lines under a
 #: cross-reference or a marking, and pin markings repeated at a symbol.
 SECONDARY_PT = 5.0
+#: Grey detail lines under a row: wire id and values, the net (M5: raised from 5 pt
+#: after the print-size review; pin markings at a symbol stay at SECONDARY_PT).
+DETAIL_PT = 6.0
 #: Block titles.
 TITLE_PT = 7.5
 
@@ -100,8 +104,11 @@ ZONE_ROW = (AREA_TOP - AREA_BOTTOM) / ZONE_ROWS
 #: gutter of lead lanes, the terminals' points, their marking column and the
 #: cross-reference text.
 SYMBOL_LEFT = 2 * MM
-POINT = 36 * MM
-GUTTER_END = POINT - 4 * MM
+POINT = 41 * MM
+#: The lead lanes end here; a terminal's dotted or dash-dot stub fills the 9 mm
+#: from here to its point (M5: at least 8 mm, so the two patterns tell apart).
+GUTTER_END = POINT - 9 * MM
+STUB = 8 * MM
 MARK_LEFT = POINT + 2 * MM
 MARK_RIGHT = POINT + 21 * MM
 TEXT_LEFT = MARK_RIGHT + 4 * MM
@@ -188,7 +195,8 @@ class End:
         wire_missing: ``True`` for a ``via: wire`` connection with no wire record.
         core: The cable core, for ``via: cable_core``.
         far_board: The other end's board.
-        qualified: Whether the far end is on another board, so its label is
+        qualified: Whether the far end is named with its board: it is on another
+            board, or the end's sheet shows more than one board; its label is
             printed with its board (``<board>/<label>``).
         pattern_ref: The pattern that declared the connection, or ``None``.
         bridge: Whether it joins a strip point's two sides (drawn with a
@@ -368,6 +376,8 @@ class BlockPart:
     left: float = 0.0
     right: float = 0.0
     pins_dropped: tuple[str, ...] = ()
+    #: The points of terminals with two or more connections: drawn as junction dots.
+    junctions: tuple[Point, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -411,6 +421,7 @@ OPEN_KINDS = (
     "symbol_not_defined",
     "leads_not_drawn",
     "no_terminals_defined",
+    "unrouted",
 )
 
 
@@ -449,6 +460,11 @@ class DrawingSet:
     owners: dict[tuple[str, str], tuple[str, Place]] = field(default_factory=dict)
     boards_share_sheets: bool = BOARDS_SHARE_SHEETS
     pins_off: frozenset[tuple[str, str]] = frozenset()
+    #: The routed sheets (``connection_routing.RoutedSet``), drawn after these sheets.
+    routed: Any = None
+    #: The sheet each row end's line is printed on, by (row index, end index):
+    #: a row continued on another sheet reads its references from there.
+    line_sheets: dict[tuple[int, int], int] = field(default_factory=dict)
 
     def terminal_keys(self) -> set[tuple[str, str, str]]:
         """The ``TerminalRef.key`` of every drawn terminal row."""
@@ -537,7 +553,10 @@ def wire_text(wire: schedules.WireRow) -> str:
 
 
 def far_name(end: End) -> str:
-    """The far end's label as printed: with its board when that is another board."""
+    """The far end's label as printed, with its board where that is needed.
+
+    That is when it is on another board, or when the sheet shows more than one board.
+    """
     return f"{end.far_board}/{end.far_label}" if end.qualified else end.far_label
 
 
@@ -1074,13 +1093,39 @@ def drawing_set(
     # A cross-reference's text depends on where its far end is drawn, and
     # where things are drawn depends on how long the texts are: lay out
     # again with the places found until they no longer change.
+    line_sheets: dict[tuple[int, int], int] = {}
+    shown: dict[int, frozenset[str]] | None = None
     for _round in range(8):
-        result = _lay_out(model, places, boards_share_sheets, pins_off)
-        if result.places == places and result.pins_off == pins_off:
+        result = _lay_out(model, places, boards_share_sheets, pins_off, line_sheets, shown)
+        found = {
+            sheet.number: frozenset((sheet.board_id, *sheet.boards)) for sheet in result.sheets
+        }
+        if (
+            result.places == places
+            and result.pins_off == pins_off
+            and result.line_sheets == line_sheets
+            and found == shown
+        ):
             break
-        places, pins_off = result.places, result.pins_off
+        places, pins_off, line_sheets = result.places, result.pins_off, result.line_sheets
+        shown = found
     assert result is not None
-    return result
+    from app.design.model import connection_routing  # the routing reads this module
+
+    routed = connection_routing.routed_set(model, result)
+    rank = {kind: n for n, kind in enumerate(OPEN_KINDS)}
+    items = sorted(
+        (*result.open_items, *routed.open_items),
+        key=lambda item: (
+            rank[item.kind],
+            item.board_id,
+            (item.place.sheet, item.place.column, item.place.slot) if item.place else (0, 0, 0),
+            item.text,
+        ),
+    )
+    return dataclasses.replace(
+        result, routed=routed, open_items=tuple(items), full_texts=routed.full_texts
+    )
 
 
 def _column_left(column: int) -> float:
@@ -1106,6 +1151,8 @@ def _lay_out(
     previous: dict[Key, Place] | None,
     share: bool,
     pins_off: frozenset[tuple[str, str]] = frozenset(),
+    line_sheets: dict[tuple[int, int], int] | None = None,
+    shown: dict[int, frozenset[str]] | None = None,
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1124,6 +1171,15 @@ def _lay_out(
     # Before any place is known, a far end is taken to be on a far sheet.
     estimate = Place(10**3, 0, 0, AREA_RIGHT - 1, AREA_BOTTOM + 1)
     known = previous or {}
+    # On a sheet showing more than one board (as the last round laid it out),
+    # every far end is named with its board.
+    several = share and len(set(boards.values())) > 1
+
+    def mixed(key: Key) -> bool:
+        place = known.get(key)
+        if place is None or shown is None:
+            return several  # before any place is known
+        return len(shown.get(place.sheet, frozenset())) > 1
 
     all_ends: list[list[End]] = []
     for index, key in enumerate(keys):
@@ -1145,7 +1201,7 @@ def _lay_out(
                     wire_missing=connection.via == "wire" and wire is None,
                     core=connection.core,
                     far_board=far_board,
-                    qualified=far_board != terminal_rows[index].board_id,
+                    qualified=far_board != terminal_rows[index].board_id or mixed(key),
                     pattern_ref=connection.pattern_ref,
                     bridge=key[0] == "point" and far.key[0] == "point" and far.key[1] == key[1],
                 )
@@ -1156,7 +1212,9 @@ def _lay_out(
         for index, row in enumerate(terminal_rows)
     }
 
-    blocks = _blocks(model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts)
+    blocks = _blocks(
+        model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts, line_sheets or {}
+    )
     for block in blocks:
         off = frozenset(t for owner, t in pins_off if owner == block.owner_id)
         if off and block.kind == "component":
@@ -1176,7 +1234,13 @@ def _lay_out(
     dropped = {
         (p.owner_id, t) for sheet in drawn.sheets for p in sheet.parts for t in p.pins_dropped
     }
-    return dataclasses.replace(drawn, pins_off=pins_off | dropped)
+    printed_on = {
+        (spec.rows[0], spec.index): p.sheet
+        for p in placed
+        for spec, _slot, _span in p.lines
+        if spec.kind == "end"
+    }
+    return dataclasses.replace(drawn, pins_off=pins_off | dropped, line_sheets=printed_on)
 
 
 def _blocks(
@@ -1188,6 +1252,7 @@ def _blocks(
     templates: dict[str, entities.ComponentTemplate],
     known: dict[Key, Place],
     cuts: FullTexts,
+    line_sheets: dict[tuple[int, int], int],
 ) -> list[_Block]:
     # Owners in schedule order, each with its rows' indexes.
     owners: list[tuple[str, str, str, list[int]]] = []
@@ -1221,12 +1286,14 @@ def _blocks(
     ) -> list[_Half]:
         return [(line, size, bold, tone, role, n) for line in wrap(text, room, size, bold, cuts)]
 
-    def here_of(index: int) -> int:
+    def here_of(index: int, n: int = -1) -> int:
+        if (index, n) in line_sheets:
+            return line_sheets[(index, n)]
         return known[keys[index]].sheet if keys[index] in known else -1
 
     def end_spec(index: int, n: int, first: bool, text_room: float) -> _Spec:
         end = all_ends[index][n]
-        a, b = end_texts(end, here_of(index))
+        a, b = end_texts(end, here_of(index, n))
         loud = end.wire_missing
         return _Spec(
             (index,),
@@ -1235,7 +1302,7 @@ def _blocks(
             first,
             halves(a, BODY_PT, text_room, tone="plain", role="far", n=n)
             + halves(
-                b, SECONDARY_PT, text_room, bold=loud, tone="loud" if loud else "grey",
+                b, DETAIL_PT, text_room, bold=loud, tone="loud" if loud else "grey",
                 role="detail", n=n,
             ),
         )  # fmt: skip
@@ -1280,13 +1347,15 @@ def _blocks(
         notes: list[str] = [f"template {template_ref}" if template_ref else "no template"]
         if designation is None:
             notes.append(f"designation {NOT_SET} (id {owner_id})")
+        if symbol is not None:
+            notes.append(symbol_status(template))
         if not indexes:
             notes.append(
                 "no terminals defined in its template" if kind == "component" else "no points"
             )
         block = _Block(board_id, kind, owner_id, name, notes, template_ref, symbol)
         _widen(block, [terminal_rows[i] for i in indexes], [
-            end_texts(end, here_of(i))[0] for i in indexes for end in all_ends[i]
+            end_texts(end, here_of(i, n))[0] for i in indexes for n, end in enumerate(all_ends[i])
         ])  # fmt: skip
         text_room = block.text_right - block.text_left
         ordered = list(indexes)
@@ -1401,8 +1470,8 @@ def _mark_lines(row: schedules.TerminalRow, cont: bool, room: float) -> list[_Ha
     ]
     if True:  # the net is repeated on a continued row
         out += [
-            (t, SECONDARY_PT, False, "grey", "net", 0)
-            for t in wrap(row_net(row), room, SECONDARY_PT, False, cuts)
+            (t, DETAIL_PT, False, "grey", "net", 0)
+            for t in wrap(row_net(row), room, DETAIL_PT, False, cuts)
         ]
     return out
 
@@ -1433,7 +1502,22 @@ def _header(
 
 
 #: Header notes about a block's symbol, printed on its first part only.
-_SYMBOL_NOTES = ("pin markings", "rows in the symbol", "no leads drawn", "leads not drawn")
+_SYMBOL_NOTES = (
+    "symbol ",
+    "pin markings",
+    "rows in the symbol",
+    "no leads drawn",
+    "leads not drawn",
+)
+
+
+def symbol_status(template: entities.ComponentTemplate | None) -> str:
+    """A symbol's review status as printed at its block: never implies a reviewed meaning."""
+    if template is None or template.symbol is None:
+        return SYMBOL_NOT_DEFINED
+    if template.review.status == "approved":
+        return "symbol reviewed (template approved)"
+    return f"symbol {template.review.status}: its drawing asserts nothing"
 
 
 def _continued_title(block: _Block) -> str:
@@ -1693,6 +1777,7 @@ def _draw(
     point_y: dict[int, float] = {}
     rows_y: dict[str, float] = {}
     point_rows: list[Row] = []
+    junctions: list[Point] = []
     for n, (spec, slot, span) in enumerate(p.lines):
         line_top = _slot_top(slot)
         mid = line_top - HALF
@@ -1734,6 +1819,8 @@ def _draw(
                 )
             ]
             points.append((point_x, mid))
+            if len(row.ends) >= 2:
+                junctions.append((point_x, mid))
             point_rows.append(row)
             point_y[index] = mid
             if spec.first and row.terminal.owner_kind == "component":
@@ -1770,7 +1857,7 @@ def _draw(
         # The symbol (or placeholder) is drawn on the block's first part only.
         pinned_ids = {a.terminal for a in block.symbol.anchors} if block.symbol else set()
         for (_x, y), row in zip(points, point_rows, strict=False):
-            stub = ((point_x - 3 * MM, y), (point_x, y))
+            stub = ((point_x - STUB, y), (point_x, y))
             if row.terminal.owner_kind == "component" and row.terminal.terminal_id in pinned_ids:
                 pinned.append(stub)
             else:
@@ -1802,7 +1889,7 @@ def _draw(
         for (_x, y), row in zip(points, point_rows, strict=False):
             if y in lead_ys:
                 continue
-            stub = ((point_x - 3 * MM, y), (point_x, y))
+            stub = ((point_x - STUB, y), (point_x, y))
             if row.terminal.terminal_id in pinned_ids:
                 pinned.append(stub)  # a pin on the symbol, but no lead drawn
             else:
@@ -1849,6 +1936,7 @@ def _draw(
         left=left,
         right=left + block.cols * COLUMN,
         pins_dropped=pins_dropped,
+        junctions=tuple(junctions),
     )
 
 

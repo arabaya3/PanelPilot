@@ -1,0 +1,1137 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+  "fixture": "multi_board",
+  "configuration": {
+    "name": "synthetic routed crowded drawing",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-rt-common/v1",
+        "function": "distribution_block",
+        "terminals": [
+          {
+            "id": "c",
+            "marking": "C",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "r",
+            "marking": "R",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 6,
+          "height": 8,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                1,
+                4,
+                6
+              ],
+              "text": null
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "c",
+              "x": 6,
+              "y": 2
+            },
+            {
+              "terminal": "r",
+              "x": 6,
+              "y": 6
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-rt-io/v1",
+        "function": "io_module",
+        "terminals": [
+          {
+            "id": "i1",
+            "marking": "I1",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "i2",
+            "marking": "I2",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "i3",
+            "marking": "I3",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "i4",
+            "marking": "I4",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 8,
+          "height": 10,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                0,
+                6,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                2,
+                6
+              ],
+              "text": "IO"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "i1",
+              "x": 8,
+              "y": 2
+            },
+            {
+              "terminal": "i2",
+              "x": 8,
+              "y": 4
+            },
+            {
+              "terminal": "i3",
+              "x": 8,
+              "y": 6
+            },
+            {
+              "terminal": "i4",
+              "x": 8,
+              "y": 8
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-rt-sensor/v1",
+        "function": "sensor",
+        "terminals": [
+          {
+            "id": "s1",
+            "marking": "1",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "s2",
+            "marking": "2",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "s3",
+            "marking": "3",
+            "kind": "signal",
+            "required": false,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-rt-strip/v1",
+        "function": "terminal_type",
+        "terminals": [],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 4,
+          "height": 10,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                0,
+                2,
+                10
+              ],
+              "text": null
+            }
+          ],
+          "anchors": []
+        }
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-rt-panel/v1",
+        "slots": [
+          {
+            "id": "com",
+            "template": "tenant/synth-rt-common/v1"
+          },
+          {
+            "id": "io1",
+            "template": "tenant/synth-rt-io/v1"
+          },
+          {
+            "id": "io2",
+            "template": "tenant/synth-rt-io/v1"
+          },
+          {
+            "id": "b1",
+            "template": "tenant/synth-rt-sensor/v1"
+          },
+          {
+            "id": "b2",
+            "template": "tenant/synth-rt-sensor/v1"
+          },
+          {
+            "id": "b3",
+            "template": "tenant/synth-rt-sensor/v1"
+          },
+          {
+            "id": "b4",
+            "template": "tenant/synth-rt-sensor/v1"
+          },
+          {
+            "id": "b5",
+            "template": "tenant/synth-rt-sensor/v1"
+          }
+        ],
+        "strips": [
+          "x"
+        ],
+        "points": [
+          {
+            "id": "x01",
+            "strip": "x",
+            "offset": 1,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x02",
+            "strip": "x",
+            "offset": 2,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x03",
+            "strip": "x",
+            "offset": 3,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x04",
+            "strip": "x",
+            "offset": 4,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x05",
+            "strip": "x",
+            "offset": 5,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x06",
+            "strip": "x",
+            "offset": 6,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x07",
+            "strip": "x",
+            "offset": 7,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x08",
+            "strip": "x",
+            "offset": 8,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x09",
+            "strip": "x",
+            "offset": 9,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x10",
+            "strip": "x",
+            "offset": 10,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x11",
+            "strip": "x",
+            "offset": 11,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x12",
+            "strip": "x",
+            "offset": 12,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x13",
+            "strip": "x",
+            "offset": 13,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x14",
+            "strip": "x",
+            "offset": 14,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x15",
+            "strip": "x",
+            "offset": 15,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x16",
+            "strip": "x",
+            "offset": 16,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x17",
+            "strip": "x",
+            "offset": 17,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x18",
+            "strip": "x",
+            "offset": 18,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x19",
+            "strip": "x",
+            "offset": 19,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x20",
+            "strip": "x",
+            "offset": 20,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x21",
+            "strip": "x",
+            "offset": 21,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x22",
+            "strip": "x",
+            "offset": 22,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x23",
+            "strip": "x",
+            "offset": 23,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x24",
+            "strip": "x",
+            "offset": 24,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x25",
+            "strip": "x",
+            "offset": 25,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x26",
+            "strip": "x",
+            "offset": 26,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x27",
+            "strip": "x",
+            "offset": 27,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x28",
+            "strip": "x",
+            "offset": 28,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x29",
+            "strip": "x",
+            "offset": 29,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x30",
+            "strip": "x",
+            "offset": 30,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x31",
+            "strip": "x",
+            "offset": 31,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x32",
+            "strip": "x",
+            "offset": 32,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x33",
+            "strip": "x",
+            "offset": 33,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "x34",
+            "strip": "x",
+            "offset": 34,
+            "level": 1,
+            "kind": "signal"
+          }
+        ],
+        "nets": [
+          {
+            "role": "common",
+            "signal": "SYN-RT-COM",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "com",
+                "terminal": "c"
+              },
+              {
+                "slot": "b1",
+                "terminal": "s1"
+              },
+              {
+                "slot": "b2",
+                "terminal": "s1"
+              },
+              {
+                "slot": "b3",
+                "terminal": "s1"
+              },
+              {
+                "slot": "b4",
+                "terminal": "s1"
+              },
+              {
+                "slot": "b5",
+                "terminal": "s1"
+              },
+              {
+                "point": "x01",
+                "side": "inner"
+              },
+              {
+                "point": "x02",
+                "side": "inner"
+              },
+              {
+                "point": "x03",
+                "side": "inner"
+              },
+              {
+                "point": "x04",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 2,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 3,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 4,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 5,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 6,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 7,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 8,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 9,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig0",
+            "signal": "SYN-RT-S0",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io1",
+                "terminal": "i1"
+              },
+              {
+                "point": "x30",
+                "side": "inner"
+              },
+              {
+                "point": "x30",
+                "side": "outer"
+              },
+              {
+                "slot": "b1",
+                "terminal": "s2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig1",
+            "signal": "SYN-RT-S1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io1",
+                "terminal": "i2"
+              },
+              {
+                "point": "x12",
+                "side": "inner"
+              },
+              {
+                "point": "x12",
+                "side": "outer"
+              },
+              {
+                "slot": "b2",
+                "terminal": "s2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig2",
+            "signal": "SYN-RT-S2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io1",
+                "terminal": "i3"
+              },
+              {
+                "point": "x25",
+                "side": "inner"
+              },
+              {
+                "point": "x25",
+                "side": "outer"
+              },
+              {
+                "slot": "b3",
+                "terminal": "s2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig3",
+            "signal": "SYN-RT-S3",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io1",
+                "terminal": "i4"
+              },
+              {
+                "point": "x06",
+                "side": "inner"
+              },
+              {
+                "point": "x06",
+                "side": "outer"
+              },
+              {
+                "slot": "b4",
+                "terminal": "s2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig4",
+            "signal": "SYN-RT-S4",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io2",
+                "terminal": "i1"
+              },
+              {
+                "point": "x20",
+                "side": "inner"
+              },
+              {
+                "point": "x20",
+                "side": "outer"
+              },
+              {
+                "slot": "b5",
+                "terminal": "s2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig5",
+            "signal": "SYN-RT-S5",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io2",
+                "terminal": "i2"
+              },
+              {
+                "point": "x08",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig6",
+            "signal": "SYN-RT-S6",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io2",
+                "terminal": "i3"
+              },
+              {
+                "point": "x33",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "sig7",
+            "signal": "SYN-RT-S7",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io2",
+                "terminal": "i4"
+              },
+              {
+                "point": "x15",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "ret",
+            "signal": "SYN-RT-RET",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "x10",
+                "side": "inner"
+              },
+              {
+                "point": "x09",
+                "side": "inner"
+              },
+              {
+                "point": "x11",
+                "side": "inner"
+              },
+              {
+                "slot": "com",
+                "terminal": "r"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              },
+              {
+                "from": 0,
+                "to": 2,
+                "via": "jumper"
+              },
+              {
+                "from": 0,
+                "to": 3,
+                "via": "wire"
+              }
+            ]
+          }
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
+      }
+    ],
+    "strips": [
+      {
+        "id": "XR",
+        "board": "SMDB-2",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "XR"
+        },
+        "template": "tenant/synth-rt-strip/v1"
+      }
+    ],
+    "components": [
+      {
+        "id": "rt-com",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-common/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "A1"
+        }
+      },
+      {
+        "id": "rt-io1",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-io/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "A2"
+        }
+      },
+      {
+        "id": "rt-io2",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-io/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "A3"
+        }
+      },
+      {
+        "id": "rt-b1",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-sensor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "B1"
+        }
+      },
+      {
+        "id": "rt-b2",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-sensor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "B2"
+        }
+      },
+      {
+        "id": "rt-b3",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-sensor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "B3"
+        }
+      },
+      {
+        "id": "rt-b4",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-sensor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "B4"
+        }
+      },
+      {
+        "id": "rt-b5",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rt-sensor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "B5"
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "id": "rt-1",
+        "pattern": "tenant/synth-rt-panel/v1",
+        "board": "SMDB-2",
+        "circuit": null,
+        "slots": {
+          "com": {
+            "component": "rt-com"
+          },
+          "io1": {
+            "component": "rt-io1"
+          },
+          "io2": {
+            "component": "rt-io2"
+          },
+          "b1": {
+            "component": "rt-b1"
+          },
+          "b2": {
+            "component": "rt-b2"
+          },
+          "b3": {
+            "component": "rt-b3"
+          },
+          "b4": {
+            "component": "rt-b4"
+          },
+          "b5": {
+            "component": "rt-b5"
+          }
+        },
+        "strips": {
+          "x": "XR"
+        },
+        "markings": {
+          "x01": "1",
+          "x02": "2",
+          "x03": "3",
+          "x04": "4",
+          "x05": "5",
+          "x06": "6",
+          "x07": "7",
+          "x08": "8",
+          "x09": "9",
+          "x10": "10",
+          "x11": "11",
+          "x12": "12",
+          "x13": "13",
+          "x14": "14",
+          "x15": "15",
+          "x16": "16",
+          "x17": "17",
+          "x18": "18",
+          "x19": "19",
+          "x20": "20",
+          "x21": "21",
+          "x22": "22",
+          "x23": "23",
+          "x24": "24",
+          "x25": "25",
+          "x26": "26",
+          "x27": "27",
+          "x28": "28",
+          "x29": "29",
+          "x30": "30",
+          "x31": "31",
+          "x32": "32",
+          "x33": "33",
+          "x34": "34"
+        },
+        "cable": null,
+        "wires": {
+          "common/0": {
+            "number": {
+              "value": "SYN-RT-100",
+              "source": "user"
+            }
+          },
+          "sig0/0": {
+            "colour": {
+              "value": "SYN-COLOUR-R",
+              "source": "user"
+            },
+            "cross_section_mm2": {
+              "value": "1",
+              "source": "assumption",
+              "statement": "Synthetic illustrative assumption for the drawing test only."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 34,
+    "nets": 10,
+    "connections": 30,
+    "wires": 23,
+    "sha256": "27ab8b3e064fa3daacf9a761004b54c2e4ba451c49ece5279fc63eabc96b7f59"
+  }
+}

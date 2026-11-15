@@ -652,6 +652,16 @@ class Page:
     def is_drawing(self) -> bool:
         return len(self.columns) >= 2 and len(self.rows) >= 2
 
+    @property
+    def is_routed(self) -> bool:
+        """A routed sheet (M5): its lines join terminal points, it has no symbol leads."""
+        return self.is_drawing and "ROUTEDCONNECTIONSHEET" in squash(self.text)
+
+    @property
+    def is_cross_reference(self) -> bool:
+        """A cross-reference sheet (M4): blocks, leads, stubs and per-row cross-references."""
+        return self.is_drawing and not self.is_routed
+
     def zone_of(self, x: float, y: float) -> str | None:
         number = next((n for right, n in self.columns if x < right), None)
         letter = next((n for bottom, n in self.rows if y < bottom), None)
@@ -1082,7 +1092,7 @@ def _zone_name(page: Page, p: P) -> str:
 def lead_problems(pages: Sequence[Page]) -> list[str]:
     problems: list[str] = []
     for page in pages:
-        if not page.is_drawing:
+        if not page.is_cross_reference:
             continue
         for dot in page.dots:
             if not any(dot in b.dots for b in page.blocks):
@@ -1160,7 +1170,7 @@ def test_the_lead_reader_finds_the_leads_it_must() -> None:
         for c in model.components
         if (t := model.template(c.template_ref)) is not None and t.symbol is not None
     )
-    pages = [p for p in sheets_of("config:drawing_control_relay") if p.is_drawing]
+    pages = [p for p in sheets_of("config:drawing_control_relay") if p.is_cross_reference]
     solid = [
         lead
         for p in pages
@@ -1407,15 +1417,38 @@ def _owner_names(model: entities.DesignModelV2) -> list[str]:
     return sorted(names, key=len, reverse=True)
 
 
-def _blocks_named(page: Page, name: str) -> list[BlockRead]:
-    return [b for b in page.blocks if squash(b.header.text).startswith(squash(name) + "(")]
+def _blocks_named(page: Page, name: str, board: str | None = None) -> list[BlockRead]:
+    return [
+        b
+        for b in page.blocks
+        if squash(b.header.text).startswith(squash(name) + "(")
+        and (board is None or _board_of(b) == board)
+    ]
 
 
-def _marking_at(page: Page, name: str, marking_text: str) -> tuple[Run, P] | None:
-    """The marking run nearest its point on the same row, in a block of that owner, and the point."""
+_BOARD = re.compile(r", board (\S+)")
+
+
+def _board_of(block: BlockRead) -> str | None:
+    """The board a block's header names (", board <id>"), if it names one."""
+    found = _BOARD.search(block.header.text)
+    return found.group(1) if found else None
+
+
+def _page_boards(page: Page) -> set[str]:
+    return {b for block in page.blocks if (b := _board_of(block)) is not None}
+
+
+def _marking_at(
+    page: Page, name: str, marking_text: str, board: str | None = None
+) -> tuple[Run, P] | None:
+    """The marking run nearest its point on the same row, in a block of that owner, and the point.
+
+    With ``board``, only that board's blocks of the owner count.
+    """
     want = squash(marking_text)
     found: list[tuple[float, Run, P]] = []
-    for block in _blocks_named(page, name):
+    for block in _blocks_named(page, name, board):
         for dot in block.dots:
             for run in page.runs:
                 if (
@@ -1438,22 +1471,34 @@ def test_every_zone_reference_points_where_the_far_end_is_printed(case: str) -> 
     model, _ = build(case)
     pages = sheets_of(case)
     names = _owner_names(model)
+    boards = {c.board_id for c in model.components} | {s.board_id for s in model.strips}
     problems: list[str] = []
     found = 0
     for page in pages:
-        if not page.is_drawing:
+        if not page.is_cross_reference:
             continue
+        shown = _page_boards(page)
         for text in page.paragraphs:
             for ref in _REF.finditer(text):
                 found += 1
                 label, zone = ref["label"], ref["zone"]
                 sheet = int(ref["sheet"]) if ref["sheet"] else page.number
+                # A far end may name its board ("<board>/<label>"): required when the
+                # sheet shows more than one board, optional on a one-board sheet.
+                board = next((b for b in boards if label.startswith(b + "/")), None)
+                if board is not None:
+                    label = label[len(board) + 1 :]
+                elif len(shown) > 1:
+                    problems.append(
+                        f"sheet {page.number}: {ref[0]!r} names no board on a sheet showing "
+                        f"{sorted(shown)}"
+                    )
                 name = next((n for n in names if label.startswith(n + ":")), None)
                 if name is None or not 1 <= sheet <= len(pages):
                     problems.append(f"sheet {page.number}: {ref[0]!r} names nothing drawn")
                     continue
                 target = pages[sheet - 1]
-                at = _marking_at(target, name, label[len(name) + 1 :])
+                at = _marking_at(target, name, label[len(name) + 1 :], board)
                 if at is None:
                     problems.append(
                         f"sheet {page.number}: {ref[0]!r}: no such marking printed on sheet {sheet}"
