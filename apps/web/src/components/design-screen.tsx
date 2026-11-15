@@ -2706,7 +2706,7 @@ function DesignWorkspace({
                                 <button
                                   key={format}
                                   type="button"
-                                  className="btn btn-sm btn-secondary"
+                                  className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
                                   data-testid={`revision-export-${format}`}
                                   disabled={exporting}
                                   aria-busy={exporting || undefined}

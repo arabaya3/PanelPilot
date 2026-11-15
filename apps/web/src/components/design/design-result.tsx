@@ -332,7 +332,8 @@ export function ExportPanel({
             onClick={() => {
               void onExport(format);
             }}
-            className="btn btn-sm btn-secondary"
+            // Long labels (the JSON one) wrap on a narrow screen instead of widening the page.
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
           >
             <DownloadIcon width="16" height="16" aria-hidden="true" />
             {t(`format.${format}`)}
@@ -351,7 +352,7 @@ export function ExportPanel({
                 aria-describedby={unavailableId}
                 data-testid={`${testIdPrefix}-${format}`}
                 data-unavailable="true"
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
               >
                 {t(`format.${format}`)}
               </button>
