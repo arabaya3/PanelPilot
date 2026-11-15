@@ -242,8 +242,9 @@ def test_a_row_saved_by_phase1_code_opens_approves_and_exports(
     row = _row(engine, project_id)
     # The written schema follows DESIGN_SNAPSHOT_SCHEMA: bare v1 by default, as
     # Phase 1 wrote it; a v2 envelope when the switch is on.
-    if get_settings().design_snapshot_schema == "pp-design/2":
-        assert row["design_snapshot"]["schema"] == "pp-design/2"
+    written = get_settings().design_snapshot_schema
+    if written in ("pp-design/2", "pp-design/3"):
+        assert row["design_snapshot"]["schema"] == written
         assert set(row["design_snapshot"]) == {"schema", "model"}
     else:
         assert "schema" not in row["design_snapshot"], "v1 is written bare, as Phase 1 did"

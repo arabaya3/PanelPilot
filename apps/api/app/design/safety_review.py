@@ -71,7 +71,8 @@ class Concern:
         raised_on: The earliest revision it is a concern of.
         present: Whether the revision checked still holds it (its own AI
             block, or its own request); ``False`` for a carried concern.
-        place: For a request concern: ``board``, ``load`` or ``info.<field>``.
+        place: For a request concern: ``board``, ``load``, ``link`` (M7a: a feeder
+            link's label or text attribute) or ``info.<field>``.
         where: For a request concern: the board, ``board > load`` or field, as printed.
         board: The board's name (a request board or load concern).
         load_index: The load's index on that board (a request load concern).
@@ -183,6 +184,10 @@ def _still_drawn(
     return False
 
 
+#: The text attributes of a feeder link the scanner reads (M7a).
+LINK_TEXT_FIELDS = ("material", "insulation", "number", "colour")
+
+
 def _request_id(level: str, place: str, text: str, term: str, start: int, at: str = "") -> str:
     """A request concern's id: level, place, where (board and load position), text, term, offset.
 
@@ -260,6 +265,27 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
                     rows=(_row(name, index, load),),
                     power=_number(load.get("power_kw")) if load.get("power_kw") is not None else "",
                 )
+    # M7a: every text of a feeder link (the ends' labels, the text attributes)
+    # is request text printed on the review documents, scanned like a load's.
+    for index, link in enumerate(request.get("feeder_links") or []):
+        if not isinstance(link, Mapping):
+            continue
+        fed = str(link.get("fed_board") or "")
+        texts: list[tuple[str, Any]] = []
+        for end in ("from_end", "to_end"):
+            given = link.get(end)
+            if isinstance(given, Mapping):
+                texts.append((f"{end}.label", given.get("label")))
+        attributes = link.get("attributes")
+        if isinstance(attributes, Mapping):
+            texts += [(name, attributes.get(name)) for name in LINK_TEXT_FIELDS]
+        for part, text in texts:
+            scan(
+                text,
+                "link",
+                f"feeder link to {fed} \u203a {part}",
+                board=f"{fed}\x00{index}\x00{part}",
+            )
     return out
 
 
@@ -429,7 +455,9 @@ def refusal(concern: Concern, resolution: str) -> str | None:
       no item of its proposal is life-safety equipment from an overlapping
       span (``life_safety_item_overlaps``).
     """
-    in_design = concern.kind == "request" and concern.present and concern.place in ("board", "load")
+    in_design = (
+        concern.kind == "request" and concern.present and concern.place in ("board", "load", "link")
+    )
     if resolution == EXCLUDED_FROM_SCOPE:
         if in_design:
             return "in_request"

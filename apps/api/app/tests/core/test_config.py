@@ -251,13 +251,13 @@ def test_design_snapshot_schema_defaults_to_v1(monkeypatch: pytest.MonkeyPatch) 
     assert _settings().design_snapshot_schema == "pp-design/1"
 
 
-@pytest.mark.parametrize("value", ["pp-design/1", "pp-design/2"])
+@pytest.mark.parametrize("value", ["pp-design/1", "pp-design/2", "pp-design/3"])
 def test_design_snapshot_schema_accepts_the_two_schemas(value: str) -> None:
     assert _settings(design_snapshot_schema=value).design_snapshot_schema == value
 
 
 @pytest.mark.parametrize(
-    "value", ["pp-design/3", "pp-design/999", "PP-DESIGN/2", "2", "v2", "", " pp-design/2"]
+    "value", ["pp-design/4", "pp-design/999", "PP-DESIGN/2", "2", "v2", "", " pp-design/2"]
 )
 def test_design_snapshot_schema_refuses_anything_else(value: str) -> None:
     with pytest.raises(PydanticValidationError):
@@ -275,7 +275,7 @@ def test_an_unknown_design_snapshot_schema_stops_startup(
         "OPENAI_API_KEY": "k",
         "JWT_SECRET": _STRONG_SECRET,
         "REDIS_URL": "redis://localhost:6379/0",
-        "DESIGN_SNAPSHOT_SCHEMA": "pp-design/3",
+        "DESIGN_SNAPSHOT_SCHEMA": "pp-design/4",
     }.items():
         monkeypatch.setenv(name, value)
     config.get_settings.cache_clear()
@@ -300,5 +300,7 @@ def test_the_write_switch_reads_alone_without_the_rest_of_the_configuration(
     monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
     assert config.design_snapshot_schema() == "pp-design/2"
     monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/3")
+    assert config.design_snapshot_schema() == "pp-design/3"
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/4")
     with pytest.raises(config.ConfigurationError):
         config.design_snapshot_schema()

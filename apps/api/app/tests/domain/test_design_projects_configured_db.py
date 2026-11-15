@@ -530,7 +530,7 @@ def test_an_unknown_schema_is_never_opened_validated_approved_or_exported(
 ) -> None:
     project_id = _configured(client, switch)
     stored = copy.deepcopy(revision_row(engine, project_id, 2)["design_snapshot"])
-    stored["schema"] = "pp-design/3"
+    stored["schema"] = "pp-design/4"
     update_row(
         engine, project_id, 2, design_snapshot=stored, snapshot_sha256=snapshot.sha256_of(stored)
     )

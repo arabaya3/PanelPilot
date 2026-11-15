@@ -36,10 +36,10 @@ def test_unmarked_snapshot_reads_as_v1(hall_project: DesignProject) -> None:
 
 
 def test_an_unknown_schema_is_refused(hall_project: DesignProject) -> None:
-    stored = {"schema": "pp-design/3", "model": hall_project.model_dump(mode="json")}
+    stored = {"schema": "pp-design/4", "model": hall_project.model_dump(mode="json")}
     with pytest.raises(versions.SnapshotSchemaUnknownError) as refused:
         read_snapshot(stored)
-    assert refused.value.params == {"schema": "pp-design/3"}
+    assert refused.value.params == {"schema": "pp-design/4"}
 
 
 def test_bare_v1_content_in_a_v2_envelope_is_unreadable(hall_project: DesignProject) -> None:

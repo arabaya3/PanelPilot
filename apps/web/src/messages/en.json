@@ -1104,7 +1104,12 @@
       "exclusion_not_allowed": "A board or load still in the request cannot be excluded from scope: remove it from the request and save a new revision, then record the exclusion.",
       "clarification_route_retired": "Clarifications are retired: record a resolution (excluded from scope or false positive) instead.",
       "exclusion_confirmation_incomplete": "Confirm every candidate load of the request (not this equipment) before excluding this concern.",
-      "exclusion_confirmation_extra": "That list names a load that is not a candidate for this exclusion; list exactly the candidate loads shown."
+      "exclusion_confirmation_extra": "That list names a load that is not a candidate for this exclusion; list exactly the candidate loads shown.",
+      "link_end_off_board": "A link end names a terminal of another board. Pick a terminal of that end’s own board (the supply board for “From”, the fed board for “To”).",
+      "link_terminal_unknown": "A link end names a terminal the configuration does not hold. Pick one from the list, or type a label instead.",
+      "link_duplicate": "A feeder has two links in the request. Each fed board takes one link.",
+      "link_not_a_feeder": "A link names a board that is not fed from another board. Set its “Fed from”, or clear the link.",
+      "link_board_unknown": "A link names a board the project does not have."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1966,5 +1971,65 @@
       "revision_not_validated": "The latest revision no longer validates, so the configuration cannot be composed with it. Save a new revision first.",
       "other": "Refused: {detail}"
     }
+  },
+  "feederLink": {
+    "panelTitle": "Board-to-board links",
+    "title": "Board-to-board link: {from} → {to}",
+    "intro": "What you know of the connection from {from} to {to}. Every field is optional; a blank one is recorded as not given. Nothing here changes the feeder calculation.",
+    "fromEnd": "From end (supply board {board})",
+    "toEnd": "To end (fed board {board})",
+    "terminal": "Modelled terminal or strip point on {board}",
+    "terminalNone": "No modelled terminal",
+    "noTerminals": "The opened revision models no terminals on {board}; you can type a label.",
+    "label": "Your label",
+    "labelNote": "Given by you — not a modelled terminal.",
+    "endNotSet": "Terminal not set.",
+    "attributes": "Known cable and conductor properties",
+    "attr": {
+      "cores": "Cores",
+      "cross_section_mm2": "Cross-section (mm²)",
+      "material": "Material",
+      "insulation": "Insulation",
+      "length_m": "Length (m)",
+      "number": "Cable number",
+      "colour": "Colour"
+    },
+    "material": {
+      "copper": "Copper",
+      "aluminium": "Aluminium"
+    },
+    "notGiven": "not given",
+    "calculation": "Used by the feeder calculation: {value}",
+    "calculationNone": "Used by the feeder calculation: —",
+    "calculationNotRun": "Design the project to see the values the feeder calculation used.",
+    "differs": "Differs",
+    "differsDetail": "Your value {user}; feeder calculation {calc}.",
+    "problem": {
+      "cores": "Cores is a whole number from 1 to 100.",
+      "positive": "Enter a number above 0.",
+      "nonNegative": "Enter a number of 0 or more."
+    },
+    "clear": "Clear this link",
+    "storedTitle": "Board-to-board links in revision {revision}",
+    "storedNone": "This revision holds no board-to-board links.",
+    "storedLink": "Link {id}: {from} → {to}",
+    "endFrom": "From {board}",
+    "endTo": "To {board}",
+    "endTerminal": "Terminal {terminal}",
+    "endNotSetStored": "terminal NOT SET",
+    "endLabelStored": "“{label}” — label given by user, not a modelled terminal",
+    "sourceUser": "given by user",
+    "enteredBy": "Entered {at}",
+    "findings": "Findings for this link",
+    "findingsNone": "No link findings recorded.",
+    "finding": {
+      "link_endpoint_unresolved": "End not resolved to a modelled terminal: {end}.",
+      "link_endpoint_unresolved_plain": "An end is not resolved to a modelled terminal.",
+      "link_attribute_unset": "Not given: {attributes}.",
+      "link_attribute_unset_plain": "Some cable properties are not given.",
+      "link_value_differs_from_calculation": "{attribute}: user value {user} (given by user); feeder calculation value {calc} (used by the feeder calculation).",
+      "link_value_differs_from_calculation_plain": "A user value differs from the value the feeder calculation used."
+    },
+    "refusedHere": "The save was refused for this link: {reason}"
   }
 }

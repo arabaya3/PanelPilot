@@ -3597,6 +3597,123 @@ export interface components {
      */
     Feature: 'ecad_export' | 'company_settings' | 'approval_workflow' | 'quotation';
     /**
+     * FeederLinkAttributesInput
+     * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
+     *
+     *     Values are checked by type and range only, and never defaulted: no
+     *     designer value is copied in, and none changes the calculation.
+     */
+    'FeederLinkAttributesInput-Input': {
+      /** Cores */
+      cores?: number | null;
+      /** Cross Section Mm2 */
+      cross_section_mm2?: number | string | null;
+      /** Material */
+      material?: string | null;
+      /** Insulation */
+      insulation?: string | null;
+      /** Length M */
+      length_m?: number | string | null;
+      /** Number */
+      number?: string | null;
+      /** Colour */
+      colour?: string | null;
+    };
+    /**
+     * FeederLinkAttributesInput
+     * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
+     *
+     *     Values are checked by type and range only, and never defaulted: no
+     *     designer value is copied in, and none changes the calculation.
+     */
+    'FeederLinkAttributesInput-Output': {
+      /** Cores */
+      cores?: number | null;
+      /** Cross Section Mm2 */
+      cross_section_mm2?: string | null;
+      /** Material */
+      material?: string | null;
+      /** Insulation */
+      insulation?: string | null;
+      /** Length M */
+      length_m?: string | null;
+      /** Number */
+      number?: string | null;
+      /** Colour */
+      colour?: string | null;
+    };
+    /**
+     * FeederLinkEndInput
+     * @description One end of a feeder link as entered: a modelled terminal, a free-text label, both or neither.
+     *
+     *     Attributes:
+     *         terminal: A terminal of that end's board (the supply board for
+     *             ``from_end``, the fed board for ``to_end``).
+     *         label: The user's own designation of the end; printed as the user's
+     *             text, never as a connected terminal.
+     */
+    FeederLinkEndInput: {
+      terminal?: components['schemas']['FeederLinkTerminal'] | null;
+      /** Label */
+      label?: string | null;
+    };
+    /**
+     * FeederLinkInput
+     * @description What the user entered for the link of one server-owned feeder (M7a).
+     *
+     *     Attributes:
+     *         fed_board: The board the feeder supplies (it has ``fed_from``).
+     *         from_end: The end on the supply board.
+     *         to_end: The end on the fed board.
+     *         attributes: The known cable/conductor properties.
+     *
+     *     Provenance (who entered it, when) is the server's, set on save; a client
+     *     cannot send it.
+     */
+    'FeederLinkInput-Input': {
+      /** Fed Board */
+      fed_board: string;
+      from_end?: components['schemas']['FeederLinkEndInput'] | null;
+      to_end?: components['schemas']['FeederLinkEndInput'] | null;
+      attributes?: components['schemas']['FeederLinkAttributesInput-Input'] | null;
+    };
+    /**
+     * FeederLinkInput
+     * @description What the user entered for the link of one server-owned feeder (M7a).
+     *
+     *     Attributes:
+     *         fed_board: The board the feeder supplies (it has ``fed_from``).
+     *         from_end: The end on the supply board.
+     *         to_end: The end on the fed board.
+     *         attributes: The known cable/conductor properties.
+     *
+     *     Provenance (who entered it, when) is the server's, set on save; a client
+     *     cannot send it.
+     */
+    'FeederLinkInput-Output': {
+      /** Fed Board */
+      fed_board: string;
+      from_end?: components['schemas']['FeederLinkEndInput'] | null;
+      to_end?: components['schemas']['FeederLinkEndInput'] | null;
+      attributes?: components['schemas']['FeederLinkAttributesInput-Output'] | null;
+    };
+    /**
+     * FeederLinkTerminal
+     * @description A modelled terminal: of a component (``component``, ``terminal``) or a strip point (``point``, ``side``).
+     *
+     *     Exactly one of the two pairs is given; both name the saved model's ids.
+     */
+    FeederLinkTerminal: {
+      /** Component */
+      component?: string | null;
+      /** Terminal */
+      terminal?: string | null;
+      /** Point */
+      point?: string | null;
+      /** Side */
+      side?: ('inner' | 'outer') | null;
+    };
+    /**
      * FlagRequest
      * @description A user reporting an answer as wrong.
      *
@@ -3755,6 +3872,25 @@ export interface components {
      * @enum {string}
      */
     InstallationMethod: 'A1' | 'A2' | 'B1' | 'B2' | 'C' | 'D1' | 'D2' | 'E' | 'F' | 'G';
+    /**
+     * InterBoardLinkView
+     * @description A ``pp-design/3`` feeder link between two boards, as stored (M7a); review content only.
+     */
+    InterBoardLinkView: {
+      /** Id */
+      id: string;
+      /**
+       * Origin
+       * @constant
+       */
+      origin: 'derived';
+      feeder: components['schemas']['LinkFeederView'];
+      /** Ends */
+      ends: components['schemas']['LinkEndView'][];
+      carrier: components['schemas']['LinkCarrierView'];
+      attributes: components['schemas']['LinkAttributesView'];
+      provenance: components['schemas']['LinkProvenanceView'];
+    };
     /**
      * Interval
      * @description How often a subscription is billed.
@@ -3915,6 +4051,107 @@ export interface components {
         | components['schemas']['LadderBranch']
       )[];
       output: components['schemas']['LadderContact'];
+    };
+    /**
+     * LinkAttributeView
+     * @description A link attribute: the user's value, or ``null`` with source ``unset`` (never a designer value).
+     *
+     *     ``cores`` is an integer; ``cross_section_mm2`` and ``length_m`` are
+     *     decimal strings; the others are the user's text.
+     */
+    LinkAttributeView: {
+      /** Value */
+      value: number | string | null;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: 'user' | 'unset';
+    };
+    /**
+     * LinkAttributesView
+     * @description Every attribute a feeder link records, each the user's or unset.
+     */
+    LinkAttributesView: {
+      cores: components['schemas']['LinkAttributeView'];
+      cross_section_mm2: components['schemas']['LinkAttributeView'];
+      material: components['schemas']['LinkAttributeView'];
+      insulation: components['schemas']['LinkAttributeView'];
+      length_m: components['schemas']['LinkAttributeView'];
+      number: components['schemas']['LinkAttributeView'];
+      colour: components['schemas']['LinkAttributeView'];
+    };
+    /**
+     * LinkCarrierView
+     * @description What carries a link: the feeder circuit's cable, or ``unknown``.
+     */
+    LinkCarrierView: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'cable' | 'unknown';
+      /** Cable Id */
+      cable_id: string | null;
+    };
+    /**
+     * LinkEndView
+     * @description One end of a feeder link: resolved exactly when a modelled terminal is set.
+     */
+    LinkEndView: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: 'from' | 'to';
+      /** Board */
+      board: string;
+      terminal: components['schemas']['LinkTerminalView'] | null;
+      /** Label */
+      label: string | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'resolved' | 'unresolved';
+    };
+    /**
+     * LinkFeederView
+     * @description The server-owned feeder a link records (from ``fed_from``); boards by id.
+     */
+    LinkFeederView: {
+      /** Supply Board */
+      supply_board: string;
+      /** Fed Board */
+      fed_board: string;
+      /** Circuit Id */
+      circuit_id: string;
+    };
+    /**
+     * LinkProvenanceView
+     * @description Who entered a link's values and when, set by the server on save; ``null`` when nobody did.
+     */
+    LinkProvenanceView: {
+      /** Requirement Ref */
+      requirement_ref: string;
+      /** Entered By User Id */
+      entered_by_user_id: string | null;
+      /** Entered At */
+      entered_at: string | null;
+    };
+    /**
+     * LinkTerminalView
+     * @description A modelled terminal: ``{component, terminal}`` or ``{point, side}``.
+     */
+    LinkTerminalView: {
+      /** Component */
+      component?: string | null;
+      /** Terminal */
+      terminal?: string | null;
+      /** Point */
+      point?: string | null;
+      /** Side */
+      side?: ('inner' | 'outer') | null;
     };
     /**
      * LoadInput
@@ -4752,6 +4989,8 @@ export interface components {
       profile?: {
         [key: string]: unknown;
       } | null;
+      /** Feeder Links */
+      feeder_links?: components['schemas']['FeederLinkInput-Input'][] | null;
     };
     /**
      * ProjectDesignRequest
@@ -4772,6 +5011,8 @@ export interface components {
       profile?: {
         [key: string]: unknown;
       } | null;
+      /** Feeder Links */
+      feeder_links?: components['schemas']['FeederLinkInput-Output'][] | null;
     };
     /**
      * ProjectInfo
@@ -5927,6 +6168,10 @@ export interface components {
       /** Permissions */
       permissions?: components['schemas']['Permission'][];
       model_v2?: components['schemas']['V2ModelSummary'] | null;
+      /** Links */
+      links?: components['schemas']['InterBoardLinkView'][] | null;
+      /** Written Schema */
+      written_schema?: string | null;
       /** Snapshot Schema */
       snapshot_schema?: string | null;
       requirements?: components['schemas']['RequirementsRecord'] | null;

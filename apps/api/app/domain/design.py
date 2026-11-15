@@ -418,6 +418,7 @@ def render_export(
     pricing: PricingSettings | None,
     mark: marking.ExportMark,
     estimate_for: str | None = None,
+    links: list[dict[str, Any]] | None = None,
 ) -> ExportedFile:
     """Write a designated project as one file, carrying its mark.
 
@@ -430,6 +431,9 @@ def render_export(
             never carries its label: see :func:`estimate_mark`.
         estimate_for: For a quotation, the design it prices, said without
             any approval of prices; the mark's identity if not given.
+        links: A ``pp-design/3`` revision's links, as stored; the JSON
+            export carries them under ``links``. ``None`` leaves every file
+            as it was (v1 and v2).
 
     Returns:
         The file.
@@ -474,7 +478,7 @@ def render_export(
             else marking.mark_csv(plc_program.io_list_csv(program), mark).encode("utf-8")
         )
     elif export_format is ExportFormat.JSON:
-        content = marking.mark_json(designated.model_dump_json(), mark)
+        content = marking.mark_json(designated.model_dump_json(), mark, links)
     else:
         content = marking.mark_csv(_LISTS[export_format](designated), mark).encode("utf-8")
     media_type, extension = _MEDIA_TYPES[export_format]

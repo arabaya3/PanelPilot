@@ -7,6 +7,7 @@ import type {
   SavedRequest,
 } from '@/lib/design';
 
+import { feederLinksOf, linkFormsOf, type LinkForm } from '@/components/design/feeder-link-model';
 /** One load schedule row as the engineer edits it: every field a string. */
 export type Load = {
   key: number;
@@ -51,6 +52,8 @@ export type BoardForm = {
   loads: Load[];
   /** The AI proposal item this board was placed from (M6b); absent on a typed board. */
   aiItem?: string;
+  /** M7a: what is known of the link from `fedFrom` to this board; absent while nothing is entered. */
+  link?: LinkForm;
 };
 
 /** Title-block fields for the whole project. */
@@ -174,7 +177,7 @@ export function toRequest(
   boards: BoardForm[],
   profile: Record<string, unknown> | null,
 ): ProjectDesignRequest {
-  return {
+  const request: ProjectDesignRequest = {
     info: {
       name: info.name.trim(),
       number: info.number.trim(),
@@ -208,6 +211,9 @@ export function toRequest(
     })),
     profile,
   };
+  // M7a: sent only where a link is entered (a deployment writing pp-design/3).
+  const links = feederLinksOf(boards);
+  return links.length > 0 ? ({ ...request, feeder_links: links } as ProjectDesignRequest) : request;
 }
 
 /** The server's own profile (`DEFAULT_PROFILE_KEY` in app/design/profile.py). */
@@ -240,11 +246,14 @@ export function fromRequest(
   firstKey: number,
 ): { info: ProjectInfo; boards: BoardForm[]; used: number } {
   let key = firstKey;
-  const boards = request.boards.map((board) => {
+  const links = linkFormsOf(request);
+  const boards = request.boards.map((board): BoardForm => {
     const boardKey = key;
     const loads = rowsFrom(board.loads, boardKey + 1);
     key += loads.length + 1;
+    const link = board.fed_from ? links.get(board.name) : undefined;
     return {
+      ...(link ? { link } : {}),
       key: boardKey,
       name: board.name,
       location: board.location ?? '',

@@ -550,3 +550,113 @@ class DesignModelV2:
             if assumption.id == assumption_id:
                 return assumption
         return None
+
+
+# --- pp-design/3 (M7a): the link between a supply board and the board it feeds ---
+
+#: Where a link attribute's value came from: the user, or nowhere (``unset``).
+#: A designer value is never copied into a link attribute.
+LINK_SOURCES = ("user", "unset")
+
+#: The attributes a link records, in their printed order.
+LINK_ATTRIBUTES = (
+    "cores",
+    "cross_section_mm2",
+    "material",
+    "insulation",
+    "length_m",
+    "number",
+    "colour",
+)
+
+#: A link end's role, in order: the supply board's end, then the fed board's.
+LINK_ROLES = ("from", "to")
+
+#: How a link's carrier is known: the feeder's cable, or not at all.
+LINK_CARRIERS = ("cable", "unknown")
+
+#: How a link came about. Only ``derived``: one per server-owned feeder.
+LINK_ORIGINS = ("derived",)
+
+
+@dataclass(frozen=True)
+class LinkAttribute:
+    """A link attribute; ``value`` is ``None`` exactly when ``source`` is ``"unset"``.
+
+    ``cores`` is an ``int``; ``cross_section_mm2`` and ``length_m`` are
+    ``Decimal``; the others are text as the user typed it.
+    """
+
+    value: str | int | Decimal | None
+    source: str
+
+
+#: The attribute a link holds unless the user gave a value.
+LINK_UNSET = LinkAttribute(value=None, source="unset")
+
+
+@dataclass(frozen=True)
+class LinkEnd:
+    """One end of a link, on one board.
+
+    ``terminal`` is a modelled terminal or strip point of *this* board, or
+    ``None``; ``label`` is the user's free text, never a terminal. The end is
+    ``resolved`` exactly when ``terminal`` is set.
+    """
+
+    role: str
+    board: str
+    terminal: TerminalRef | None
+    label: str | None
+
+    @property
+    def resolution(self) -> str:
+        """``"resolved"`` when a terminal is set, ``"unresolved"`` otherwise."""
+        return "resolved" if self.terminal is not None else "unresolved"
+
+
+@dataclass(frozen=True)
+class LinkFeeder:
+    """The server-owned feeder a link is derived from (``fed_from``)."""
+
+    supply_board: str
+    fed_board: str
+    circuit_id: str
+
+
+@dataclass(frozen=True)
+class LinkCarrier:
+    """What carries the link: the feeder circuit's cable, or ``unknown``."""
+
+    kind: str
+    cable_id: str | None
+
+
+@dataclass(frozen=True)
+class LinkProvenance:
+    """Who entered a link's values, set by the server on save; ``None`` when nobody did."""
+
+    requirement_ref: str
+    entered_by_user_id: str | None
+    entered_at: str | None
+
+
+@dataclass(frozen=True)
+class InterBoardLink:
+    """A review-only record of one feeder's link between two boards.
+
+    It adds no engineering value and changes no calculation: every attribute
+    is the user's or unset (:data:`LINK_ATTRIBUTES`, in that order).
+    """
+
+    id: str
+    origin: str
+    feeder: LinkFeeder
+    ends: tuple[LinkEnd, LinkEnd]
+    carrier: LinkCarrier
+    attributes: tuple[tuple[str, LinkAttribute], ...]
+    provenance: LinkProvenance
+
+    def attribute(self, name: str) -> LinkAttribute:
+        """The attribute ``name`` (one of :data:`LINK_ATTRIBUTES`)."""
+        return dict(self.attributes)[name]

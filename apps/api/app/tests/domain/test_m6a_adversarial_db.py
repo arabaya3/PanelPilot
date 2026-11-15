@@ -260,7 +260,11 @@ def test_a_new_revision_with_a_typed_feeder_is_refused(client: TestClient) -> No
     assert _numbers(client, project_id) == [1]
 
 
-def test_the_saved_feeder_is_drawn_once_and_traced(client: TestClient) -> None:
+def test_the_saved_feeder_is_drawn_once_and_traced(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The open item is v1/v2 behaviour; pp-design/3 replaces it by the link (M7a tests).
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
     project_id = _saved_id(client, FED, requirements_input=GUIDED)
     opened = _open(client, project_id, 1)
     record = _requirements(opened)

@@ -336,12 +336,16 @@ def mark_plc_source(source: str, mark: ExportMark) -> str:
     return f"(* {comment} *)\n{source}"
 
 
-def mark_json(project_json: str, mark: ExportMark) -> bytes:
+def mark_json(
+    project_json: str, mark: ExportMark, links: list[dict[str, Any]] | None = None
+) -> bytes:
     """The project JSON inside an envelope stating its mark and findings.
 
     Args:
         project_json: The project, as JSON.
         mark: The export's mark.
+        links: A ``pp-design/3`` revision's feeder links, as stored (M7a),
+            carried under ``links`` after ``project``; ``None`` adds no key.
 
     Returns:
         ``{"export_status": {...}, "findings": [...], "project": {...}}``.
@@ -358,5 +362,6 @@ def mark_json(project_json: str, mark: ExportMark) -> bytes:
             )
         ),
         "project": json.loads(project_json),
+        **({"links": links} if links is not None else {}),
     }
     return json.dumps(envelope, indent=2, ensure_ascii=False).encode("utf-8")

@@ -137,3 +137,18 @@ def migrate_1_to_2(payload_v1: dict[str, Any]) -> dict[str, Any]:
         "assumptions": [],
         "patterns": [],
     }
+
+
+def migrate_2_to_3(payload_v2: dict[str, Any]) -> dict[str, Any]:
+    """The v3 payload of a v2 payload, for display only: the v2 content plus ``links: []``.
+
+    Pure: no link is derived on read (a link is made only when a revision is
+    saved in v3). The input is not changed.
+
+    Args:
+        payload_v2: A stored v2 ``model`` payload.
+
+    Returns:
+        A copy with an empty ``links`` collection.
+    """
+    return {**copy.deepcopy(payload_v2), "links": []}

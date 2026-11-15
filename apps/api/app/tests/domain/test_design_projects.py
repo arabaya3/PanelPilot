@@ -898,7 +898,9 @@ def test_a_non_domain_error_releases_the_project_lock(tenants, as_tenant, monkey
     a, _ = tenants
     saved = _saved(as_tenant, a)
 
-    def broken(request: Any, configuration: Any = None, anchor: Any = None) -> dict[str, Any]:
+    def broken(
+        request: Any, configuration: Any = None, anchor: Any = None, link_entry: Any = None
+    ) -> dict[str, Any]:
         raise RuntimeError("design engine failed")
 
     monkeypatch.setattr(design_projects, "_validate", broken)
