@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -28,6 +29,10 @@ import {
 } from '@/lib/design';
 
 import type * as DesignModule from '@/lib/design';
+
+import ar from '@/messages/ar.json';
+import en from '@/messages/en.json';
+import he from '@/messages/he.json';
 
 import { MESSAGES, asSignedIn, renderApp } from './helpers';
 
@@ -298,6 +303,7 @@ describe('reading what the server recorded', () => {
       approvalMissing: true,
       notValidated: false,
       stale: true,
+      definitions: [],
     });
     // Present approval and no blockers read as nothing else in the way.
     expect(
@@ -313,7 +319,22 @@ describe('reading what the server recorded', () => {
       approvalMissing: false,
       notValidated: false,
       stale: false,
+      definitions: [],
     });
+    // A configured revision: unreviewed definitions are named, not dropped.
+    expect(
+      executionRefusalOf({
+        kind: 'refused',
+        detail: '',
+        code: 'execution_package_incomplete',
+        params: {
+          missing: 'control_schematics',
+          approval: 'present',
+          blocking_findings: '',
+          blockers: 'control_schematics,template_unreviewed,pattern_unreviewed',
+        },
+      }).definitions,
+    ).toEqual(['template_unreviewed', 'pattern_unreviewed']);
   });
 });
 
@@ -665,6 +686,60 @@ describe('the review view', () => {
     expect(overview().getByTestId('approve-held-notValidated')).toBeTruthy();
   });
 
+  it('names an integrity failure, not a save before validation', async () => {
+    const failed = {
+      code: 'snapshot_integrity_failed',
+      severity: 'blocking',
+      message: 'The findings stored with this revision are not the findings of its stored design',
+      values: { reason: 'findings_mismatch' },
+      requires_engineering_confirmation: false,
+      source: 'policy',
+    };
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: saved({ validated: false, export_status: 'not_validated', findings: [failed] }),
+    });
+    renderScreen();
+    await openStored();
+    for (const id of ['revision-export-not-validated', 'readiness-not-validated']) {
+      const shown = review().getByTestId(id).textContent;
+      expect(shown).toContain(
+        "Revision 1's stored design failed its integrity check (findings_mismatch)",
+      );
+      expect(shown).not.toContain('Revision 1 was saved before validation');
+    }
+    for (const messages of [ar, he]) {
+      const said = messages.design.readiness.integrityFailed;
+      expect(said).toContain('{reason}');
+      expect(said).not.toBe(en.design.readiness.integrityFailed);
+    }
+  });
+
+  it('keeps a keystroke whose update React runs after the event', async () => {
+    // React runs a state updater lazily when the component already has an
+    // update queued, and may run it only after it has put the controlled
+    // input back to the value it last rendered. An updater that reads the
+    // event then reads that old value: the keystroke is lost, and the form
+    // reads as unchanged since the approval. Typing while React is committing
+    // another tree makes that order certain: the changes are rendered only
+    // after the event, once the input has been restored.
+    api.open.mockResolvedValue({ kind: 'saved', project: approved({ findings: [WARNING] }) });
+    renderScreen();
+    await openStored();
+    const customer = overview().getByLabelText<HTMLInputElement>('Customer');
+    function TypesWhileCommitting() {
+      useLayoutEffect(() => {
+        fireEvent.change(customer, { target: { value: 'C' } });
+        fireEvent.change(customer, { target: { value: 'Changed' } });
+      }, []);
+      return null;
+    }
+    render(<TypesWhileCommitting />);
+    expect(customer.value).toBe('Changed');
+    expect(stepState('saved')).toBe('stale');
+    expect(stepState('approved')).toBe('stale');
+  });
+
   it('never lets an approval read as covering edits made since', async () => {
     api.open.mockResolvedValue({ kind: 'saved', project: approved({ findings: [WARNING] }) });
     renderScreen();
@@ -965,7 +1040,17 @@ describe('execution blockers, a second approver, and over-long fields', () => {
       approvalMissing: true,
       notValidated: true,
       stale: false,
+      definitions: [],
     });
+  });
+
+  it('lists a configured revision’s unreviewed definitions, not as raw gaps', () => {
+    const validation = validationOf(
+      saved({ execution_blockers: [...BLOCKERS, 'template_unreviewed', 'out_of_execution_scope'] }),
+    );
+    const read = executionBlockersOf(validation);
+    expect(read.definitions).toEqual(['template_unreviewed', 'out_of_execution_scope']);
+    expect(read.missing).not.toContain('template_unreviewed');
   });
 
   it('shows why execution is blocked before any export is tried', async () => {
@@ -1118,4 +1203,178 @@ describe('the strict 422 envelope (request_invalid)', () => {
       tooLarge: [{ path: 'request.boards[0].loads[1].length_m', max: '2000' }],
     });
   });
+});
+
+describe('a revision whose stored design failed its integrity check', () => {
+  it('counts the same blocking findings in the overview and in the execution list', () => {
+    const unconnected = Array.from({ length: 6 }, () => ({
+      code: 'unconnected_required_terminal',
+      severity: 'blocking' as const,
+      message: 'required terminal 1 of component c1 is in no net',
+      source: 'integrity',
+      values: {},
+    }));
+    const validation = validationOf({
+      validated: true,
+      export_status: 'not_validated',
+      findings: [
+        ...unconnected,
+        {
+          code: 'snapshot_integrity_failed',
+          severity: 'blocking',
+          message: 'The stored design does not match its recorded hash',
+          source: 'integrity',
+          values: {},
+        },
+      ],
+      execution_blockers: [
+        'wiring_and_terminal_connectivity',
+        'not_validated',
+        'approval',
+        ...unconnected.map(() => 'finding:unconnected_required_terminal'),
+        'finding:snapshot_integrity_failed',
+        'template_unreviewed',
+      ],
+    } as never);
+    const readiness = readinessOf({
+      opened: { approval: null },
+      validation,
+      dirty: false,
+      stale: false,
+    });
+    const refusal = executionBlockersOf(validation);
+    expect(readiness.blockingCount).toBe(7);
+    expect(refusal.blockingFindings).toHaveLength(readiness.blockingCount);
+    // "Not validated" is its own item, never counted as a finding.
+    expect(refusal.notValidated).toBe(true);
+  });
+});
+
+describe('a market detected as a revision opens', () => {
+  // The market detection and the opened revision's fill answer in the same
+  // batch, in either order. An untouched opened revision stays clean; an
+  // edit queued with them stays unsaved.
+  const SA = {
+    code: 'SA',
+    name: 'Saudi Arabia',
+    voltage_v: 400,
+    frequency_hz: 60,
+    earthing: 'TN-S',
+    regulation: 'SBC 401',
+    currency: 'SAR',
+  };
+
+  function leave(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  function renderDetecting() {
+    let answer: ((listed: (typeof SA)[]) => void) | null = null;
+    const marketsImpl = vi.fn(() => ({
+      then(resolve: (listed: (typeof SA)[]) => void) {
+        answer = resolve;
+      },
+    }));
+    renderApp(
+      asSignedIn(
+        <DesignScreen
+          acquireImpl={vi.fn().mockResolvedValue(READY)}
+          marketsImpl={marketsImpl as never}
+          readMarketImpl={() => 'SA'}
+        />,
+      ),
+    );
+    return () => answer?.([SA]);
+  }
+
+  /**
+   * An opening whose answer lands the market in the same batch: `first`
+   * before the fill (synchronously, as the panel reads the answer), else
+   * after it (in the microtask straight after the fill, before React renders).
+   */
+  function openingWith(
+    project: SavedProject,
+    land: () => void,
+    first: boolean,
+    alsoAfter?: () => void,
+  ) {
+    const outcome = { kind: 'saved' as const } as { kind: 'saved'; project: SavedProject };
+    Object.defineProperty(outcome, 'project', {
+      get() {
+        if (first) land();
+        else queueMicrotask(land);
+        if (alsoAfter) queueMicrotask(alsoAfter);
+        return project;
+      },
+    });
+    return outcome;
+  }
+
+  function twoRevisions(): SavedProject {
+    const project = approved({ findings: [WARNING] });
+    project.revisions = project.revisions.flatMap((entry) => [entry, { ...entry, number: 2 }]);
+    project.revision = 2;
+    return project;
+  }
+
+  for (const first of [true, false]) {
+    const order = first ? 'before' : 'after';
+
+    it(`leaves an untouched opened revision clean, the market landing ${order} its fill`, async () => {
+      const land = renderDetecting();
+      api.open.mockResolvedValue(openingWith(approved({ findings: [WARNING] }), land, first));
+      await openStored();
+      await screen.findByTestId('market-basis');
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(leave()).toBe(false);
+      expect(stepState('saved')).toBe('done');
+      expect(stepState('approved')).toBe('done');
+    });
+
+    it(`leaves a switched-to revision clean, the market landing ${order} its fill`, async () => {
+      const land = renderDetecting();
+      api.open.mockResolvedValue({ kind: 'saved', project: twoRevisions() });
+      await openStored();
+      const revision1 = approved({ findings: [WARNING] });
+      revision1.revisions = twoRevisions().revisions;
+      // Revision 1 differs from revision 2, so a baseline built from the
+      // form before the switch cannot pass for it.
+      revision1.request = { ...REQUEST, info: { ...REQUEST.info, customer: 'Earlier' } };
+      api.open.mockResolvedValue(openingWith(revision1, land, first));
+      const opened = within(screen.getByTestId('project-opened'));
+      fireEvent.change(opened.getByRole('combobox'), { target: { value: '1' } });
+      await screen.findByTestId('market-basis');
+      await waitFor(() => {
+        expect(screen.getByTestId('project-opened-name').textContent).toContain('1');
+      });
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(leave()).toBe(false);
+      expect(stepState('approved')).toBe('done');
+    });
+
+    it(`keeps an edit queued with the market and the fill unsaved (market ${order})`, async () => {
+      const land = renderDetecting();
+      const typed = () => {
+        fireEvent.change(overview().getByLabelText('Customer'), { target: { value: 'Changed' } });
+      };
+      api.open.mockResolvedValue(
+        openingWith(approved({ findings: [WARNING] }), land, first, typed),
+      );
+      await openStored();
+      await screen.findByTestId('market-basis');
+      expect(overview().getByLabelText<HTMLInputElement>('Customer').value).toBe('Changed');
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+      expect(leave()).toBe(true);
+      expect(stepState('approved')).toBe('stale');
+      // Undoing the edit leaves the opened revision with the market: clean.
+      fireEvent.change(overview().getByLabelText('Customer'), { target: { value: '' } });
+      await waitFor(() => {
+        expect(screen.queryByText('Unsaved changes')).toBeNull();
+      });
+      expect(leave()).toBe(false);
+      expect(stepState('approved')).toBe('done');
+    });
+  }
 });

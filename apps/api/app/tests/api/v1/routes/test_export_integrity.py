@@ -34,6 +34,7 @@ from app.core.errors import install_exception_handlers
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.tenant import TenantRow
 from app.tests import db_target
+from app.tests.design import stored_design
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -66,13 +67,18 @@ CSV_FORMATS = (
     "plc_io_csv",
 )
 OTHER_FORMATS = ("dxf", "qet", "aml", "json", "plc_st")
-ALL_FORMATS = PDF_FORMATS + CSV_FORMATS + OTHER_FORMATS
+#: Review-only schedules of a saved pp-design/2 revision: refused for a draft
+#: and a v1 revision (``schedule_requires_v2``); covered by the v2 suite.
+SCHEDULE_FORMATS = ("terminal_schedule_pdf", "wire_schedule_pdf")
+ALL_FORMATS = PDF_FORMATS + CSV_FORMATS + OTHER_FORMATS + SCHEDULE_FORMATS
 #: The formats whose draft mark would only be a comment a normal import strips:
 #: refused on every export path (``export_format_unprotected``) until a mark
 #: that survives import is shown.
 BLOCKED_FORMATS = (*CSV_FORMATS, "qet", "aml", "plc_st")
 #: The formats exported, each carrying a visible mark.
-ALLOWED_FORMATS = tuple(f for f in ALL_FORMATS if f not in BLOCKED_FORMATS)
+ALLOWED_FORMATS = tuple(
+    f for f in ALL_FORMATS if f not in BLOCKED_FORMATS and f not in SCHEDULE_FORMATS
+)
 
 #: A project with a lighting circuit (1.5 mm2 cable) and a PLC-switched motor,
 #: so every format, the control program included, has something to export.
@@ -426,7 +432,23 @@ def assert_unprotected(response: Any, fmt: str) -> None:
     assert body["code"] == "export_format_unprotected"
     assert body["params"]["format"] == fmt
     assert body["params"]["reason"] == "draft_mark_not_persistent"
-    assert set(body["params"]["allowed"].split(",")) == set(ALLOWED_FORMATS)
+    assert set(body["params"]["allowed"].split(",")) == {*ALLOWED_FORMATS, *SCHEDULE_FORMATS}
+
+
+@pytest.mark.parametrize("fmt", SCHEDULE_FORMATS)
+def test_schedules_are_refused_for_a_draft_and_a_v1_revision(
+    client: TestClient, fmt: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing to schedule: a draft and a v1 revision hold no terminals, nets or wires."""
+    # Read on every save (``config.design_snapshot_schema``): a v1 revision here.
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
+    drafted = draft_export(client, designed_project(client), fmt)
+    assert drafted.status_code == 409, drafted.text[:300]
+    assert error(drafted)["code"] == "schedule_requires_v2"
+    saved = save(client)
+    refused = revision_export(client, saved["id"], 1, fmt)
+    assert refused.status_code == 409, refused.text[:300]
+    assert error(refused)["code"] == "schedule_requires_v2"
 
 
 @pytest.mark.parametrize("fmt", BLOCKED_FORMATS)
@@ -747,7 +769,7 @@ def test_tampered_snapshot_fails_integrity(client: TestClient, engine: Engine) -
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
     row = revision_row(engine, saved["id"], 1)
-    snapshot = tampered(row["design_snapshot"])
+    snapshot = stored_design.edited(row["design_snapshot"], tampered)
     update_row(engine, saved["id"], 1, design_snapshot=snapshot)
     for fmt in ("pdf", "dxf", "json"):
         response = revision_export(client, saved["id"], 1, fmt)
@@ -762,7 +784,7 @@ def test_a_float_written_into_a_stored_snapshot_is_altered_not_a_500(
     saved = save(client)
     row = revision_row(engine, saved["id"], 1)
     snapshot = json.loads(json.dumps(row["design_snapshot"]))
-    snapshot["info"]["injected"] = 1.5
+    stored_design.design_of(snapshot)["info"]["injected"] = 1.5
     update_row(engine, saved["id"], 1, design_snapshot=snapshot)
     opened = client.get(f"/design/projects/{saved['id']}")
     assert opened.status_code == 200
@@ -781,7 +803,7 @@ def test_rehashed_tampered_snapshot_loses_approval_and_blocks(
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
     row = revision_row(engine, saved["id"], 1)
-    snapshot = tampered(row["design_snapshot"])
+    snapshot = stored_design.edited(row["design_snapshot"], tampered)
     update_row(
         engine, saved["id"], 1, design_snapshot=snapshot, snapshot_sha256=canonical_sha256(snapshot)
     )
@@ -872,7 +894,9 @@ def test_forced_oversized_breaker_blocks_approval(client: TestClient, engine: En
         assert exported.status_code in (409, 422)
         assert error(exported)["code"] == "revision_not_validated"
         return
-    _snap_circuit, snap_breaker, snap_cable = lighting_ids(row["design_snapshot"])
+    _snap_circuit, snap_breaker, snap_cable = lighting_ids(
+        stored_design.design_of(row["design_snapshot"])
+    )
     from decimal import Decimal
 
     if Decimal(str(snap_breaker["rated_current_a"])) > Decimal(40) and Decimal(

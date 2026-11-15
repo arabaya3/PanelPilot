@@ -1,0 +1,161 @@
+{
+  "_comment": "SYNTHETIC SAMPLE DATA, read back from the files beside it by generate.py. Review content only; not for execution; no template or pattern in it is reviewed.",
+  "schema": "pp-design/2",
+  "renderer_version": "2026.10.31.v2-3",
+  "rules_version": "2026.10.23.1",
+  "samples": [
+    {
+      "case": "pe_n_distribution",
+      "format": "terminal_schedule_pdf",
+      "file": "pe_n_distribution.terminal_schedule.pdf",
+      "pages": 4,
+      "labels_on_every_page": [
+        "DRAFT \u2014 NOT FOR EXECUTION",
+        "REVIEW SCHEDULE \u2014 NOT FOR EXECUTION"
+      ],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "29de91c8087e9e7713de93026108e53899659f28ff8139600aa3ce0f94d477b6",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "terminal_requiredness_unresolved",
+        "wire_attribute_assumed",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 0,
+        "[data]": 20,
+        "[assumption": 0,
+        "[unresolved]": 4
+      }
+    },
+    {
+      "case": "pe_n_distribution",
+      "format": "wire_schedule_pdf",
+      "file": "pe_n_distribution.wire_schedule.pdf",
+      "pages": 3,
+      "labels_on_every_page": [
+        "DRAFT \u2014 NOT FOR EXECUTION",
+        "REVIEW SCHEDULE \u2014 NOT FOR EXECUTION"
+      ],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "29de91c8087e9e7713de93026108e53899659f28ff8139600aa3ce0f94d477b6",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "terminal_requiredness_unresolved",
+        "wire_attribute_assumed",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 1,
+        "[data]": 1,
+        "[assumption": 1,
+        "[unresolved]": 9
+      }
+    },
+    {
+      "case": "pe_n_distribution",
+      "format": "pdf",
+      "file": "pe_n_distribution.drawing.pdf",
+      "pages": 10,
+      "labels_on_every_page": ["DRAFT \u2014 NOT FOR EXECUTION"],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "29de91c8087e9e7713de93026108e53899659f28ff8139600aa3ce0f94d477b6",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "terminal_requiredness_unresolved",
+        "wire_attribute_assumed",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 0,
+        "[data]": 0,
+        "[assumption": 0,
+        "[unresolved]": 0
+      }
+    },
+    {
+      "case": "io_marshalling",
+      "format": "terminal_schedule_pdf",
+      "file": "io_marshalling.terminal_schedule.pdf",
+      "pages": 5,
+      "labels_on_every_page": [
+        "DRAFT \u2014 NOT FOR EXECUTION",
+        "REVIEW SCHEDULE \u2014 NOT FOR EXECUTION"
+      ],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "f63269cf2f6c462075ed95f753aef76b6bc44e9a7c4ce06ececda36751be33c9",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "unconnected_required_terminal",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 0,
+        "[data]": 28,
+        "[assumption": 0,
+        "[unresolved]": 0
+      }
+    },
+    {
+      "case": "io_marshalling",
+      "format": "wire_schedule_pdf",
+      "file": "io_marshalling.wire_schedule.pdf",
+      "pages": 4,
+      "labels_on_every_page": [
+        "DRAFT \u2014 NOT FOR EXECUTION",
+        "REVIEW SCHEDULE \u2014 NOT FOR EXECUTION"
+      ],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "f63269cf2f6c462075ed95f753aef76b6bc44e9a7c4ce06ececda36751be33c9",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "unconnected_required_terminal",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 0,
+        "[data]": 0,
+        "[assumption": 0,
+        "[unresolved]": 21
+      }
+    },
+    {
+      "case": "io_marshalling",
+      "format": "pdf",
+      "file": "io_marshalling.drawing.pdf",
+      "pages": 12,
+      "labels_on_every_page": ["DRAFT \u2014 NOT FOR EXECUTION"],
+      "not_for_execution_on_every_page": true,
+      "design_sha256": "f63269cf2f6c462075ed95f753aef76b6bc44e9a7c4ce06ececda36751be33c9",
+      "design_hash_printed": true,
+      "renderer_printed": true,
+      "findings_listed": [
+        "pattern_unreviewed",
+        "template_unreviewed",
+        "unconnected_required_terminal",
+        "wire_attribute_unset"
+      ],
+      "source_cells": {
+        "[user]": 0,
+        "[data]": 0,
+        "[assumption": 0,
+        "[unresolved]": 0
+      }
+    }
+  ]
+}

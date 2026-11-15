@@ -21,7 +21,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.design import RENDERER_VERSION, RULES_VERSION, findings_policy, marking, snapshot
+from app.design import (
+    RULES_VERSION,
+    findings_policy,
+    marking,
+    renderer_version,
+    snapshot,
+)
 from app.design.findings_policy import Classification
 from app.domain import design_projects, roles
 from app.models.schemas.auth import CurrentUser, Role
@@ -42,6 +48,7 @@ from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 from app.tests.accounts import account
+from app.tests.design import stored_design
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -367,6 +374,13 @@ def _first_line(exported: Any) -> str:
     return f"{status['label']} | {status['identity']}"
 
 
+def _written_renderer() -> str:
+    """The renderer version of the schema this run writes revisions in (per schema)."""
+    from app.core import config
+
+    return renderer_version(config.design_snapshot_schema())
+
+
 def _set(engine: Engine, **columns: object) -> None:
     assignments = ", ".join(f"{name} = :{name}" for name in columns)
     with engine.begin() as conn:
@@ -387,7 +401,7 @@ def test_saving_designs_on_the_server_and_stores_the_snapshot(tenants, as_tenant
         ).one()
     assert snapshot.sha256_of(stored) == digest == saved.snapshot_sha256
     # The snapshot carries no client revision rows.
-    assert stored["info"]["revisions"] == []
+    assert stored_design.design_of(stored)["info"]["revisions"] == []
 
 
 def test_approval_binds_the_snapshot_and_export_says_review_approved(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
@@ -876,7 +890,7 @@ def test_a_non_domain_error_releases_the_project_lock(tenants, as_tenant, monkey
     a, _ = tenants
     saved = _saved(as_tenant, a)
 
-    def broken(request: Any) -> dict[str, Any]:
+    def broken(request: Any, configuration: Any = None) -> dict[str, Any]:
         raise RuntimeError("design engine failed")
 
     monkeypatch.setattr(design_projects, "_validate", broken)
@@ -1081,7 +1095,7 @@ def test_a_legacy_typed_name_is_never_the_approver(  # type: ignore[no-untyped-d
                 # Recorded, so the export shows the name it is about.
                 "approved_renderer_version = :r WHERE project_id = :p"
             ),
-            {"e": email, "p": uuid.UUID(saved.id), "r": RENDERER_VERSION},
+            {"e": email, "p": uuid.UUID(saved.id), "r": _written_renderer()},
         )
     opened = design_projects.open_project(session=as_tenant(), user=viewer, project_id=saved.id)
     (revision,) = opened.revisions
@@ -1307,7 +1321,7 @@ def test_a_legacy_approved_row_counts_only_with_a_recorded_renderer(  # type: ig
     assert stale.value.params["changed"] == "renderer_version"
     assert stale.value.params["approved_renderer_version"] == "unversioned"
     # Otherwise it counts, as the policy the migration recorded says.
-    _set(engine, approved_renderer_version=RENDERER_VERSION)
+    _set(engine, approved_renderer_version=_written_renderer())
     opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     assert opened.approval_current is True
     assert opened.export_status is ExportStatus.REVIEW_APPROVED
@@ -1354,10 +1368,12 @@ def test_a_renderer_change_since_approval_refuses_the_approved_export(  # type: 
                 "approved_renderer_version FROM design_project_revisions"
             )
         ).one()
-    assert frozen.approved_renderer_version == RENDERER_VERSION
+    # The version of the revision's own schema (``RENDERER_VERSIONS``).
+    schema = frozen.design_snapshot.get("schema", "pp-design/1")
+    assert frozen.approved_renderer_version == renderer_version(schema)
     assert "REVIEW APPROVED" in _first_line(_export(as_tenant, a, saved))
 
-    monkeypatch.setattr(design_projects, "RENDERER_VERSION", "9999.01.01.1")
+    monkeypatch.setattr(design_projects, "renderer_version", lambda _schema: "9999.01.01.1")
     opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     assert opened.approval_current is False
     assert opened.approval_changed == ["renderer_version"]
@@ -1469,7 +1485,7 @@ def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  
     first = _first_line(exported)
     assert "REVIEW APPROVED" in first
     assert "revision 02" in first
-    assert f"renderer {RENDERER_VERSION}" in first
+    assert f"renderer {_written_renderer()}" in first
 
     with engine.connect() as conn:
         rows = conn.execute(
@@ -1485,7 +1501,7 @@ def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  
     assert after == whole
     # Same inputs, same rules: the same design, now approved under this renderer.
     assert rows[1].snapshot_sha256 == legacy.snapshot_sha256
-    assert rows[1].approved_renderer_version == RENDERER_VERSION
+    assert rows[1].approved_renderer_version == _written_renderer()
     with pytest.raises(ConflictError):
         _export(as_tenant, a, saved, fmt="pdf")
     history = design_projects.open_project(

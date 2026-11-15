@@ -240,8 +240,10 @@
     animation: pp-spin 0.8s linear infinite;
   }
 
+  /* Wraps: on a narrow screen a wide row of actions moves below the text
+     instead of pushing the page sideways (390 px, long Arabic labels). */
   .notice {
-    @apply flex items-start gap-3 rounded-md border px-4 py-3 text-text;
+    @apply flex flex-wrap items-start gap-3 rounded-md border px-4 py-3 text-text;
   }
 
   .notice-icon {

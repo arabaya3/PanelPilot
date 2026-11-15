@@ -16,6 +16,7 @@ from app.design.model import versions
 from app.design.model.read import VersionedModel, read_snapshot
 from app.domain import design_projects
 from app.models.schemas.design import DesignProject, ExportStatus
+from app.tests.design import stored_design
 from app.tests.domain.test_design_projects import (
     DATABASE_URL,
     _approve,
@@ -35,10 +36,16 @@ def test_unmarked_snapshot_reads_as_v1(hall_project: DesignProject) -> None:
 
 
 def test_an_unknown_schema_is_refused(hall_project: DesignProject) -> None:
-    stored = {"schema": "pp-design/2", "model": hall_project.model_dump(mode="json")}
+    stored = {"schema": "pp-design/3", "model": hall_project.model_dump(mode="json")}
     with pytest.raises(versions.SnapshotSchemaUnknownError) as refused:
         read_snapshot(stored)
-    assert refused.value.params == {"schema": "pp-design/2"}
+    assert refused.value.params == {"schema": "pp-design/3"}
+
+
+def test_bare_v1_content_in_a_v2_envelope_is_unreadable(hall_project: DesignProject) -> None:
+    stored = {"schema": "pp-design/2", "model": hall_project.model_dump(mode="json")}
+    with pytest.raises(versions.SnapshotUnreadableError):
+        read_snapshot(stored)
 
 
 def test_an_unknown_field_is_refused_not_dropped(hall_project: DesignProject) -> None:
@@ -106,7 +113,7 @@ def _rewrite_snapshot(engine: Engine, change: Any) -> None:
 
 
 def _with_unknown_field(stored: dict[str, Any]) -> dict[str, Any]:
-    stored["boards"][0]["devices"][0]["terminals"] = []
+    stored_design.design_of(stored)["boards"][0]["devices"][0]["terminals"] = []
     return stored
 
 

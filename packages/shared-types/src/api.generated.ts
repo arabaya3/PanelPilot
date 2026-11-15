@@ -656,6 +656,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/configuration/validate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Validate Configuration
+     * @description Compose a configuration with the latest revision, designed now; nothing is saved.
+     */
+    post: operations['validate_configuration_api_v1_design_projects__project_id__configuration_validate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}/revisions/{number}/approval': {
     parameters: {
       query?: never;
@@ -1926,6 +1946,50 @@ export interface components {
       citation_density: number;
     };
     /**
+     * ConfigurationReview
+     * @description What a configuration would compose to against a project's latest revision.
+     *
+     *     Nothing is saved. ``saveable`` says whether this deployment stores a
+     *     configured revision (``DESIGN_SNAPSHOT_SCHEMA`` is ``pp-design/2``).
+     *
+     *     Attributes:
+     *         based_on_revision: The revision whose request was designed.
+     *         snapshot_schema: Always ``pp-design/2``.
+     *         written_schema: What this deployment writes new revisions in.
+     *         saveable: Whether a revision with this configuration could be saved here.
+     *         snapshot_sha256: The hash the composed snapshot would be stored under.
+     *         findings: Every finding the save would record (v1 checks and structural).
+     *         model: The composed model.
+     */
+    ConfigurationReview: {
+      /** Based On Revision */
+      based_on_revision: number;
+      /** Snapshot Schema */
+      snapshot_schema: string;
+      /** Written Schema */
+      written_schema: string;
+      /** Saveable */
+      saveable: boolean;
+      /** Snapshot Sha256 */
+      snapshot_sha256: string;
+      /** Findings */
+      findings: components['schemas']['DesignFinding'][];
+      model: components['schemas']['V2ModelSummary'];
+    };
+    /**
+     * ConfigurationValidateRequest
+     * @description A configuration to try against a project's latest revision; nothing is saved.
+     *
+     *     Attributes:
+     *         configuration: As for ``ReviseProjectRequest.configuration``.
+     */
+    ConfigurationValidateRequest: {
+      /** Configuration */
+      configuration: {
+        [key: string]: unknown;
+      };
+    };
+    /**
      * CrawlJobRequest
      * @description Request to queue a crawl.
      *
@@ -2687,7 +2751,9 @@ export interface components {
       | 'quotation_csv'
       | 'plc_st'
       | 'plc_io_csv'
-      | 'json';
+      | 'json'
+      | 'terminal_schedule_pdf'
+      | 'wire_schedule_pdf';
     /**
      * ExportPurpose
      * @description What a saved revision is exported for.
@@ -4200,6 +4266,13 @@ export interface components {
      *     Attributes:
      *         request: The project as entered now.
      *         note: What changed, for the revision list.
+     *         configuration: Templates, connection patterns, strips, components and
+     *             bindings to compose with the server's design, as data
+     *             (``app.design.model.compose``); ``None`` for none. Only a
+     *             ``pp-design/2`` deployment stores one (``configuration_requires_v2``
+     *             otherwise). Bounded and checked by
+     *             ``app.domain.design_configuration``: a client never claims a
+     *             review, and defines ``tenant`` refs only.
      */
     ReviseProjectRequest: {
       request: components['schemas']['ProjectDesignRequest-Input'];
@@ -4208,6 +4281,10 @@ export interface components {
        * @default
        */
       note: string;
+      /** Configuration */
+      configuration?: {
+        [key: string]: unknown;
+      } | null;
     };
     /**
      * Revision
@@ -4297,7 +4374,9 @@ export interface components {
      *             audit identity, is never sent.
      *         approval_note: The note added at approval, if any; never an identity.
      *         validated: Whether the server designed it from its request when it
-     *             was saved, and holds that design; ``False`` for an older one.
+     *             was saved, and holds that design intact; ``False`` for an older
+     *             one, and for one whose stored design fails integrity (hash,
+     *             read, review status, findings) or is in an unknown schema.
      *         export_status: What it can be exported as now.
      *         approval_current: Whether its approval still counts: of the design
      *             it holds, under the policy that applies now (the resolved profile
@@ -4386,7 +4465,9 @@ export interface components {
      *         request: That revision as entered.
      *         findings: What the checks found in the design the server built for
      *             that revision when it was saved; empty for an older revision.
-     *         validated: Whether that revision holds a server-built design.
+     *         validated: Whether that revision holds a server-built design that
+     *             passes its integrity checks (``False`` when it fails them or is
+     *             in an unknown schema; ``export_status`` is then ``not_validated``).
      *         snapshot_sha256: The SHA-256 of that design's canonical JSON.
      *         rules_version: The calculation rules it was designed under.
      *         approved_snapshot_sha256: The design its approval is bound to;
@@ -4410,6 +4491,15 @@ export interface components {
      *         permissions: What the caller may do to this project
      *             (``app.domain.permissions``); the server checks again on every
      *             request.
+     *         model_v2: For a ``pp-design/2`` revision whose snapshot reads, its
+     *             components, nets, wires (each value with its source), schedules
+     *             and structural findings, for review; ``None`` otherwise.
+     *         snapshot_schema: The schema its stored design names, identified from
+     *             the stored JSON without reading it (``pp-design/1`` or
+     *             ``pp-design/2``); ``None`` when there is none or it names no
+     *             schema this server knows. It says nothing about whether the design
+     *             reads or passes its integrity check (see ``export_status`` and the
+     *             findings).
      */
     SavedProject: {
       /** Id */
@@ -4446,6 +4536,9 @@ export interface components {
       approving_as?: string | null;
       /** Permissions */
       permissions?: components['schemas']['Permission'][];
+      model_v2?: components['schemas']['V2ModelSummary'] | null;
+      /** Snapshot Schema */
+      snapshot_schema?: string | null;
     };
     /**
      * ScheduleSuggestionRequest
@@ -4824,6 +4917,284 @@ export interface components {
       expires_in: number;
       /** Questions Remaining */
       questions_remaining: number;
+    };
+    /**
+     * V2Component
+     * @description A component instance.
+     *
+     *     Attributes:
+     *         id: Its id.
+     *         board_id: Its board.
+     *         designation: Its product designation, as the data gives it, or ``None``.
+     *         template_ref: Its template.
+     *         legacy_device_id: The v1 device it mirrors (the server's design), or ``None``.
+     *         pattern_refs: The patterns whose bindings created or joined it.
+     *         source: ``data`` for a server-designed device, ``configuration`` otherwise.
+     */
+    V2Component: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Template Ref */
+      template_ref: string;
+      /** Legacy Device Id */
+      legacy_device_id: string | null;
+      /** Pattern Refs */
+      pattern_refs: string[];
+      /** Source */
+      source: string;
+    };
+    /**
+     * V2Connection
+     * @description A connection between two members of a net.
+     */
+    V2Connection: {
+      /** Id */
+      id: string;
+      /** Net Id */
+      net_id: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Via */
+      via: string;
+      /** Cable Core */
+      cable_core: string | null;
+      /** Pattern Ref */
+      pattern_ref: string | null;
+    };
+    /**
+     * V2Definition
+     * @description An embedded template or connection pattern, as the review shows it.
+     *
+     *     Attributes:
+     *         ref: Its ref.
+     *         kind: ``template`` or ``pattern``.
+     *         review_status: ``unreviewed``, ``approved`` or ``rejected``, as embedded.
+     *         provenance_source: The source its provenance documents, or ``None``.
+     *         restricted_scope: For a template, the uses it may not be executed for.
+     */
+    V2Definition: {
+      /** Ref */
+      ref: string;
+      /** Kind */
+      kind: string;
+      /** Review Status */
+      review_status: string;
+      /** Provenance Source */
+      provenance_source?: string | null;
+      /** Restricted Scope */
+      restricted_scope?: string[];
+    };
+    /**
+     * V2Finding
+     * @description A ``pp-design/2`` structural finding with its effects.
+     *
+     *     Attributes:
+     *         code: Its code (``findings_v2``).
+     *         severity: ``blocking`` or ``warning`` (``findings_v2.SEVERITIES``).
+     *         message: In English.
+     *         location: The ids it is about.
+     *         unresolved: Whether it records missing information.
+     *         blocks_approval: Whether design-review approval is refused while it stands.
+     *         blocks_execution: Whether it is an execution blocker in itself.
+     *         requires_engineering_confirmation: Whether an engineer must confirm it.
+     */
+    V2Finding: {
+      /** Code */
+      code: string;
+      /** Severity */
+      severity: string;
+      /** Message */
+      message: string;
+      /** Location */
+      location: {
+        [key: string]: string;
+      };
+      /** Unresolved */
+      unresolved: boolean;
+      /** Blocks Approval */
+      blocks_approval: boolean;
+      /** Blocks Execution */
+      blocks_execution: boolean;
+      /** Requires Engineering Confirmation */
+      requires_engineering_confirmation: boolean;
+    };
+    /**
+     * V2ModelSummary
+     * @description A ``pp-design/2`` model as a review shows it; review content only.
+     *
+     *     Attributes:
+     *         definitions: The embedded templates and patterns with their review status.
+     *         components: Every component.
+     *         strips: Every terminal strip, with its points.
+     *         nets: Every net.
+     *         connections: Every connection.
+     *         wires: The wire schedule's rows, each value with its source.
+     *         terminals: The terminal schedule's rows.
+     *         findings: Every structural finding, with its effects.
+     */
+    V2ModelSummary: {
+      /** Definitions */
+      definitions: components['schemas']['V2Definition'][];
+      /** Components */
+      components: components['schemas']['V2Component'][];
+      /** Strips */
+      strips: components['schemas']['V2Strip'][];
+      /** Nets */
+      nets: components['schemas']['V2Net'][];
+      /** Connections */
+      connections: components['schemas']['V2Connection'][];
+      /** Wires */
+      wires: components['schemas']['V2WireRow'][];
+      /** Terminals */
+      terminals: components['schemas']['V2TerminalRow'][];
+      /** Findings */
+      findings: components['schemas']['V2Finding'][];
+    };
+    /**
+     * V2Net
+     * @description A net: its members' labels and where it came from (``origin``).
+     */
+    V2Net: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Signal */
+      signal: string;
+      /** Origin */
+      origin: string;
+      /** Members */
+      members: string[];
+      /** Pattern Refs */
+      pattern_refs: string[];
+    };
+    /**
+     * V2Strip
+     * @description A terminal strip and its points.
+     */
+    V2Strip: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Template Ref */
+      template_ref: string | null;
+      /** Points */
+      points: components['schemas']['V2StripPoint'][];
+    };
+    /**
+     * V2StripPoint
+     * @description One strip point.
+     */
+    V2StripPoint: {
+      /** Id */
+      id: string;
+      /** Position */
+      position: number;
+      /** Level */
+      level: number;
+      /** Marking */
+      marking: string;
+      /** Kind */
+      kind: string;
+      /** Pattern Ref */
+      pattern_ref: string | null;
+    };
+    /**
+     * V2TerminalRow
+     * @description One row of the terminal schedule (``schedules.terminal_schedule``).
+     */
+    V2TerminalRow: {
+      /** Board Id */
+      board_id: string;
+      /** Owner Kind */
+      owner_kind: string;
+      /** Owner Id */
+      owner_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Terminal Id */
+      terminal_id: string;
+      /** Marking */
+      marking: string;
+      /** Side */
+      side: string | null;
+      /** Position */
+      position: number | null;
+      /** Level */
+      level: number | null;
+      /** Kind */
+      kind: string;
+      required: components['schemas']['V2Value'];
+      /** Net Id */
+      net_id: string | null;
+      /** Signal */
+      signal: string | null;
+      /** Connected To */
+      connected_to: string[];
+      /** Template Ref */
+      template_ref: string | null;
+      /** Pattern Refs */
+      pattern_refs: string[];
+      /** Net Origin */
+      net_origin: string | null;
+      /** Flags */
+      flags: string[];
+    };
+    /**
+     * V2Value
+     * @description A value as reviewed, with where it came from.
+     *
+     *     Attributes:
+     *         value: The value as text; ``None`` when the model holds none.
+     *         source: ``user``, ``data``, ``assumption``, or ``unresolved`` (no value).
+     *         assumption_id: The assumption record, exactly when ``source`` is ``assumption``.
+     *         assumption_statement: What that record states.
+     */
+    V2Value: {
+      /** Value */
+      value: string | null;
+      /** Source */
+      source: string;
+      /** Assumption Id */
+      assumption_id?: string | null;
+      /** Assumption Statement */
+      assumption_statement?: string | null;
+    };
+    /**
+     * V2WireRow
+     * @description One row of the wire schedule (``schedules.wire_schedule``).
+     */
+    V2WireRow: {
+      /** Board Id */
+      board_id: string;
+      /** Wire Id */
+      wire_id: string;
+      /** Connection Id */
+      connection_id: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Net Id */
+      net_id: string;
+      /** Signal */
+      signal: string;
+      number: components['schemas']['V2Value'];
+      cross_section_mm2: components['schemas']['V2Value'];
+      colour: components['schemas']['V2Value'];
+      /** Pattern Ref */
+      pattern_ref: string | null;
+      /** Flags */
+      flags: string[];
     };
     /** ValidationError */
     ValidationError: {
@@ -5981,6 +6352,53 @@ export interface operations {
       };
     };
   };
+  validate_configuration_api_v1_design_projects__project_id__configuration_validate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConfigurationValidateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConfigurationReview'];
+        };
+      };
+      /** @description No such project is the caller's (`project_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `configuration_too_large`, `configuration_claims_review`, `configuration_ref_reserved` or `configuration_refused` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post: {
     parameters: {
       query?: never;
@@ -6049,7 +6467,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, `revision_stale`, `export_format_unprotected`, or `execution_package_incomplete` */
+      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, `revision_stale`, `export_format_unprotected`, `schedule_requires_v2`, or `execution_package_incomplete` */
       409: {
         headers: {
           [name: string]: unknown;

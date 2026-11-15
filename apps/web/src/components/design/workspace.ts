@@ -12,6 +12,7 @@ export const VIEWS = [
   'layout',
   'materials',
   'revisions',
+  'configuration',
   'review',
 ] as const;
 export type View = (typeof VIEWS)[number];

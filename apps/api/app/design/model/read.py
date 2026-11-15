@@ -5,6 +5,10 @@ software does not read (``snapshot_schema_unknown``), and validates the
 content strictly: an unknown field anywhere is an error, never dropped. It
 does not check the hash; the caller checks that first, over the stored JSON
 as stored.
+
+A ``pp-design/2`` snapshot is read by :func:`codec_v2.parse_model`, which
+checks every v2 invariant; its :attr:`VersionedModel.project` is the v1 design
+it holds, exactly as stored, so the v1 renderers and checks keep one path.
 """
 
 from __future__ import annotations
@@ -15,8 +19,9 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from app.design.model import domain, versions
+from app.design.model import codec_v2, domain, entities, versions
 from app.design.model.convert_v1 import from_v1
+from app.design.model.serialize import to_stored_v1
 from app.models.schemas.design import DesignProject
 
 
@@ -27,6 +32,9 @@ class VersionedModel:
     Attributes:
         schema: The schema it was stored in.
         project: The design as v1, which today's renderers and checks take.
+            For a v2 snapshot, the v1 design it holds under ``design``.
+        v2: The v2 model, for a v2 snapshot; ``None`` for v1.
+
     The domain model (:attr:`model`) is built on first use only: the read
     paths that gate approval and export take the v1 form, and should not pay
     for a conversion they discard.
@@ -34,6 +42,7 @@ class VersionedModel:
 
     schema: str
     project: DesignProject
+    v2: entities.DesignModelV2 | None = None
 
     @cached_property
     def model(self) -> domain.DesignModel:
@@ -59,8 +68,17 @@ def read_snapshot(stored: Any) -> VersionedModel:
     """
     schema = versions.identify(stored)
     content = versions.payload(stored, schema)
-    # Only v1 is known: ``identify`` refuses every other schema, so the
-    # payload is v1. A later schema adds its own reader here.
+    if schema == versions.V2:
+        try:
+            v2 = codec_v2.parse_model(content)
+        except RecursionError as exc:
+            raise versions.SnapshotUnreadableError(
+                f"not a {schema} design: nested too deep"
+            ) from exc
+        return VersionedModel(
+            schema=schema, project=DesignProject.model_validate(content["design"]), v2=v2
+        )
+    # ``identify`` refuses every schema but v1 and v2, so the payload is v1.
     try:
         project = DesignProject.model_validate(content)
     except PydanticValidationError as exc:
@@ -72,3 +90,16 @@ def read_snapshot(stored: Any) -> VersionedModel:
         # process that ran out of memory must not carry on as if it had not.
         raise versions.SnapshotUnreadableError(f"not a {schema} design: nested too deep") from exc
     return VersionedModel(schema=schema, project=project)
+
+
+def project_to_v1(model: entities.DesignModelV2) -> dict[str, Any]:
+    """The v1 design a v2 model holds, exactly as v1 stores it.
+
+    Args:
+        model: A v2 model, as read.
+
+    Returns:
+        The bare v1 snapshot JSON, byte for byte the ``design`` it was read
+        from, for the existing v1 renderers and checks.
+    """
+    return to_stored_v1(model.design)

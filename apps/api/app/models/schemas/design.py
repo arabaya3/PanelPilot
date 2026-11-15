@@ -899,6 +899,10 @@ class ExportFormat(StrEnum):
     PLC_ST = "plc_st"
     PLC_IO_CSV = "plc_io_csv"
     JSON = "json"
+    #: Review-only terminal schedule of a saved ``pp-design/2`` revision.
+    TERMINAL_SCHEDULE_PDF = "terminal_schedule_pdf"
+    #: Review-only wire schedule of a saved ``pp-design/2`` revision.
+    WIRE_SCHEDULE_PDF = "wire_schedule_pdf"
 
 
 class DesignExportRequest(StrictModel):
@@ -1341,10 +1345,241 @@ class ReviseProjectRequest(StrictModel):
     Attributes:
         request: The project as entered now.
         note: What changed, for the revision list.
+        configuration: Templates, connection patterns, strips, components and
+            bindings to compose with the server's design, as data
+            (``app.design.model.compose``); ``None`` for none. Only a
+            ``pp-design/2`` deployment stores one (``configuration_requires_v2``
+            otherwise). Bounded and checked by
+            ``app.domain.design_configuration``: a client never claims a
+            review, and defines ``tenant`` refs only.
     """
 
     request: ProjectDesignRequest
     note: str = Field(default="", max_length=500)
+    configuration: dict[str, Any] | None = None
+
+
+class ConfigurationValidateRequest(StrictModel):
+    """A configuration to try against a project's latest revision; nothing is saved.
+
+    Attributes:
+        configuration: As for ``ReviseProjectRequest.configuration``.
+    """
+
+    configuration: dict[str, Any]
+
+
+class V2Value(BaseModel):
+    """A value as reviewed, with where it came from.
+
+    Attributes:
+        value: The value as text; ``None`` when the model holds none.
+        source: ``user``, ``data``, ``assumption``, or ``unresolved`` (no value).
+        assumption_id: The assumption record, exactly when ``source`` is ``assumption``.
+        assumption_statement: What that record states.
+    """
+
+    value: str | None
+    source: str
+    assumption_id: str | None = None
+    assumption_statement: str | None = None
+
+
+class V2Definition(BaseModel):
+    """An embedded template or connection pattern, as the review shows it.
+
+    Attributes:
+        ref: Its ref.
+        kind: ``template`` or ``pattern``.
+        review_status: ``unreviewed``, ``approved`` or ``rejected``, as embedded.
+        provenance_source: The source its provenance documents, or ``None``.
+        restricted_scope: For a template, the uses it may not be executed for.
+    """
+
+    ref: str
+    kind: str
+    review_status: str
+    provenance_source: str | None = None
+    restricted_scope: list[str] = Field(default_factory=list)
+
+
+class V2Component(BaseModel):
+    """A component instance.
+
+    Attributes:
+        id: Its id.
+        board_id: Its board.
+        designation: Its product designation, as the data gives it, or ``None``.
+        template_ref: Its template.
+        legacy_device_id: The v1 device it mirrors (the server's design), or ``None``.
+        pattern_refs: The patterns whose bindings created or joined it.
+        source: ``data`` for a server-designed device, ``configuration`` otherwise.
+    """
+
+    id: str
+    board_id: str
+    designation: str | None
+    template_ref: str
+    legacy_device_id: str | None
+    pattern_refs: list[str]
+    source: str
+
+
+class V2StripPoint(BaseModel):
+    """One strip point."""
+
+    id: str
+    position: int
+    level: int
+    marking: str
+    kind: str
+    pattern_ref: str | None
+
+
+class V2Strip(BaseModel):
+    """A terminal strip and its points."""
+
+    id: str
+    board_id: str
+    designation: str | None
+    template_ref: str | None
+    points: list[V2StripPoint]
+
+
+class V2Net(BaseModel):
+    """A net: its members' labels and where it came from (``origin``)."""
+
+    id: str
+    board_id: str
+    signal: str
+    origin: str
+    members: list[str]
+    pattern_refs: list[str]
+
+
+class V2Connection(BaseModel):
+    """A connection between two members of a net."""
+
+    id: str
+    net_id: str
+    start: str
+    end: str
+    via: str
+    cable_core: str | None
+    pattern_ref: str | None
+
+
+class V2Finding(BaseModel):
+    """A ``pp-design/2`` structural finding with its effects.
+
+    Attributes:
+        code: Its code (``findings_v2``).
+        severity: ``blocking`` or ``warning`` (``findings_v2.SEVERITIES``).
+        message: In English.
+        location: The ids it is about.
+        unresolved: Whether it records missing information.
+        blocks_approval: Whether design-review approval is refused while it stands.
+        blocks_execution: Whether it is an execution blocker in itself.
+        requires_engineering_confirmation: Whether an engineer must confirm it.
+    """
+
+    code: str
+    severity: str
+    message: str
+    location: dict[str, str]
+    unresolved: bool
+    blocks_approval: bool
+    blocks_execution: bool
+    requires_engineering_confirmation: bool
+
+
+class V2TerminalRow(BaseModel):
+    """One row of the terminal schedule (``schedules.terminal_schedule``)."""
+
+    board_id: str
+    owner_kind: str
+    owner_id: str
+    designation: str | None
+    terminal_id: str
+    marking: str
+    side: str | None
+    position: int | None
+    level: int | None
+    kind: str
+    required: V2Value
+    net_id: str | None
+    signal: str | None
+    connected_to: list[str]
+    template_ref: str | None
+    pattern_refs: list[str]
+    net_origin: str | None
+    flags: list[str]
+
+
+class V2WireRow(BaseModel):
+    """One row of the wire schedule (``schedules.wire_schedule``)."""
+
+    board_id: str
+    wire_id: str
+    connection_id: str
+    start: str
+    end: str
+    net_id: str
+    signal: str
+    number: V2Value
+    cross_section_mm2: V2Value
+    colour: V2Value
+    pattern_ref: str | None
+    flags: list[str]
+
+
+class V2ModelSummary(BaseModel):
+    """A ``pp-design/2`` model as a review shows it; review content only.
+
+    Attributes:
+        definitions: The embedded templates and patterns with their review status.
+        components: Every component.
+        strips: Every terminal strip, with its points.
+        nets: Every net.
+        connections: Every connection.
+        wires: The wire schedule's rows, each value with its source.
+        terminals: The terminal schedule's rows.
+        findings: Every structural finding, with its effects.
+    """
+
+    definitions: list[V2Definition]
+    components: list[V2Component]
+    strips: list[V2Strip]
+    nets: list[V2Net]
+    connections: list[V2Connection]
+    wires: list[V2WireRow]
+    terminals: list[V2TerminalRow]
+    findings: list[V2Finding]
+
+
+class ConfigurationReview(BaseModel):
+    """What a configuration would compose to against a project's latest revision.
+
+    Nothing is saved. ``saveable`` says whether this deployment stores a
+    configured revision (``DESIGN_SNAPSHOT_SCHEMA`` is ``pp-design/2``).
+
+    Attributes:
+        based_on_revision: The revision whose request was designed.
+        snapshot_schema: Always ``pp-design/2``.
+        written_schema: What this deployment writes new revisions in.
+        saveable: Whether a revision with this configuration could be saved here.
+        snapshot_sha256: The hash the composed snapshot would be stored under.
+        findings: Every finding the save would record (v1 checks and structural).
+        model: The composed model.
+    """
+
+    based_on_revision: int
+    snapshot_schema: str
+    written_schema: str
+    saveable: bool
+    snapshot_sha256: str
+    findings: list[DesignFinding]
+    model: V2ModelSummary
 
 
 class RevisionSummary(BaseModel):
@@ -1373,7 +1608,9 @@ class RevisionSummary(BaseModel):
             audit identity, is never sent.
         approval_note: The note added at approval, if any; never an identity.
         validated: Whether the server designed it from its request when it
-            was saved, and holds that design; ``False`` for an older one.
+            was saved, and holds that design intact; ``False`` for an older
+            one, and for one whose stored design fails integrity (hash,
+            read, review status, findings) or is in an unknown schema.
         export_status: What it can be exported as now.
         approval_current: Whether its approval still counts: of the design
             it holds, under the policy that applies now (the resolved profile
@@ -1460,7 +1697,9 @@ class SavedProject(BaseModel):
         request: That revision as entered.
         findings: What the checks found in the design the server built for
             that revision when it was saved; empty for an older revision.
-        validated: Whether that revision holds a server-built design.
+        validated: Whether that revision holds a server-built design that
+            passes its integrity checks (``False`` when it fails them or is
+            in an unknown schema; ``export_status`` is then ``not_validated``).
         snapshot_sha256: The SHA-256 of that design's canonical JSON.
         rules_version: The calculation rules it was designed under.
         approved_snapshot_sha256: The design its approval is bound to;
@@ -1484,6 +1723,15 @@ class SavedProject(BaseModel):
         permissions: What the caller may do to this project
             (``app.domain.permissions``); the server checks again on every
             request.
+        model_v2: For a ``pp-design/2`` revision whose snapshot reads, its
+            components, nets, wires (each value with its source), schedules
+            and structural findings, for review; ``None`` otherwise.
+        snapshot_schema: The schema its stored design names, identified from
+            the stored JSON without reading it (``pp-design/1`` or
+            ``pp-design/2``); ``None`` when there is none or it names no
+            schema this server knows. It says nothing about whether the design
+            reads or passes its integrity check (see ``export_status`` and the
+            findings).
     """
 
     id: str
@@ -1502,6 +1750,8 @@ class SavedProject(BaseModel):
     execution_blockers: list[str] = Field(default_factory=list)
     approving_as: str | None = None
     permissions: list[Permission] = Field(default_factory=list)
+    model_v2: V2ModelSummary | None = None
+    snapshot_schema: str | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

@@ -259,8 +259,18 @@ export function ProjectsPanel({
     }
   }
 
-  function load(projectId: string, revision?: number) {
+  // Set by the Open button: once the project is open, focus moves to what
+  // was opened, rather than falling to the page when the button is disabled.
+  const focusOpened = useRef(false);
+  useEffect(() => {
+    if (!focusOpened.current || opened === null) return;
+    focusOpened.current = false;
+    document.getElementById(`${id}-opened`)?.focus();
+  }, [opened, id]);
+
+  function load(projectId: string, revision?: number, focus = false) {
     beforeOpen(() => {
+      focusOpened.current = focus;
       void fetchAndOpen(projectId, revision);
     });
   }
@@ -330,7 +340,9 @@ export function ProjectsPanel({
       <h2 className="text-lg font-semibold">{t('title')}</h2>
       {opened && (
         <div className="flex flex-wrap items-end gap-3 text-sm" data-testid="project-opened">
-          <span>{t('opened', { name: opened.name, revision: opened.revision })}</span>
+          <span id={`${id}-opened`} tabIndex={-1} data-testid="project-opened-name">
+            {t('opened', { name: opened.name, revision: opened.revision })}
+          </span>
           {opened.revisions.length > 1 && (
             <Field id={`${id}-revision`} label={t('revision')}>
               <select
@@ -515,7 +527,7 @@ export function ProjectsPanel({
                 type="button"
                 disabled={working}
                 onClick={() => {
-                  load(project.id);
+                  load(project.id, undefined, true);
                 }}
                 className="btn btn-sm btn-secondary"
               >

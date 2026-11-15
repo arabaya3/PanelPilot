@@ -1,0 +1,23 @@
+{
+  "renderer_version": "2026.10.31.v2-3",
+  "variants": {
+    "pe_n_distribution": {
+      "pdf": "156fee306ae473be4701190eb739de51b7b59899c437ff19e95cfd53b6e4d881",
+      "calculations_pdf": "294865c9db2b9ab8fb1ae2cf1678cce2f503817780b671a910210e29b65b2160",
+      "quotation_pdf": "546a8318d5851a688a6e1749074fce75d2d44d1d9b7f622d5e57bc6d44dde91c",
+      "dxf": "2bab4ddc5b9c071c923a8b2ae92f49d68a4fea88e12615da4e025df23682e5db",
+      "json": "342775e89798105532c774012d50fc5396f4b880d63e0beb27fd6c551befe986",
+      "terminal_schedule_pdf": "fa2d76b14a700d2265354bc79cbe39d0ed8a7fb6709986d6a3f29a4b5f3d959b",
+      "wire_schedule_pdf": "912062172669519e8eb1f12b2e576083359e25836f1eabb801f4980505a5c06c"
+    },
+    "io_marshalling": {
+      "pdf": "42bd46809ff430fab123554c3cc711581adfb47c59b43803230a6e8d0e852dfe",
+      "calculations_pdf": "2d94c5ed52b83e338ae106d82d0b48a60f43e5d2c571b69132db58e5de1b26f7",
+      "quotation_pdf": "26bf27692c129763bb6fd2f064aaf9b33017fe1498fe35194ca0b8d5ce5fcfa0",
+      "dxf": "4ad6c2e390820b5c4be1f9667b6e29f59a1f24415eb761107171c86b71edf68a",
+      "json": "367718a7a8b1acc0bbc9c59e9d08c25aa608cb39287142bbe919b7a41f2b0604",
+      "terminal_schedule_pdf": "053cc5d7c379c72f8bf4ee6eee3bc13d245a584202eb3e9ba869d755362e1852",
+      "wire_schedule_pdf": "f420120488fe03cbd8a24a4ea0c30f107da5b1732555eb5ffb1ab859870985ce"
+    }
+  }
+}

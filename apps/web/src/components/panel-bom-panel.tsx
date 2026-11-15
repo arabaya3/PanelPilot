@@ -319,7 +319,10 @@ export function PanelBomPanel({
           {...describedBy}
           value={enclosure[key]}
           onChange={(event) => {
-            setEnclosure((current) => ({ ...current, [key]: event.target.value }));
+            // Read now: React may run the updater after the event, once it
+            // has put the controlled input back to its rendered value.
+            const { value } = event.target;
+            setEnclosure((current) => ({ ...current, [key]: value }));
             edited(key);
           }}
           className="input w-full"

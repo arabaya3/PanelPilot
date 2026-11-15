@@ -118,6 +118,20 @@ export type DeleteOutcome = { kind: 'deleted' } | Failure;
 export type MarkupOutcome = { kind: 'read'; report: MarkupReport } | Failure;
 export type CompanySettings = components['schemas']['CompanySettings'];
 export type SettingsOutcome = { kind: 'settings'; saved: CompanySettings } | Failure;
+/** What a configuration would compose to against a project's latest revision; nothing saved. */
+export type ConfigurationReview = components['schemas']['ConfigurationReview'];
+/** A `pp-design/2` model as a review shows it (a dry run, or an opened v2 revision). */
+export type V2ModelSummary = components['schemas']['V2ModelSummary'];
+export type DesignFinding = components['schemas']['DesignFinding'];
+export type V2Finding = components['schemas']['V2Finding'];
+export type V2Value = components['schemas']['V2Value'];
+export type ConfigurationOutcome = { kind: 'reviewed'; review: ConfigurationReview } | Failure;
+
+/** The review-only schedules a `pp-design/2` revision exports (PDF, NOT FOR EXECUTION). */
+export const SCHEDULE_FORMATS = [
+  'terminal_schedule_pdf',
+  'wire_schedule_pdf',
+] as const satisfies readonly ExportFormat[];
 
 /** Statuses whose body is a refusal to say, not a fault. */
 const REFUSED = [400, 403, 404, 409, 422, 429];
@@ -516,12 +530,46 @@ export function saveProject(
   return call(options, PROJECTS, { name, request, note }, saved);
 }
 
-/** Save a new revision of a project: `POST /api/v1/design/projects/{id}/revisions`. */
+/**
+ * Save a new revision of a project: `POST /api/v1/design/projects/{id}/revisions`.
+ * With a `configuration`, the server composes it into a `pp-design/2` revision,
+ * or refuses (`configuration_requires_v2` where this deployment writes v1).
+ */
 export function reviseProject(
-  options: Transport & { id: string; request: ProjectDesignRequest; note?: string },
+  options: Transport & {
+    id: string;
+    request: ProjectDesignRequest;
+    note?: string;
+    configuration?: Record<string, unknown> | null;
+  },
 ): Promise<ProjectOutcome> {
-  const { id, request, note = '' } = options;
-  return call(options, `${PROJECTS}/${encodeURIComponent(id)}/revisions`, { request, note }, saved);
+  const { id, request, note = '', configuration } = options;
+  return call(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
+    configuration ? { request, note, configuration } : { request, note },
+    saved,
+  );
+}
+
+/**
+ * Compose a configuration with the project's latest revision, designed now,
+ * and return what it would be: `POST /api/v1/design/projects/{id}/configuration/validate`.
+ * Nothing is saved.
+ */
+export function validateConfiguration(
+  options: Transport & { id: string; configuration: Record<string, unknown> },
+): Promise<ConfigurationOutcome> {
+  const { id, configuration } = options;
+  return call(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/configuration/validate`,
+    { configuration },
+    (payload) =>
+      has(payload, 'model', 'findings', 'saveable')
+        ? { kind: 'reviewed', review: payload as ConfigurationReview }
+        : null,
+  );
 }
 
 /** Open a project, at its latest revision or one asked for. */

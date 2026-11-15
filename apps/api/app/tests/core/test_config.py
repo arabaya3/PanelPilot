@@ -241,3 +241,64 @@ def test_the_design_body_limit_fits_the_largest_schedule_upload() -> None:
     from app.design.schedule_import import MAX_SCHEDULE_BYTES
 
     assert _settings().max_design_request_body_bytes > MAX_SCHEDULE_BYTES + 64 * 1024
+
+
+# --- DESIGN_SNAPSHOT_SCHEMA ------------------------------------------------
+
+
+def test_design_snapshot_schema_defaults_to_v1(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DESIGN_SNAPSHOT_SCHEMA", raising=False)
+    assert _settings().design_snapshot_schema == "pp-design/1"
+
+
+@pytest.mark.parametrize("value", ["pp-design/1", "pp-design/2"])
+def test_design_snapshot_schema_accepts_the_two_schemas(value: str) -> None:
+    assert _settings(design_snapshot_schema=value).design_snapshot_schema == value
+
+
+@pytest.mark.parametrize(
+    "value", ["pp-design/3", "pp-design/999", "PP-DESIGN/2", "2", "v2", "", " pp-design/2"]
+)
+def test_design_snapshot_schema_refuses_anything_else(value: str) -> None:
+    with pytest.raises(PydanticValidationError):
+        _settings(design_snapshot_schema=value)
+
+
+def test_an_unknown_design_snapshot_schema_stops_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name, value in {
+        "ENVIRONMENT": "dev",
+        "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
+        "OPENSEARCH_URL": "http://localhost:9200",
+        "ANTHROPIC_API_KEY": "k",
+        "OPENAI_API_KEY": "k",
+        "JWT_SECRET": _STRONG_SECRET,
+        "REDIS_URL": "redis://localhost:6379/0",
+        "DESIGN_SNAPSHOT_SCHEMA": "pp-design/3",
+    }.items():
+        monkeypatch.setenv(name, value)
+    config.get_settings.cache_clear()
+    try:
+        with pytest.raises(SystemExit) as exited:
+            config.load_settings_or_exit()
+        assert exited.value.code == config.EXIT_CONFIG_ERROR
+    finally:
+        config.get_settings.cache_clear()
+
+
+def test_the_write_switch_reads_alone_without_the_rest_of_the_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A save reads only the switch: no database URL or secret is needed for it."""
+    from app.core import config
+
+    for name in ("ENVIRONMENT", "DATABASE_URL", "OPENSEARCH_URL", "JWT_SECRET", "REDIS_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DESIGN_SNAPSHOT_SCHEMA", raising=False)
+    assert config.design_snapshot_schema() == "pp-design/1"
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+    assert config.design_snapshot_schema() == "pp-design/2"
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/3")
+    with pytest.raises(config.ConfigurationError):
+        config.design_snapshot_schema()
