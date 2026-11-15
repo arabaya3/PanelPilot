@@ -294,6 +294,9 @@ function StripPointsEditor({
                     maxLength={50}
                     value={point.marking}
                     aria-invalid={point.marking.trim() === '' || undefined}
+                    aria-describedby={
+                      point.marking.trim() === '' ? `${rowId}-pt-${point.id}-problem` : undefined
+                    }
                     onChange={(event) => {
                       onChange(
                         updateStripPoint(value, stripId, point.id, { marking: event.target.value }),
@@ -324,6 +327,9 @@ function StripPointsEditor({
                   type="button"
                   className="btn btn-sm btn-danger"
                   disabled={linked.length > 0}
+                  aria-describedby={
+                    linked.length > 0 ? `${rowId}-pt-${point.id}-linked` : undefined
+                  }
                   aria-label={t('editor.removePoint', { n: String(index + 1) })}
                   onClick={() => {
                     onChange(removeStripPoint(value, stripId, point.id));
@@ -332,8 +338,21 @@ function StripPointsEditor({
                 >
                   {t('editor.remove')}
                 </button>
+                {point.marking.trim() === '' && (
+                  <p
+                    id={`${rowId}-pt-${point.id}-problem`}
+                    className="w-full text-xs font-semibold"
+                    data-testid="strip-point-problem"
+                  >
+                    {t('definitions.pointMarkingEmpty')}
+                  </p>
+                )}
                 {linked.length > 0 && (
-                  <p className="w-full text-xs" data-testid="strip-point-linked">
+                  <p
+                    id={`${rowId}-pt-${point.id}-linked`}
+                    className="w-full text-xs"
+                    data-testid="strip-point-linked"
+                  >
                     {t('definitions.pointLinked', {
                       links: linked
                         .map((use) => t(`definitions.linkEnd.${use.role}`, { board: use.fedBoard }))

@@ -2078,6 +2078,9 @@
       "newTerminal": "New terminal marking",
       "addTerminal": "Add terminal",
       "removeTerminal": "Remove terminal {marking}",
+      "terminalAdded": "Terminal {marking} added.",
+      "terminalRemoved": "Terminal {marking} removed.",
+      "pointMarkingEmpty": "Enter the marking as printed, or remove this point.",
       "markingProblem": {
         "empty": "Enter the marking as printed, or remove this terminal.",
         "duplicate": "Another terminal of this definition has this marking."

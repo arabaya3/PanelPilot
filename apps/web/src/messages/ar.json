@@ -2078,6 +2078,9 @@
       "newTerminal": "ترميز طرف جديد",
       "addTerminal": "إضافة طرف",
       "removeTerminal": "إزالة الطرف {marking}",
+      "terminalAdded": "تمت إضافة الطرف {marking}.",
+      "terminalRemoved": "تمت إزالة الطرف {marking}.",
+      "pointMarkingEmpty": "أدخل العلامة كما هي مطبوعة، أو أزل هذه النقطة.",
       "markingProblem": {
         "empty": "أدخل الترميز كما هو مطبوع، أو أزِل هذا الطرف.",
         "duplicate": "لطرف آخر في هذا التعريف الترميز نفسه."

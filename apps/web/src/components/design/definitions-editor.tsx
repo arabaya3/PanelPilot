@@ -10,7 +10,7 @@
  * is unreviewed and says so. Removing or renaming anything another entry or a
  * feeder link uses names that use first; nothing is dropped silently.
  */
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { designationText, type Configuration } from '@/components/design/configuration-model';
@@ -88,6 +88,9 @@ function DefinitionRow({
   const [marking, setMarking] = useState('');
   const [kind, setKind] = useState(UNSPECIFIED);
   const [required, setRequired] = useState('unstated');
+  // Announced politely after a terminal is added or removed (WCAG 4.1.3).
+  const [status, setStatus] = useState('');
+  const newMarkingRef = useRef<HTMLInputElement>(null);
   const users = definitionUsers(value, definition.ref);
   const problems = definitionProblems(definition);
   const renameProblem =
@@ -106,6 +109,7 @@ function DefinitionRow({
         required: requiredOf(required),
       }),
     );
+    setStatus(t('definitions.terminalAdded', { marking: marking.trim() }));
     setMarking('');
     setKind(UNSPECIFIED);
     setRequired('unstated');
@@ -332,6 +336,13 @@ function DefinitionRow({
                       })}
                       onClick={() => {
                         onChange(removeDefinitionTerminal(value, definition.ref, terminal.id));
+                        setStatus(
+                          t('definitions.terminalRemoved', {
+                            marking: terminal.marking || String(index + 1),
+                          }),
+                        );
+                        // The pressed button unmounts; keep focus in this definition.
+                        newMarkingRef.current?.focus();
                       }}
                       data-testid="definition-terminal-remove"
                     >
@@ -382,6 +393,7 @@ function DefinitionRow({
               {t('definitions.newTerminal')}
             </label>
             <input
+              ref={newMarkingRef}
               id={`${rowId}-new-marking`}
               className="input w-full"
               dir="auto"
@@ -449,6 +461,9 @@ function DefinitionRow({
             {t('definitions.addTerminal')}
           </button>
         </div>
+        <p className="sr-only" role="status" aria-live="polite" data-testid="definition-status">
+          {status}
+        </p>
         {newMarkingProblem !== null && (
           <p
             id={`${rowId}-new-marking-problem`}

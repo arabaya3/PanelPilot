@@ -2078,6 +2078,9 @@
       "newTerminal": "סימון הדק חדש",
       "addTerminal": "הוספת הדק",
       "removeTerminal": "הסרת ההדק {marking}",
+      "terminalAdded": "ההדק {marking} נוסף.",
+      "terminalRemoved": "ההדק {marking} הוסר.",
+      "pointMarkingEmpty": "הזינו את הסימון כפי שהוא מודפס, או הסירו נקודה זו.",
       "markingProblem": {
         "empty": "הזינו את הסימון כפי שהוא מודפס, או הסירו הדק זה.",
         "duplicate": "להדק אחר בהגדרה זו יש סימון זה."
