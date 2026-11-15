@@ -218,6 +218,42 @@ def run_restage(args: list[str]) -> int:
     return status
 
 
+def run_purge_ai_proposals(args: list[str]) -> int:
+    """Delete AI intake proposals no saved revision applied, past their retention (M6b S3).
+
+    Applied proposals are never touched: a revision's record keeps its own
+    copy, and the proposal row stays as its source. The retention is
+    ``AI_INTAKE_UNUSED_RETENTION_DAYS`` unless ``--days N`` is given.
+
+    Args:
+        args: Optionally ``--days N``.
+
+    Returns:
+        ``0``, or ``2`` on a usage error.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain.design_ai import purge_unused_proposals
+
+    days: int | None = None
+    if args:
+        if len(args) != 2 or args[0] != "--days" or not args[1].isdigit() or int(args[1]) < 1:
+            print("usage: purge-ai-proposals [--days N]", file=sys.stderr)
+            return 2
+        days = int(args[1])
+    session = next(get_session())
+    with (
+        closing(session),
+        cross_tenant(session, reason="retention purge of unused AI proposals across tenants"),
+    ):
+        removed = purge_unused_proposals(session=session, older_than_days=days)
+        session.commit()
+    print(f"removed {removed} unused AI intake proposals")
+    return 0
+
+
 def run_crawl_queue(args: list[str]) -> int:
     """Run the oldest crawl queued through the API, if there is one.
 
@@ -876,6 +912,11 @@ REGISTRY: dict[str, JobSpec] = {
             "enqueue-deferred",
             "Queue the next batch of a source's staged passages a crawl deferred.",
             run_enqueue_deferred,
+        ),
+        JobSpec(
+            "purge-ai-proposals",
+            "Delete AI intake proposals no saved revision applied, past their retention.",
+            run_purge_ai_proposals,
         ),
         JobSpec(
             "calibrate-relevance",

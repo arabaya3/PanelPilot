@@ -70,6 +70,7 @@ function panel({
 describe('a revision whose author is not established', () => {
   it('holds Approve and explains why, from the server flag alone', () => {
     panel({ established: false });
+    confirmScope();
     expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
       'disabled',
       true,
@@ -83,6 +84,7 @@ describe('a revision whose author is not established', () => {
   it('offers Approve when established, or when the server does not say', () => {
     for (const established of [true, undefined]) {
       const { unmount } = renderPanel(established);
+      confirmScope();
       expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
         'disabled',
         false,
@@ -169,6 +171,7 @@ describe('a revision whose author is not established', () => {
     });
     // The page did not know (no flag); the server refuses and says why.
     panel({ established: undefined, approve });
+    confirmScope();
     fireEvent.click(screen.getByRole('button', { name: 'Approve revision 2' }));
     expect((await screen.findByTestId('projects-message')).textContent).toContain(
       'Revision 2 records no saving account',
@@ -265,3 +268,10 @@ describe('an approval that no longer counts', () => {
     expect(onOpened).toHaveBeenCalledWith(project, true);
   });
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}

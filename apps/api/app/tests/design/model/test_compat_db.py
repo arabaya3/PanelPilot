@@ -207,7 +207,9 @@ def _open(client: TestClient, project_id: str) -> Any:
 
 def _approve(client: TestClient, project_id: str) -> Any:
     # The approver is the signed-in account; the body names no one.
-    return client.post(f"/design/projects/{project_id}/revisions/1/approval", json={})
+    return client.post(
+        f"/design/projects/{project_id}/revisions/1/approval", json={"scope_confirmed": True}
+    )
 
 
 def _export(client: TestClient, project_id: str, fmt: str = "pdf") -> Any:

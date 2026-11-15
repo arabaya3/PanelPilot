@@ -122,6 +122,9 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # The approver's display name, frozen: "" when the account had none (an
     # export says "a team member"). Exports never re-read it from the account.
     approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # The approval-scope statement the approver confirmed (since d2b6f4a8c1e3);
+    # NULL: none confirmed (an older approval), which does not count.
+    approved_scope_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")
 

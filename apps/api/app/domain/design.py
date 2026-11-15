@@ -515,6 +515,11 @@ def estimate_mark(
             f"Estimate for {design}"
         ),
         findings=mark.findings,
+        # M6e: the requirements lines (open items, exclusions, false
+        # positives) and the scope print on the estimate as on every review export.
+        requirements=mark.requirements,
+        scope=mark.scope,
+        approval=mark.approval,
     )
 
 

@@ -18,6 +18,9 @@ from app.models.tables.tenant import TenantRow, TenantScopedMixin
 # Rows owned by a customer. Anything absent here is shared infrastructure and
 # must justify that below.
 TENANT_SCOPED = {
+    "design_ai_proposals",
+    # One account's AI intake calls this month and its call in flight (S2).
+    "ai_intake_usage",
     "users",
     "diagnostic_sessions",
     "calculation_records",

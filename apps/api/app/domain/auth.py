@@ -1268,7 +1268,7 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
     # before the deactivation must not outlive it either.
     tenant = session.get(TenantRow, uuid.UUID(caller.tenant_id))
     if tenant is None or not tenant.is_active:
-        raise AuthenticationError("account is not active")
+        raise AuthenticationError("account is not active", code="account_inactive")
 
     user = session.get(User, subject)
     if user is None:
@@ -1279,7 +1279,7 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
         return None
 
     if not user.is_active:
-        raise AuthenticationError("account is not active")
+        raise AuthenticationError("account is not active", code="account_inactive")
     # A token whose tenant no longer matches the user's is stale or forged;
     # trusting it would let a moved user act on their old tenant's data.
     if str(user.tenant_id) != caller.tenant_id:
@@ -1313,7 +1313,7 @@ def _resolve_trial_caller(*, session: Session, subject: uuid.UUID, caller: Curre
     """
     row = session.get(AnonymousSessionRow, subject)
     if row is None:
-        raise AuthenticationError("account is not active")
+        raise AuthenticationError("account is not active", code="account_inactive")
 
     if str(row.tenant_id) != caller.tenant_id:
         raise AuthenticationError("token tenant does not match the account")

@@ -11,6 +11,7 @@ import {
   type ApprovalBlocker,
   type ApprovalPolicyPart,
 } from '@/components/design/readiness';
+import { ApprovalScope, SafetyConcerns } from '@/components/design/safety-concerns';
 import {
   approveRevision,
   deleteProject,
@@ -18,12 +19,17 @@ import {
   openProject,
   permits,
   resaveRevision,
+  resolveSafetyConcern,
   reviseProject,
   saveProject,
   type ProjectDesignRequest,
   type ProjectPage,
   type Refusal,
   type RequirementsInput,
+  type LoadRef,
+  type SafetyConcern,
+  type SafetyResolutionEligibility,
+  type SafetyResolutionKind,
   type SavedProject,
 } from '@/lib/design';
 
@@ -76,6 +82,9 @@ export type OpenedProject = {
    * Absent, the page does not guess.
    */
   authorEstablished?: boolean | undefined;
+  /** M6d: the revision's safety concerns and whether the caller may resolve them. */
+  safetyConcerns?: SafetyConcern[];
+  safetyResolution?: SafetyResolutionEligibility | null;
 };
 
 /** One line of the title block's revision list. */
@@ -185,6 +194,7 @@ export function ProjectsPanel({
     remove: typeof deleteProject;
     approve: typeof approveRevision;
     resave: typeof resaveRevision;
+    resolve: typeof resolveSafetyConcern;
   }>;
 }) {
   const t = useIsolatingTranslations('design.projects');
@@ -200,6 +210,7 @@ export function ProjectsPanel({
     remove = deleteProject,
     approve = approveRevision,
     resave = resaveRevision,
+    resolve = resolveSafetyConcern,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
   const [ownNote, setOwnNote] = useState('');
@@ -209,6 +220,8 @@ export function ProjectsPanel({
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [approvalNote, setApprovalNote] = useState('');
+  // M6d: the approver ticks what a review approval covers; never pre-ticked.
+  const [scopeConfirmed, setScopeConfirmed] = useState(false);
   // Anything besides unsaved changes that keeps the revision from approval.
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
   // Not the owner or a reviewer: the server would refuse (`approval_not_permitted`).
@@ -223,6 +236,8 @@ export function ProjectsPanel({
     !trial && opened !== null && opened.approval === null && opened.authorEstablished === false;
   const held =
     trial || notPermitted || dirty || selfAuthored || authorNotEstablished || reasons.length > 0;
+  const concerns = opened?.safetyConcerns ?? [];
+  const unresolvedConcerns = concerns.filter((concern) => !concern.resolved).length;
   const canDelete = permits(page, 'delete_project');
   // Saving the revision open again, unchanged, is how it is designed and
   // approved under today's rules and renderer: when its approval no longer
@@ -351,7 +366,7 @@ export function ProjectsPanel({
   }
 
   async function sign() {
-    if (opened === null || held || working) return;
+    if (opened === null || held || working || !scopeConfirmed) return;
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
@@ -360,11 +375,13 @@ export function ProjectsPanel({
       id: opened.id,
       revision: opened.revision,
       note: approvalNote.trim(),
+      scopeConfirmed: true,
     });
     if (ticket !== sequence.current) return;
     setWorking(false);
     if (outcome.kind === 'saved') {
       setApprovalNote('');
+      setScopeConfirmed(false);
       setMessage(t('approvedNow', { revision: outcome.project.revision }));
       onOpened(outcome.project, false);
       return;
@@ -379,6 +396,30 @@ export function ProjectsPanel({
       if (ticket !== sequence.current) return;
       if (reopened.kind === 'saved') onOpened(reopened.project, false);
     }
+  }
+
+  /** Record a resolution, then read the revision again: its hold and record are the server's. */
+  async function resolveConcern(
+    concern: SafetyConcern,
+    resolution: SafetyResolutionKind,
+    reason: string,
+    notThisEquipment?: LoadRef[],
+  ): Promise<string | null> {
+    if (opened === null) return null;
+    const outcome = await resolve({
+      token,
+      id: opened.id,
+      revision: opened.revision,
+      concern,
+      resolution,
+      reason,
+      ...(notThisEquipment ? { notThisEquipment } : {}),
+    });
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    if (outcome.kind !== 'recorded') return say(outcome);
+    const reopened = await open({ token, id: opened.id, revision: opened.revision });
+    if (reopened.kind === 'saved') onOpened(reopened.project, false);
+    return null;
   }
 
   async function saveForReview() {
@@ -510,6 +551,17 @@ export function ProjectsPanel({
                   : t('approvingAsUnnamed')}
               </p>
             )}
+            <SafetyConcerns
+              concerns={concerns}
+              eligibility={opened.safetyResolution ?? null}
+              onResolve={resolveConcern}
+            />
+            <ApprovalScope
+              concerns={concerns}
+              confirmed={scopeConfirmed}
+              onConfirmedChange={setScopeConfirmed}
+              disabled={trial || notPermitted}
+            />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <Field id={`${id}-approval-note`} label={t('approvalNote')}>
                 <input
@@ -525,7 +577,7 @@ export function ProjectsPanel({
               </Field>
               <button
                 type="button"
-                disabled={working || held}
+                disabled={working || held || !scopeConfirmed}
                 aria-describedby={held ? `${id}-approve-held` : undefined}
                 onClick={() => {
                   void sign();
@@ -588,7 +640,9 @@ export function ProjectsPanel({
                   >
                     {t(`approveHeld.${reason}`, {
                       revision: opened.revision,
-                      count: blockingCount,
+                      // Each hold says its own count: blocking findings, or
+                      // the unresolved safety concerns (M6e).
+                      count: reason === 'safety' ? unresolvedConcerns : blockingCount,
                     })}
                   </p>
                 ))}

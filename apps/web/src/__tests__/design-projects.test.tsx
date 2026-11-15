@@ -272,6 +272,7 @@ describe('the projects panel', () => {
     expect(screen.getByTestId('approving-as').textContent).toBe(
       'You are approving as Rana Haddad.',
     );
+    confirmScope();
     const button = screen.getByRole('button', { name: 'Approve revision 1' });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.change(screen.getByLabelText('Approval note (optional)'), {
@@ -394,6 +395,7 @@ describe('the projects panel', () => {
       false,
       [],
     );
+    confirmScope();
     const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve revision 1' });
     expect(button.disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Approval note (optional)').disabled).toBe(true);
@@ -426,3 +428,10 @@ describe('the project calls', () => {
     expect(fetchImpl.mock.calls[2]?.[0]).toBe('/api/v1/design/projects/p1?revision=3');
   });
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}

@@ -465,6 +465,7 @@ describe('approval by the revision’s author', () => {
 
   it('disables Approve when the server says the signed-in user is the author', () => {
     panel(true);
+    confirmScope();
     expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
       'disabled',
       true,
@@ -477,6 +478,7 @@ describe('approval by the revision’s author', () => {
   it('never guesses from names: offers Approve without the flag', () => {
     // Same display name as the approver, but no flag: two people can share a name.
     panel(undefined);
+    confirmScope();
     expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
       'disabled',
       false,
@@ -499,6 +501,7 @@ describe('approval by the revision’s author', () => {
       params: {},
     });
     panel(undefined, approve);
+    confirmScope();
     fireEvent.click(screen.getByRole('button', { name: 'Approve revision 2' }));
     expect((await screen.findByTestId('projects-message')).textContent).toBe(
       'You saved this revision, so you cannot approve it. Another reviewer must approve it.',
@@ -624,3 +627,10 @@ describe('the account email in a token', () => {
     expect(tokenEmail('nonsense')).toBeNull();
   });
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}

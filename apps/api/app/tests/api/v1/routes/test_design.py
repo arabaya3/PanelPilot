@@ -534,7 +534,9 @@ def test_project_routes_call_the_domain(
     assert client.get("/design/projects/p1?revision=1").json()["revision"] == 1
     revision = {"request": body["request"], "note": "more"}
     assert client.post("/design/projects/p1/revisions", json=revision).status_code == 201
-    approval = client.post("/design/projects/p1/revisions/1/approval", json={"note": "A"})
+    approval = client.post(
+        "/design/projects/p1/revisions/1/approval", json={"note": "A", "scope_confirmed": True}
+    )
     assert approval.status_code == 200
     assert client.post("/design/projects/p1/revisions/0/approval", json={}).status_code == 422
     assert client.delete("/design/projects/p1").status_code == 204

@@ -156,7 +156,7 @@ def _open(c: _As, pid: str, number: int | None = None) -> dict[str, Any]:
 
 
 def _approve(c: _As, pid: str, n: int) -> Any:
-    return c.post(f"/design/projects/{pid}/revisions/{n}/approval", json={})
+    return c.post(f"/design/projects/{pid}/revisions/{n}/approval", json={"scope_confirmed": True})
 
 
 def _resave(c: _As, pid: str, n: int) -> Any:

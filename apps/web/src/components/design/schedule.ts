@@ -20,6 +20,11 @@ export type Load = {
   starter: MotorStarter | '';
   /** Cable route length in metres; empty leaves voltage drop unchecked. */
   length: string;
+  /**
+   * The AI proposal item this row was placed from (M6b), kept through edits;
+   * absent on a row the engineer typed. Not part of the request.
+   */
+  aiItem?: string;
 };
 
 /** The system earthing a board's supply can have. */
@@ -44,6 +49,8 @@ export type BoardForm = {
   /** Route length of the cable from `fedFrom`, in metres. */
   feederLength: string;
   loads: Load[];
+  /** The AI proposal item this board was placed from (M6b); absent on a typed board. */
+  aiItem?: string;
 };
 
 /** Title-block fields for the whole project. */

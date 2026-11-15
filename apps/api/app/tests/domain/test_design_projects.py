@@ -290,7 +290,7 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
         user=user,
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(note=" A. Rabaya "),
+        request=ApproveRevisionRequest(note=" A. Rabaya ", scope_confirmed=True),
     )
     assert approved.revision == 1
     # No users row is behind this caller, so the approver is the fallback:
@@ -319,7 +319,7 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
             user=user,
             project_id=saved.id,
             number=1,
-            request=ApproveRevisionRequest(note="Someone else"),
+            request=ApproveRevisionRequest(note="Someone else", scope_confirmed=True),
         )
     assert again.value.code == "revision_already_approved"
     with pytest.raises(NotFoundError):
@@ -328,7 +328,7 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
             user=user,
             project_id=saved.id,
             number=9,
-            request=ApproveRevisionRequest(),
+            request=ApproveRevisionRequest(scope_confirmed=True),
         )
     with pytest.raises(ValidationError) as locked:
         design_projects.delete_project(session=as_tenant(), user=user, project_id=saved.id)
@@ -368,7 +368,7 @@ def _approve(as_tenant: Any, tenant: uuid.UUID, saved: Any, note: str = "R. Engi
         user=_user(tenant),
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(note=note),
+        request=ApproveRevisionRequest(note=note, scope_confirmed=True),
     )
 
 
@@ -851,9 +851,12 @@ def test_an_approval_request_names_no_one_and_bounds_its_note() -> None:
         with pytest.raises(PydanticValidationError):
             ApproveRevisionRequest.model_validate(named)
     with pytest.raises(PydanticValidationError):
-        ApproveRevisionRequest(note="n" * 201)
-    assert ApproveRevisionRequest(note="  checked on site ").note == "checked on site"
-    assert ApproveRevisionRequest().note == ""
+        ApproveRevisionRequest(note="n" * 201, scope_confirmed=True)
+    assert (
+        ApproveRevisionRequest(note="  checked on site ", scope_confirmed=True).note
+        == "checked on site"
+    )
+    assert ApproveRevisionRequest(scope_confirmed=True).note == ""
 
 
 def _long_description(engine: Engine) -> str:
@@ -975,7 +978,7 @@ def _approve_as(as_tenant: Any, user: CurrentUser, saved: Any, note: str = "") -
         user=user,
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(note=note),
+        request=ApproveRevisionRequest(note=note, scope_confirmed=True),
     )
 
 
@@ -1487,7 +1490,7 @@ def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  
         user=_user(a),
         project_id=saved.id,
         number=2,
-        request=ApproveRevisionRequest(note="R. Engineer"),
+        request=ApproveRevisionRequest(note="R. Engineer", scope_confirmed=True),
     )
     exported = design_projects.export_revision(
         session=as_tenant(),
