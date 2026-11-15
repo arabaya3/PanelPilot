@@ -58,6 +58,30 @@ No metadata difference is expected, and none was found: the PDFs are written by 
 - The test `app/tests/ingestion/test_robots.py::test_an_end_anchor_matches_only_at_the_end` fails in this container on the unchanged #207 head as well (Python 3.13.17's `robotparser`); CI's result is the reference.
 - OpenSearch tests skip locally; CI runs them.
 
+## Browser check (on the #208 merge, which contains #207)
+
+Run against the merge commit of #207 into #208 before it was pushed: the API under `uvicorn --factory app.main:create_app` on a disposable database `panelpilot_phase1_browser`, the web app under `next dev` (not the production server, and no TLS proxy), Chromium through Playwright 1280×900. Data: synthetic accounts `owner2-{en,ar,he}@synthetic-example.com` with throwaway passwords, seeded by `browser/seed.py` through the API, then two rows altered in SQL (one snapshot rewritten into the envelope of an unknown schema `pp-design/9` and re-hashed; one approval's renderer version set to NULL). The script is `browser/check.js`; screenshots are in `browser/`.
+
+API answers seen by the seed (each locale's project):
+
+- approved export before alteration: 200;
+- approval with no recorded renderer: 409 `revision_stale`, `changed=renderer_version`, `approved_renderer_version=unversioned`, `current_renderer_version=2026.10.31.1`;
+- approval recorded under rules `r-approved-earlier`: 409 `revision_stale`, `changed=rules_version`, `saved_rules_version=2026.10.23.1`, `recorded_rules_version=r-approved-earlier`, `current_rules_version=2026.10.23.1`;
+- execution: 409 `execution_package_incomplete`; parts CSV: 409 `export_format_unprotected`.
+
+Browser results, 21 of 21 passed:
+
+| Check                                                                                            | en     | ar     | he     |
+| ------------------------------------------------------------------------------------------------ | ------ | ------ | ------ |
+| `html` `lang`/`dir`                                                                              | en/ltr | ar/rtl | he/rtl |
+| Unknown schema said in the overview on open, naming `pp-design/9`                                | pass   | pass   | pass   |
+| The notice is in the visible overview                                                            | pass   | pass   | pass   |
+| An approval with no recorded renderer: "no longer counts" names the export renderer              | pass   | pass   | pass   |
+| A refused settings save (`max_circuits_per_rcd: "many"`) focuses that field, `aria-invalid=true` | pass   | pass   | pass   |
+| An unknown setting opens the JSON section and focuses its text                                   | pass   | pass   | pass   |
+
+The Arabic and Hebrew strings were checked for presence, direction and placement only. They are AI-written and **still need a native-speaker review**. One point for that reviewer: the Hebrew unknown-schema sentence uses גרסה both for the revision and for the PanelPilot version.
+
 ## The local `test_robots` failure (2026-10-31)
 
 `app/tests/ingestion/test_robots.py::test_an_end_anchor_matches_only_at_the_end` fails under this container's Python 3.13.17 and passes under Python 3.12, on the base and on the candidates alike:
@@ -100,3 +124,30 @@ Synthetic data only, on a disposable database `panelpilot_phase1_prodlike`. The 
 | Old revision's row unchanged (every column but `updated_at`) | 20/20                                   | 11/11                                   |
 
 A first run stopped part-way because the script leaked database sessions (my script, not the application), after recovering 15 projects; those stayed correctly recovered. Counts after: `projects_outstanding` 319, the 365 affected projects less the 46 recovered.
+
+## Production build through the HTTPS proxy (2026-10-31)
+
+Integrated code: #208's merge `fecb2d0`, which contains #207's `c0f7ff0`. Setup, all disposable:
+
+- **Web:** built with `next build` and run as the API image does, with the standalone server (`node apps/web/server.js`, `NODE_ENV=production`).
+- **API:** `uvicorn --factory app.main:create_app` with `ENVIRONMENT=staging` and `WEB_ORIGINS=https://localhost:8443`; throwaway `REFRESH_TOKEN_KEY` and `JWT_SECRET`; database `panelpilot_phase1_https` migrated to head.
+- **Proxy:** Caddy 2 with `tls internal` on `https://localhost:8443`, reverse-proxying to the web server. Headers included HSTS and the CSP. Chromium was told to accept Caddy's internal CA, which a real certificate does not need.
+
+An earlier attempt was discarded: a stray `next start` process from a previous build still held the port, so those runs did not test the standalone server. The run below was checked to be served by the standalone server from `.next/standalone`.
+
+Script: `https/https-flow.js`. Synthetic account and project: one motor circuit and one socket circuit. 15 of 15 passed:
+
+| Step                                                                             | Result                                                                                                                                                                         |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sign-up through the proxy                                                        | 201                                                                                                                                                                            |
+| Refresh cookie                                                                   | `__Host-pp_refresh`, Secure, HttpOnly, SameSite=Strict, Path=/                                                                                                                 |
+| Approve revision 1 in the page; export drawing PDF, DXF, JSON                    | all downloaded; JSON `REVIEW APPROVED`, identity `… revision 01, approved by Synthetic Reviewer on 2026-10-31, design 326b27a53623, rules 2026.10.23.1, renderer 2026.10.31.2` |
+| QElectroTech export                                                              | unavailable                                                                                                                                                                    |
+| Execution export                                                                 | refused in the page                                                                                                                                                            |
+| Approval's renderer cleared (as before `c5d1e8a3f7b2`), page reloaded            | still signed in                                                                                                                                                                |
+| Revision 1 opened                                                                | "This approval no longer counts: how exports are worded and drawn changed …"                                                                                                   |
+| Revision 1 PDF export                                                            | refused, no file                                                                                                                                                               |
+| **Save as new revision** with nothing edited, then approve revision 2 and export | PDF and JSON `REVIEW APPROVED`, `revision 02`, same design hash, renderer `2026.10.31.2`                                                                                       |
+| Database history                                                                 | revision 1 still approved with no renderer; revision 2 approved under `2026.10.31.2`                                                                                           |
+
+The first full run found that the page held **Save as new revision** while nothing had changed, though it told the user to save again. That is fixed in #207 (`c0f7ff0`), and the run above passed on the fixed code. The PDF stamps were read with pdfplumber, and the first page was checked by eye: the identity line fits, and the title block shows only revision 02 as approved. Downloads and screenshots are in `https/`.

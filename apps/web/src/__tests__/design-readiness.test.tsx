@@ -470,6 +470,39 @@ describe('exporting a revision', () => {
   });
 });
 
+describe('opening a revision in an unknown design format', () => {
+  it('says so in the overview it opens on, not only under Review & export', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: saved({
+        validated: false,
+        export_status: 'not_validated',
+        findings: [
+          {
+            code: 'snapshot_schema_unknown',
+            severity: 'blocking',
+            values: { schema: 'pp-design/9' },
+            message: 'The stored design is in schema',
+            requires_engineering_confirmation: false,
+            source: 'policy',
+          },
+        ],
+      }),
+    });
+    renderScreen();
+    await openStored();
+    const notice = overview().getByTestId('opened-schema-unknown');
+    expect(notice.textContent).toContain('pp-design/9');
+    expect(notice.textContent).toContain('does not read');
+  });
+
+  it('says nothing of it for a revision in a format it reads', async () => {
+    renderScreen();
+    await openStored();
+    expect(overview().queryByTestId('opened-schema-unknown')).toBeNull();
+  });
+});
+
 describe('the review view', () => {
   it('shows the steps and the findings, and goes to the row a finding is about', async () => {
     api.open.mockResolvedValue({

@@ -1,0 +1,501 @@
+{
+  "case": "optional_present",
+  "request": {
+    "boards": [
+      {
+        "conditions": {
+          "ambient_temp_c": "40",
+          "grouped_circuits": 3,
+          "installation_method": "C",
+          "insulation_rating_c": 90
+        },
+        "loads": [
+          {
+            "controlled": true,
+            "description": "Fully specified",
+            "feeds": "M-01",
+            "length_m": "35",
+            "load": "motor",
+            "phases": 3,
+            "power_factor": "0.85",
+            "power_kw": "3",
+            "starter": "dol"
+          }
+        ],
+        "location": "Plant room",
+        "name": "DB-FULL",
+        "supply": {
+          "earth_loop_ohm": "0.35",
+          "earthing": "TN-C-S",
+          "fault_level_ka": "20",
+          "frequency_hz": "50",
+          "phases": 3,
+          "voltage_v": "400"
+        }
+      }
+    ],
+    "info": {
+      "consultant": "Synthetic Consultant",
+      "contractor": "Synthetic Contractor",
+      "customer": "Synthetic Customer",
+      "name": "Synthetic Full",
+      "number": "SYN-FULL"
+    }
+  },
+  "source": "pipeline",
+  "stored": {
+    "catalogue_version": "none",
+    "design_snapshot": {
+      "boards": [
+        {
+          "cables": [
+            {
+              "cores": 4,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "DB-FULL",
+                "location": "Plant room",
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "XLPE",
+              "length_m": "35",
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.046"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Fully specified",
+              "design_current_a": "5.66",
+              "device_ids": [
+                "c1-breaker",
+                "c1-line",
+                "c1-overload"
+              ],
+              "earth_loop_ohm": "1.376",
+              "feeds": null,
+              "id": "c1",
+              "load": "motor",
+              "phase": "L1L2L3",
+              "power_kw": "3",
+              "starter": "dol",
+              "upstream_id": null,
+              "voltage_drop_percent": "1.24"
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Main incomer",
+              "designation": {
+                "function": "DB-FULL",
+                "location": "Plant room",
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "10",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": "MF",
+              "description": "Fully specified motor protection",
+              "designation": {
+                "function": "DB-FULL",
+                "location": "Plant room",
+                "product": "Q2"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": "ABB/T2S160 MF 8.5",
+              "poles": 3,
+              "rated_current_a": "8.5",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fully specified line contactor",
+              "designation": {
+                "function": "DB-FULL",
+                "location": "Plant room",
+                "product": "Q3"
+              },
+              "id": "c1-line",
+              "kind": "contactor",
+              "part_key": "ABB/A26",
+              "poles": 3,
+              "rated_current_a": null,
+              "residual_current_ma": null,
+              "upstream_id": "c1-breaker"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fully specified overload, set to 5.66 A",
+              "designation": {
+                "function": "DB-FULL",
+                "location": "Plant room",
+                "product": "F1"
+              },
+              "id": "c1-overload",
+              "kind": "overload_relay",
+              "part_key": "ABB/TA25DU8.5",
+              "poles": 3,
+              "rated_current_a": "5.66",
+              "residual_current_ma": null,
+              "upstream_id": "c1-line"
+            }
+          ],
+          "fed_from": null,
+          "function": null,
+          "id": "DB-FULL",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": "Plant room",
+          "name": "DB-FULL",
+          "notes": [
+            {
+              "code": "motor_current_formula",
+              "params": {
+                "current": "5.66",
+                "efficiency": "0.9",
+                "load": "Fully specified",
+                "power": "3",
+                "power_factor": "0.85"
+              },
+              "text": "Fully specified: Ir 5.66 A from 3 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate."
+            },
+            {
+              "code": "starter_table",
+              "params": {
+                "load": "Fully specified",
+                "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+                "starter": "dol"
+              },
+              "text": "Fully specified: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2."
+            },
+            {
+              "code": "discrimination_incomer_raised",
+              "params": {
+                "after": "5.66",
+                "rated": "10",
+                "ratio": "1.6"
+              },
+              "text": "Incomer raised to 10 A, 1.6 x the 5.66 A breaker after it, for discrimination."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "20",
+                "rating": "25"
+              },
+              "text": "Breakers are rated for at least 25 kA breaking capacity against 20 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "contactor_ac1",
+              "params": {},
+              "text": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "earth_fault_basis",
+              "params": {
+                "voltage": "231",
+                "ze": "0.35"
+              },
+              "text": "Earth fault disconnection checked from Ze 0.35 Ω at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4)."
+            },
+            {
+              "code": "earth_fault_motor_basis",
+              "params": {},
+              "text": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 §8.3.3.1.2)."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "20"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 20 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "40",
+                "grouped": "3",
+                "insulation": "90",
+                "method": "C"
+              },
+              "text": "Cables sized for method C, 40 °C, 3 grouped circuit(s), 90 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "3"
+              },
+              "text": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings)."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": "0.35",
+            "earthing": "TN-C-S",
+            "fault_level_ka": "20",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        }
+      ],
+      "info": {
+        "consultant": "Synthetic Consultant",
+        "contractor": "Synthetic Contractor",
+        "customer": "Synthetic Customer",
+        "name": "Synthetic Full",
+        "number": "SYN-FULL",
+        "revisions": []
+      },
+      "parts": [
+        {
+          "description": "Moulded-case circuit-breaker, motor protection",
+          "key": "ABB/T2S160 MF 8.5",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "T2S160 MF 8.5",
+          "width_mm": null
+        },
+        {
+          "description": "Contactor, AC-3",
+          "key": "ABB/A26",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "A26",
+          "width_mm": null
+        },
+        {
+          "description": "Thermal overload relay",
+          "key": "ABB/TA25DU8.5",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "TA25DU8.5",
+          "width_mm": null
+        }
+      ],
+      "profile": "iec-default"
+    },
+    "findings": [
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": "c1",
+        "code": "motor_current_formula",
+        "device_id": null,
+        "message": "Fully specified: Ir 5.66 A from 3 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "5.66",
+          "efficiency": "0.9",
+          "load": "Fully specified",
+          "power": "3",
+          "power_factor": "0.85"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": "c1",
+        "code": "starter_table",
+        "device_id": null,
+        "message": "Fully specified: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "load": "Fully specified",
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+          "starter": "dol"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "discrimination_incomer_raised",
+        "device_id": null,
+        "message": "Incomer raised to 10 A, 1.6 x the 5.66 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "5.66",
+          "rated": "10",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 25 kA breaking capacity against 20 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "20",
+          "rating": "25"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "contactor_ac1",
+        "device_id": null,
+        "message": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "earth_fault_basis",
+        "device_id": null,
+        "message": "Earth fault disconnection checked from Ze 0.35 Ω at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "IEC 60364-4-41 §411.4.4/§411.4.5",
+        "values": {
+          "voltage": "231",
+          "ze": "0.35"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "earth_fault_motor_basis",
+        "device_id": null,
+        "message": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 §8.3.3.1.2).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "IEC 60947-2 §8.3.3.1.2",
+        "values": {}
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 20 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "20"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method C, 40 °C, 3 grouped circuit(s), 90 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "40",
+          "grouped": "3",
+          "insulation": "90",
+          "method": "C"
+        }
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-FULL",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "3"
+        }
+      }
+    ],
+    "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+    "rules_version": "2026.10.23.1",
+    "snapshot_sha256": "492b50ab314569f9883149304832b748561eda6221fdb46d04ad9e4faa4fbfc2"
+  }
+}

@@ -1060,6 +1060,13 @@ function DesignWorkspace({
   // The inputs have changed since the design shown was made.
   const stale = result.kind === 'designed' && result.basis !== basis;
   // Where the saved revision stands; edits since make its validation and approval stale.
+  // The opened revision is stored in a design format this version cannot read.
+  const schemaUnknown = (() => {
+    const found = validation?.findings.find((item) => item.code === 'snapshot_schema_unknown');
+    if (!found) return null;
+    const schema = found.values?.schema;
+    return typeof schema === 'string' ? schema : '?';
+  })();
   const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
@@ -1508,6 +1515,12 @@ function DesignWorkspace({
         {viewPanel(
           'overview',
           <>
+            {opened && schemaUnknown && (
+              // Said where the project opens, not only under Review & export.
+              <Notice tone="warning" live={false} testId="opened-schema-unknown">
+                {t('errors.snapshot_schema_unknown', { schema: schemaUnknown })}
+              </Notice>
+            )}
             <Panel title={t('project')}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {infoField('name')}

@@ -1,0 +1,41 @@
+{
+  "case": "refused",
+  "request": {
+    "boards": [
+      {
+        "fed_from": "NOWHERE",
+        "loads": [
+          {
+            "description": "L",
+            "load": "lighting",
+            "power_kw": "1"
+          }
+        ],
+        "name": "DB-R"
+      }
+    ],
+    "info": {
+      "name": "Synthetic Refused"
+    }
+  },
+  "source": "pipeline",
+  "stored": {
+    "findings": [
+      {
+        "board_id": null,
+        "circuit_id": null,
+        "code": "design_refused",
+        "device_id": null,
+        "message": "The design was refused: DB-R is fed from NOWHERE, which is not in the project",
+        "requires_engineering_confirmation": false,
+        "severity": "blocking",
+        "source": "policy",
+        "values": {
+          "board": "DB-R",
+          "refusal": "board_supply_unknown",
+          "supply": "NOWHERE"
+        }
+      }
+    ]
+  }
+}
