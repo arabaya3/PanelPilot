@@ -15,6 +15,7 @@ import {
   type Configuration,
   type ConflictTarget,
 } from '@/components/design/configuration-model';
+import type { LinkEndUse } from '@/components/design/definition-model';
 import {
   GroupedFindingsOfDesign,
   ModelReview,
@@ -118,6 +119,7 @@ export function ConfigurationPanel({
   validateImpl = validateConfiguration,
   findings,
   findingsRevision,
+  linkUses = [],
 }: {
   token: string;
   projectId: string;
@@ -143,6 +145,8 @@ export function ConfigurationPanel({
   findings?: DesignFinding[];
   /** The revision those findings were found in. */
   findingsRevision?: number;
+  /** The feeder-link ends the boards' link forms name now (M8). */
+  linkUses?: LinkEndUse[];
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -380,6 +384,7 @@ export function ConfigurationPanel({
         model={model}
         conflict={conflict}
         idBase={id}
+        linkUses={linkUses}
       />
       <Notice tone="info" live={false} action={saveAction} testId="configuration-save-where">
         {t('saveWhere')}
@@ -430,6 +435,17 @@ export function ConfigurationPanel({
                         })}
                       </button>
                     </>
+                  ) : conflict.kind === 'template' ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => {
+                        editConflict(conflict);
+                      }}
+                      data-testid="conflict-edit"
+                    >
+                      {t('conflict.editDefinition')}
+                    </button>
                   ) : (
                     <span data-testid="conflict-link">{t('conflict.link')}</span>
                   )}

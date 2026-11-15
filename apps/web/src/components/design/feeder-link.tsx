@@ -13,14 +13,16 @@ import { useId } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import type { Configuration } from '@/components/design/configuration-model';
 import {
   CALCULATED_ATTRIBUTES,
   LINK_ATTRIBUTES,
   LINK_MATERIALS,
   blankLink,
+  decodeTerminal,
   isBlankLink,
+  linkTerminalOptions,
   linkValueProblem,
-  terminalOptions,
   terminalText,
   valuesDiffer,
   type CalculatedValues,
@@ -45,6 +47,7 @@ export function FeederLinkForm({
   value,
   onChange,
   model,
+  configuration = null,
   calculated,
   refusal,
 }: {
@@ -55,6 +58,11 @@ export function FeederLinkForm({
   onChange: (next: LinkForm | undefined) => void;
   /** The opened revision's v2/v3 model, whose terminals an end can name; null for none. */
   model: V2ModelSummary | null;
+  /**
+   * The configuration being edited (M8): its components' and strips' terminals
+   * are offered by the ids the server derives, before any save; null for none.
+   */
+  configuration?: Configuration | null;
   /** What the feeder calculation used; null while the project is not designed. */
   calculated: CalculatedValues | null;
   /** A save refusal about this link, said in the reader's language. */
@@ -71,8 +79,13 @@ export function FeederLinkForm({
   function end(role: 'from' | 'to') {
     const board = role === 'from' ? supplyBoard : fedBoard;
     const current: LinkEndForm = link[role];
-    const options = terminalOptions(model, board, t('unnamed'), (side) => t(`side.${side}`));
+    const sideWord = (side: 'inner' | 'outer') => t(`side.${side}`);
+    const options = linkTerminalOptions(model, configuration, board, t('unnamed'), sideWord);
     const chosen = options.find((option) => option.value === current.terminal);
+    // A terminal chosen earlier that the configuration no longer holds: kept
+    // (never silently cleared) and said, so the user picks another or clears it.
+    const stale = current.terminal !== '' && chosen === undefined;
+    const staleRef = stale ? decodeTerminal(current.terminal) : null;
     const set = (patch: Partial<LinkEndForm>) => {
       update({ ...link, [role]: { ...current, ...patch } });
     };
@@ -98,6 +111,13 @@ export function FeederLinkForm({
             }}
           >
             <option value="">{t('terminalNone')}</option>
+            {stale && (
+              <option value={current.terminal}>
+                {t('terminalGone', {
+                  terminal: staleRef ? terminalText(staleRef, model, sideWord) : current.terminal,
+                })}
+              </option>
+            )}
             {options.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.text}
@@ -112,6 +132,15 @@ export function FeederLinkForm({
             data-testid={`link-${role}-terminal-chosen`}
           >
             {t('terminalChosen', { terminal: chosen.text })}
+          </p>
+        )}
+        {stale && (
+          <p
+            className="min-w-0 break-words text-xs font-semibold"
+            role="status"
+            data-testid={`link-${role}-terminal-gone`}
+          >
+            {t('terminalGoneNote', { board })}
           </p>
         )}
         {options.length === 0 && (

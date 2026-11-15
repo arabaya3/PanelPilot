@@ -8,7 +8,10 @@
  * stays "not given", and nothing is ever prefilled from the designer's feeder
  * cable.
  */
+import type { Configuration } from '@/components/design/configuration-model';
+import type { LinkEndUse } from '@/components/design/definition-model';
 import type { V2ModelSummary } from '@/lib/design';
+import { deriveId } from '@/lib/sha256';
 
 /** The cable/conductor properties a link can carry, in the contract's order. */
 export const LINK_ATTRIBUTES = [
@@ -137,6 +140,139 @@ export function terminalOptions(
     }
   }
   return options;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function entries(config: Configuration, key: string): Record<string, unknown>[] {
+  const value = config[key];
+  return Array.isArray(value)
+    ? value.map(asRecord).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+}
+
+function productOf(designation: unknown): string | null {
+  const value = asRecord(designation);
+  return value && typeof value.product === 'string' && value.product !== '' ? value.product : null;
+}
+
+/**
+ * M8: the terminals of one board as the configuration being edited holds
+ * them, by the ids the server will derive when it is saved: each component's
+ * terminals from its definition (in the configuration), and each point
+ * entered directly on a strip (both sides). So a terminal the user has just
+ * defined can be chosen before saving; nothing is offered that the
+ * configuration does not hold.
+ */
+export function configurationTerminalOptions(
+  config: Configuration,
+  board: string,
+  unnamed = '?',
+  sideWord: (side: 'inner' | 'outer') => string = (side) => side,
+): TerminalOption[] {
+  const definitions = new Map<string, Record<string, unknown>[]>();
+  for (const template of entries(config, 'templates')) {
+    if (typeof template.ref !== 'string') continue;
+    const terminals = Array.isArray(template.terminals) ? template.terminals : [];
+    definitions.set(
+      template.ref,
+      terminals.map(asRecord).filter((item): item is Record<string, unknown> => item !== null),
+    );
+  }
+  const options: TerminalOption[] = [];
+  for (const component of entries(config, 'components')) {
+    if (component.board !== board || typeof component.id !== 'string') continue;
+    const terminals = definitions.get(String(component.template)) ?? [];
+    const owner = productOf(component.designation) ?? unnamed;
+    const ordered = [...terminals].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    for (const terminal of ordered) {
+      if (typeof terminal.id !== 'string' || typeof terminal.marking !== 'string') continue;
+      if (terminal.marking.trim() === '') continue;
+      options.push({
+        value: encodeTerminal({ component: deriveId('k', component.id), terminal: terminal.id }),
+        text: `${owner}:${terminal.marking} — ${board}`,
+      });
+    }
+  }
+  for (const strip of entries(config, 'strips')) {
+    if (strip.board !== board || typeof strip.id !== 'string') continue;
+    const owner = productOf(strip.designation) ?? unnamed;
+    const points = Array.isArray(strip.points) ? strip.points : [];
+    for (const item of points) {
+      const point = asRecord(item);
+      if (point === null || typeof point.id !== 'string' || typeof point.marking !== 'string') {
+        continue;
+      }
+      if (point.marking.trim() === '') continue;
+      const pid = deriveId('p', strip.id, 'direct', point.id);
+      for (const side of ['inner', 'outer'] as const) {
+        options.push({
+          value: encodeTerminal({ point: pid, side }),
+          text: `${owner}:${point.marking} (${sideWord(side)}) — ${board}`,
+        });
+      }
+    }
+  }
+  return options;
+}
+
+/**
+ * The link-end choices of one board: the configuration being edited first
+ * (M8), then what only the saved model holds (points a pattern placed, the
+ * parts of a revision whose configuration cannot be carried). A saved
+ * configuration part the user has since removed is not offered.
+ */
+export function linkTerminalOptions(
+  model: V2ModelSummary | null,
+  config: Configuration | null,
+  board: string,
+  unnamed = '?',
+  sideWord: (side: 'inner' | 'outer') => string = (side) => side,
+): TerminalOption[] {
+  const saved = terminalOptions(model, board, unnamed, sideWord);
+  if (config === null) return saved;
+  const edited = configurationTerminalOptions(config, board, unnamed, sideWord);
+  const hasEntries =
+    entries(config, 'components').length > 0 || entries(config, 'strips').length > 0;
+  if (!hasEntries) return saved;
+  const components = new Set(
+    entries(config, 'components')
+      .filter((item) => typeof item.id === 'string')
+      .map((item) => deriveId('k', item.id as string)),
+  );
+  const strips = new Set(
+    entries(config, 'strips')
+      .filter((item) => typeof item.id === 'string')
+      .map((item) => deriveId('s', item.id as string)),
+  );
+  const offered = new Set(edited.map((option) => option.value));
+  const ownersById = new Map<string, { kind: string; owner: string }>();
+  for (const row of model?.terminals ?? []) {
+    const ref =
+      row.owner_kind === 'component'
+        ? encodeTerminal({ component: row.owner_id, terminal: row.terminal_id })
+        : row.side === 'inner' || row.side === 'outer'
+          ? encodeTerminal({ point: row.terminal_id, side: row.side })
+          : null;
+    if (ref !== null) ownersById.set(ref, { kind: row.owner_kind, owner: row.owner_id });
+  }
+  const kept = saved.filter((option) => {
+    if (offered.has(option.value)) return false;
+    const owner = ownersById.get(option.value);
+    if (owner === undefined) return true;
+    // A configuration component (`k-`) or strip (`s-`) no longer in the
+    // configuration is gone from the next save: not offered.
+    if (owner.kind === 'component' && owner.owner.startsWith('k-')) {
+      return components.has(owner.owner);
+    }
+    if (owner.kind === 'strip') return strips.has(owner.owner);
+    return true;
+  });
+  return [...edited, ...kept];
 }
 
 /** A terminal said as the model names it, or its raw ids where the model does not hold it. */
@@ -462,4 +598,28 @@ export const LINK_SCHEMA = 'pp-design/3';
 export function writesLinks(project: object | null | undefined): boolean {
   const p = project as { written_schema?: unknown; snapshot_schema?: unknown } | null;
   return p?.written_schema === LINK_SCHEMA || p?.snapshot_schema === LINK_SCHEMA;
+}
+
+/**
+ * M8: the terminals the boards' link forms currently name, so the
+ * configuration editor can say which definition, terminal, component or strip
+ * point a link uses before anything is removed.
+ */
+export function linkUsesOf(boards: ReadonlyArray<{ name: string; link?: LinkForm }>): LinkEndUse[] {
+  const uses: LinkEndUse[] = [];
+  for (const board of boards) {
+    if (!board.link) continue;
+    for (const role of ['from', 'to'] as const) {
+      const ref = decodeTerminal(board.link[role].terminal);
+      if (ref === null) continue;
+      uses.push({
+        fedBoard: board.name.trim(),
+        role,
+        terminal: isComponentTerminal(ref)
+          ? { component: ref.component, terminal: ref.terminal }
+          : { point: ref.point, side: ref.side },
+      });
+    }
+  }
+  return uses;
 }

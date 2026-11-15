@@ -39,6 +39,13 @@ import {
   type TemplateChoice,
 } from '@/components/design/configuration-model';
 import { ReviewStatus } from '@/components/design/configuration-review';
+import {
+  componentLinkUses,
+  definitionsOf,
+  stripLinkUses,
+  type LinkEndUse,
+} from '@/components/design/definition-model';
+import { DefinitionsEditor } from '@/components/design/definitions-editor';
 import { TechnicalToken } from '@/components/technical-token';
 import type { V2ModelSummary } from '@/lib/design';
 
@@ -246,12 +253,14 @@ function StripPointsEditor({
   stripId,
   points,
   rowId,
+  linkUses,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
   stripId: string;
   points: StripPoint[];
   rowId: string;
+  linkUses: LinkEndUse[];
 }) {
   const t = useIsolatingTranslations('configuration');
   const [marking, setMarkingText] = useState('');
@@ -266,62 +275,75 @@ function StripPointsEditor({
       )}
       {points.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {points.map((point, index) => (
-            <li
-              key={point.id}
-              className="flex min-w-0 flex-wrap items-end gap-2"
-              data-testid="strip-point"
-            >
-              <div className="field min-w-0 flex-1">
-                <label htmlFor={`${rowId}-pt-${point.id}`} className="field-label">
-                  {t('editor.pointN', { n: String(index + 1) })}
-                </label>
-                <input
-                  id={`${rowId}-pt-${point.id}`}
-                  className="input w-full"
-                  dir="auto"
-                  maxLength={50}
-                  value={point.marking}
-                  aria-invalid={point.marking.trim() === '' || undefined}
-                  onChange={(event) => {
-                    onChange(
-                      updateStripPoint(value, stripId, point.id, { marking: event.target.value }),
-                    );
-                  }}
-                  data-testid="strip-point-marking"
-                />
-              </div>
-              <div className="field w-24">
-                <label htmlFor={`${rowId}-pt-${point.id}-level`} className="field-label">
-                  {t('editor.level')}
-                </label>
-                <input
-                  id={`${rowId}-pt-${point.id}-level`}
-                  className="input w-full"
-                  inputMode="numeric"
-                  dir="ltr"
-                  value={point.level === undefined ? '' : String(point.level)}
-                  onChange={(event) => {
-                    const next = levelOf(event.target.value);
-                    if (next === 'invalid') return;
-                    onChange(updateStripPoint(value, stripId, point.id, { level: next }));
-                  }}
-                  data-testid="strip-point-level"
-                />
-              </div>
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
-                aria-label={t('editor.removePoint', { n: String(index + 1) })}
-                onClick={() => {
-                  onChange(removeStripPoint(value, stripId, point.id));
-                }}
-                data-testid="strip-point-remove"
+          {points.map((point, index) => {
+            const linked = stripLinkUses(stripId, [point.id], linkUses);
+            return (
+              <li
+                key={point.id}
+                className="flex min-w-0 flex-wrap items-end gap-2"
+                data-testid="strip-point"
               >
-                {t('editor.remove')}
-              </button>
-            </li>
-          ))}
+                <div className="field min-w-0 flex-1">
+                  <label htmlFor={`${rowId}-pt-${point.id}`} className="field-label">
+                    {t('editor.pointN', { n: String(index + 1) })}
+                  </label>
+                  <input
+                    id={`${rowId}-pt-${point.id}`}
+                    className="input w-full"
+                    dir="auto"
+                    maxLength={50}
+                    value={point.marking}
+                    aria-invalid={point.marking.trim() === '' || undefined}
+                    onChange={(event) => {
+                      onChange(
+                        updateStripPoint(value, stripId, point.id, { marking: event.target.value }),
+                      );
+                    }}
+                    data-testid="strip-point-marking"
+                  />
+                </div>
+                <div className="field w-24">
+                  <label htmlFor={`${rowId}-pt-${point.id}-level`} className="field-label">
+                    {t('editor.level')}
+                  </label>
+                  <input
+                    id={`${rowId}-pt-${point.id}-level`}
+                    className="input w-full"
+                    inputMode="numeric"
+                    dir="ltr"
+                    value={point.level === undefined ? '' : String(point.level)}
+                    onChange={(event) => {
+                      const next = levelOf(event.target.value);
+                      if (next === 'invalid') return;
+                      onChange(updateStripPoint(value, stripId, point.id, { level: next }));
+                    }}
+                    data-testid="strip-point-level"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  disabled={linked.length > 0}
+                  aria-label={t('editor.removePoint', { n: String(index + 1) })}
+                  onClick={() => {
+                    onChange(removeStripPoint(value, stripId, point.id));
+                  }}
+                  data-testid="strip-point-remove"
+                >
+                  {t('editor.remove')}
+                </button>
+                {linked.length > 0 && (
+                  <p className="w-full text-xs" data-testid="strip-point-linked">
+                    {t('definitions.pointLinked', {
+                      links: linked
+                        .map((use) => t(`definitions.linkEnd.${use.role}`, { board: use.fedBoard }))
+                        .join(', '),
+                    })}
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       <div className="flex min-w-0 flex-wrap items-end gap-2">
@@ -396,9 +418,12 @@ export function ConfigurationEditor({
   model,
   conflict,
   idBase,
+  linkUses = [],
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
+  /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
+  linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
   boards: string[];
   /** The opened revision's v2/v3 model, whose registry definitions are offered too; null for none. */
@@ -425,6 +450,14 @@ export function ConfigurationEditor({
     const section = kind === 'component' ? 'components' : 'strips';
     const rowId = entryElementId(idBase, kind, entry.id);
     const conflicted = marked(kind, entry.id);
+    const entryLinks =
+      kind === 'component'
+        ? componentLinkUses(entry.id, linkUses)
+        : stripLinkUses(
+            entry.id,
+            stripPoints(entry as { points?: unknown }).map((point) => point.id),
+            linkUses,
+          );
     return (
       <li
         key={entry.id}
@@ -479,6 +512,20 @@ export function ConfigurationEditor({
             data-testid={`${kind}-designation`}
           />
         </div>
+        {kind === 'component' && entry.template !== null && (
+          <p className="break-words text-xs" dir="auto" data-testid="component-terminals">
+            {(() => {
+              const own = definitionsOf(value).find((item) => item.ref === entry.template);
+              if (own === undefined) return t('definitions.terminalsElsewhere');
+              const markings = own.terminals
+                .map((terminal) => terminal.marking)
+                .filter((marking) => marking.trim() !== '');
+              return markings.length === 0
+                ? t('definitions.componentNoTerminals')
+                : t('definitions.componentTerminals', { markings: markings.join(', ') });
+            })()}
+          </p>
+        )}
         {kind === 'strip' && (
           <StripPointsEditor
             value={value}
@@ -486,11 +533,23 @@ export function ConfigurationEditor({
             stripId={entry.id}
             points={stripPoints(entry as { points?: unknown })}
             rowId={rowId}
+            linkUses={linkUses}
           />
+        )}
+        {entryLinks.length > 0 && (
+          <p className="text-xs" id={`${rowId}-linked`} data-testid={`${kind}-linked`}>
+            {t('definitions.entryLinked', {
+              links: entryLinks
+                .map((use) => t(`definitions.linkEnd.${use.role}`, { board: use.fedBoard }))
+                .join(', '),
+            })}
+          </p>
         )}
         <button
           type="button"
           className="btn btn-sm btn-danger self-start"
+          disabled={entryLinks.length > 0}
+          aria-describedby={entryLinks.length > 0 ? `${rowId}-linked` : undefined}
           onClick={() => {
             onChange(removeEntry(value, section, entry.id));
           }}
@@ -510,6 +569,21 @@ export function ConfigurationEditor({
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="configuration-editor">
       <p className="text-sm text-text-muted">{t('editor.intro')}</p>
+
+      <DefinitionsEditor
+        value={value}
+        onChange={onChange}
+        idBase={idBase}
+        linkUses={linkUses}
+        conflictRef={conflict !== null && conflict.kind === 'template' ? conflict.entry : null}
+        rowIdOf={(ref) => entryElementId(idBase, 'template', ref)}
+        onEditUser={(kind, id) => {
+          const element = document.getElementById(entryElementId(idBase, kind, id));
+          if (element !== null && 'scrollIntoView' in element)
+            element.scrollIntoView({ block: 'center' });
+          element?.focus();
+        }}
+      />
 
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-components`}>
         <h3 id={`${idBase}-components`} className="text-base font-semibold">

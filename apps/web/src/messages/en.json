@@ -1985,7 +1985,8 @@
     "conflict": {
       "edit": "Edit it",
       "remove": "Remove {entry}",
-      "link": "Edit or clear this feeder link on its board, then save again."
+      "link": "Edit or clear this feeder link on its board, then save again.",
+      "editDefinition": "Edit the definition"
     },
     "editor": {
       "intro": "Only templates already in this project or its registry are offered. Their review status and source are shown as stored; nothing here is reviewed or rated by this page, and no marking or value is filled in for you.",
@@ -2019,7 +2020,8 @@
         "binding": "binding {id}",
         "strip": "terminal strip {id}",
         "component": "component {id}",
-        "link": "the feeder link of {id}"
+        "link": "the feeder link of {id}",
+        "template": "definition {id}"
       },
       "stripPoints": "Points of this strip",
       "noStripPoints": "No points entered.",
@@ -2040,6 +2042,58 @@
       "edit": "Edit {entry}",
       "derived": "The other part comes from the board form (for example its incomer), not from this configuration: change this entry's designation.",
       "none": "No entry in this configuration prints it; the parts come from the board form."
+    },
+    "definitions": {
+      "title": "Component definitions",
+      "intro": "Define a component's terminals yourself: an id, then each terminal marking as printed on the device. Nothing is filled in for you, and nothing here is reviewed by an engineer.",
+      "none": "No component definitions of this project yet.",
+      "add": "Add a component definition",
+      "addAction": "Add definition",
+      "id": "Definition id",
+      "idHelp": "Lowercase letters, digits, '.', '_' or '-'; starts with a letter or digit (stored as tenant/<id>/v1).",
+      "idProblem": {
+        "empty": "Enter an id.",
+        "invalid": "Use lowercase letters, digits, '.', '_' or '-', starting with a letter or digit.",
+        "taken": "Another definition of this project already has this id."
+      },
+      "rename": "Rename",
+      "renameWithUsers": "Rename and update {count} entries",
+      "renameUsers": "Renaming also points these entries at the new id: {entries}.",
+      "function": "Function",
+      "unspecified": "unspecified",
+      "source": "Source document (optional)",
+      "sourceHelp": "Where the terminal markings come from (for example a datasheet reference). Without one, every terminal's requiredness stays unresolved.",
+      "unreviewed": "User-entered · unreviewed",
+      "reviewStatus": "Review status: {status}",
+      "enteredNote": "Entered by a user in this project. No engineer has reviewed it; drawings and findings say so.",
+      "terminals": "Terminals",
+      "noTerminals": "No terminals yet. A component on this definition has nothing to select as a feeder-link end until you add one.",
+      "terminalN": "Terminal {n} marking",
+      "kind": "Kind",
+      "required": "Must be connected",
+      "requiredUnstated": "not stated",
+      "requiredYes": "yes",
+      "requiredNo": "no",
+      "requiredHelp": "\"Must be connected\" is only treated as documented when a source document is given; otherwise it stays unresolved.",
+      "newTerminal": "New terminal marking",
+      "addTerminal": "Add terminal",
+      "removeTerminal": "Remove terminal {marking}",
+      "markingProblem": {
+        "empty": "Enter the marking as printed, or remove this terminal.",
+        "duplicate": "Another terminal of this definition has this marking."
+      },
+      "terminalLinked": "Used by {links}. Choose another end for that link (or clear it) before removing this terminal.",
+      "pointLinked": "Used by {links}. Choose another end for that link (or clear it) before removing this point.",
+      "entryLinked": "Its terminals are used by {links}. Change that link's end before removing this entry.",
+      "linkEnd": {
+        "from": "the supply end of the feeder link to {board}",
+        "to": "the fed end of the feeder link to {board}"
+      },
+      "remove": "Remove definition",
+      "usedBy": "Used by {count} entries; change or remove them first:",
+      "componentTerminals": "Terminals: {markings}",
+      "componentNoTerminals": "This definition has no terminals yet.",
+      "terminalsElsewhere": "Terminals come from a definition that is not edited here."
     }
   },
   "feederLink": {
@@ -2050,7 +2104,7 @@
     "toEnd": "To end (fed board {board})",
     "terminal": "Modelled terminal or strip point on {board}",
     "terminalNone": "No modelled terminal",
-    "noTerminals": "The opened revision models no terminals on {board}; you can type a label.",
+    "noTerminals": "No terminals on {board} yet. Define a component's terminals or a strip's points on the Configuration tab, or type a label.",
     "label": "Your label",
     "labelNote": "Given by you — not a modelled terminal.",
     "endNotSet": "Terminal not set.",
@@ -2106,6 +2160,8 @@
     "side": {
       "inner": "inner",
       "outer": "outer"
-    }
+    },
+    "terminalGone": "No longer in the configuration: {terminal}",
+    "terminalGoneNote": "The terminal chosen earlier is no longer defined on {board}. Choose another terminal, or clear the end."
   }
 }
