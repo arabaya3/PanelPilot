@@ -2093,7 +2093,9 @@
       "usedBy": "Used by entries ({count}); change or remove them first:",
       "componentTerminals": "Terminals: {markings}",
       "componentNoTerminals": "This definition has no terminals yet.",
-      "terminalsElsewhere": "Terminals come from a definition that is not edited here."
+      "terminalsElsewhere": "Terminals come from a definition that is not edited here.",
+      "patternUser": "pattern {ref} (edit it through the Advanced JSON import)",
+      "terminalPatterned": "Joined by the connection pattern {patterns}. Change that pattern (Advanced JSON import) before removing this terminal."
     }
   },
   "feederLink": {

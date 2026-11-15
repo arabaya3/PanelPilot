@@ -2093,7 +2093,9 @@
       "usedBy": "בשימוש ברשומות ({count}); שנו או הסירו אותן קודם:",
       "componentTerminals": "הדקים: {markings}",
       "componentNoTerminals": "להגדרה זו אין עדיין הדקים.",
-      "terminalsElsewhere": "ההדקים באים מהגדרה שאינה נערכת כאן."
+      "terminalsElsewhere": "ההדקים באים מהגדרה שאינה נערכת כאן.",
+      "patternUser": "התבנית {ref} (נערכת דרך ייבוא JSON המתקדם)",
+      "terminalPatterned": "מחובר בתבנית החיבור {patterns}. שנו את התבנית (ייבוא JSON מתקדם) לפני הסרת ההדק."
     }
   },
   "feederLink": {

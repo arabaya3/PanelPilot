@@ -236,21 +236,24 @@ export function linkTerminalOptions(
   const saved = terminalOptions(model, board, unnamed, sideWord);
   if (config === null) return saved;
   const edited = configurationTerminalOptions(config, board, unnamed, sideWord);
-  const hasEntries =
-    entries(config, 'components').length > 0 || entries(config, 'strips').length > 0;
-  if (!hasEntries) return saved;
-  const components = new Set(
-    entries(config, 'components')
-      .filter((item) => typeof item.id === 'string')
-      .map((item) => deriveId('k', item.id as string)),
+  const offered = new Set(edited.map((option) => option.value));
+  const ownTemplates = new Set(
+    entries(config, 'templates')
+      .map((template) => template.ref)
+      .filter((ref): ref is string => typeof ref === 'string'),
   );
+  // Configuration components by model id, with whether this page edits their definition.
+  const components = new Map<string, boolean>();
+  for (const item of entries(config, 'components')) {
+    if (typeof item.id !== 'string') continue;
+    components.set(deriveId('k', item.id), ownTemplates.has(String(item.template)));
+  }
   const strips = new Set(
     entries(config, 'strips')
       .filter((item) => typeof item.id === 'string')
       .map((item) => deriveId('s', item.id as string)),
   );
-  const offered = new Set(edited.map((option) => option.value));
-  const ownersById = new Map<string, { kind: string; owner: string }>();
+  const rows = new Map<string, { kind: string; owner: string; patterned: boolean }>();
   for (const row of model?.terminals ?? []) {
     const ref =
       row.owner_kind === 'component'
@@ -258,18 +261,25 @@ export function linkTerminalOptions(
         : row.side === 'inner' || row.side === 'outer'
           ? encodeTerminal({ point: row.terminal_id, side: row.side })
           : null;
-    if (ref !== null) ownersById.set(ref, { kind: row.owner_kind, owner: row.owner_id });
+    const patterned = Array.isArray(row.pattern_refs) && row.pattern_refs.length > 0;
+    if (ref !== null) rows.set(ref, { kind: row.owner_kind, owner: row.owner_id, patterned });
   }
   const kept = saved.filter((option) => {
     if (offered.has(option.value)) return false;
-    const owner = ownersById.get(option.value);
-    if (owner === undefined) return true;
-    // A configuration component (`k-`) or strip (`s-`) no longer in the
-    // configuration is gone from the next save: not offered.
-    if (owner.kind === 'component' && owner.owner.startsWith('k-')) {
-      return components.has(owner.owner);
+    const row = rows.get(option.value);
+    if (row === undefined) return true;
+    if (row.kind === 'component' && row.owner.startsWith('k-')) {
+      // A configuration component: gone if the configuration no longer holds it;
+      // if this page edits its definition, only what the definition now holds
+      // (already offered above) is a choice; a registry definition's terminals stay.
+      const own = components.get(row.owner);
+      return own === false;
     }
-    if (owner.kind === 'strip') return strips.has(owner.owner);
+    if (row.kind === 'strip') {
+      // A strip's points: a point a pattern placed stays while the strip does;
+      // a point entered directly is offered only as the configuration now holds it.
+      return strips.has(row.owner) && row.patterned;
+    }
     return true;
   });
   return [...edited, ...kept];

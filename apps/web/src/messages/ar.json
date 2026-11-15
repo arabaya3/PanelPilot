@@ -2093,7 +2093,9 @@
       "usedBy": "مستخدم في إدخالات ({count})؛ غيّرها أو أزِلها أولًا:",
       "componentTerminals": "الأطراف: {markings}",
       "componentNoTerminals": "لا أطراف لهذا التعريف بعد.",
-      "terminalsElsewhere": "تأتي الأطراف من تعريف لا يُحرَّر هنا."
+      "terminalsElsewhere": "تأتي الأطراف من تعريف لا يُحرَّر هنا.",
+      "patternUser": "النمط {ref} (يُحرَّر عبر استيراد JSON المتقدّم)",
+      "terminalPatterned": "يربطه نمط التوصيل {patterns}. غيّر ذلك النمط (استيراد JSON المتقدّم) قبل إزالة هذا الطرف."
     }
   },
   "feederLink": {

@@ -28,6 +28,7 @@ import {
   renameDefinition,
   terminalKindChoices,
   terminalLinkUses,
+  terminalPatternUses,
   UNSPECIFIED,
   updateDefinition,
   updateDefinitionTerminal,
@@ -51,7 +52,12 @@ function kindLabel(t: Translate, kind: string): string {
 }
 
 /** Who uses an entry, said by designation (never a raw id unless it has none). */
-function userName(config: Configuration, kind: 'component' | 'strip', id: string): string {
+function userName(
+  config: Configuration,
+  kind: 'component' | 'strip' | 'pattern',
+  id: string,
+): string {
+  if (kind === 'pattern') return id;
   const section = kind === 'component' ? 'components' : 'strips';
   const list = Array.isArray(config[section]) ? (config[section] as Record<string, unknown>[]) : [];
   const found = list.find((item) => item.id === id);
@@ -235,6 +241,7 @@ function DefinitionRow({
             {definition.terminals.map((terminal, index) => {
               const problem = problems.terminals[terminal.id];
               const linked = terminalLinkUses(value, definition.ref, terminal.id, linkUses);
+              const patterned = terminalPatternUses(value, definition.ref, terminal.id);
               const base = `${rowId}-t-${terminal.id}`;
               return (
                 <li
@@ -316,8 +323,10 @@ function DefinitionRow({
                     <button
                       type="button"
                       className="btn btn-sm btn-danger"
-                      disabled={linked.length > 0}
-                      aria-describedby={linked.length > 0 ? `${base}-linked` : undefined}
+                      disabled={linked.length > 0 || patterned.length > 0}
+                      aria-describedby={
+                        linked.length > 0 || patterned.length > 0 ? `${base}-linked` : undefined
+                      }
                       aria-label={t('definitions.removeTerminal', {
                         marking: terminal.marking || String(index + 1),
                       })}
@@ -336,6 +345,15 @@ function DefinitionRow({
                       data-testid="definition-terminal-problem"
                     >
                       {t(`definitions.markingProblem.${problem}`)}
+                    </p>
+                  )}
+                  {patterned.length > 0 && (
+                    <p
+                      id={linked.length > 0 ? undefined : `${base}-linked`}
+                      className="text-xs"
+                      data-testid="definition-terminal-patterned"
+                    >
+                      {t('definitions.terminalPatterned', { patterns: patterned.join(', ') })}
                     </p>
                   )}
                   {linked.length > 0 && (
@@ -464,19 +482,32 @@ function DefinitionRow({
           >
             <span>{t('definitions.usedBy', { count: String(users.length) })}</span>
             <span className="flex flex-wrap gap-2">
-              {users.map((user) => (
-                <button
-                  key={`${user.kind}|${user.id}`}
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => {
-                    onEditUser(user.kind, user.id);
-                  }}
-                  data-testid="definition-user-edit"
-                >
-                  {t(`editor.entryKind.${user.kind}`, { id: userName(value, user.kind, user.id) })}
-                </button>
-              ))}
+              {users.map((user) =>
+                user.kind === 'pattern' ? (
+                  <span
+                    key={`${user.kind}|${user.id}`}
+                    className="break-all font-mono"
+                    dir="ltr"
+                    data-testid="definition-user-pattern"
+                  >
+                    {t('definitions.patternUser', { ref: user.id })}
+                  </span>
+                ) : (
+                  <button
+                    key={`${user.kind}|${user.id}`}
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => {
+                      if (user.kind !== 'pattern') onEditUser(user.kind, user.id);
+                    }}
+                    data-testid="definition-user-edit"
+                  >
+                    {t(`editor.entryKind.${user.kind}`, {
+                      id: userName(value, user.kind, user.id),
+                    })}
+                  </button>
+                ),
+              )}
             </span>
           </div>
         )}

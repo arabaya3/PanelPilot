@@ -76,8 +76,9 @@ export function sha256Hex(input: string): string {
  * The server's `ids.derive(prefix, *parts)`: `"<prefix>-<first 24 hex of the
  * SHA-256 of the compact JSON array [prefix, ...parts]>"`. Python's
  * `json.dumps(..., ensure_ascii=False, separators=(",", ":"))` of a list of
- * strings matches `JSON.stringify` except for a few control/separator
- * characters, which ids never hold.
+ * strings matches `JSON.stringify` byte for byte (control characters, quotes,
+ * backslashes, non-ASCII and U+2028 alike); only a lone surrogate differs,
+ * which typed ids cannot hold.
  */
 export function deriveId(prefix: string, ...parts: string[]): string {
   return `${prefix}-${sha256Hex(JSON.stringify([prefix, ...parts])).slice(0, 24)}`;

@@ -210,12 +210,17 @@ export function updateDefinition(
   });
 }
 
-/** The entries that name a definition: components and strips, by id. */
-export function definitionUsers(
-  config: Configuration,
-  ref: string,
-): Array<{ kind: 'component' | 'strip'; id: string }> {
-  const out: Array<{ kind: 'component' | 'strip'; id: string }> = [];
+/** What names a definition: components and strips by id, and patterns (by ref) whose slots use it. */
+export type DefinitionUser = { kind: 'component' | 'strip' | 'pattern'; id: string };
+
+function slotsOf(pattern: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(pattern.slots)
+    ? pattern.slots.map(record).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
+}
+
+export function definitionUsers(config: Configuration, ref: string): DefinitionUser[] {
+  const out: DefinitionUser[] = [];
   for (const item of items(config, 'components')) {
     if (item.template === ref && typeof item.id === 'string') {
       out.push({ kind: 'component', id: item.id });
@@ -225,29 +230,81 @@ export function definitionUsers(
     if (item.template === ref && typeof item.id === 'string')
       out.push({ kind: 'strip', id: item.id });
   }
+  for (const pattern of items(config, 'patterns')) {
+    if (typeof pattern.ref === 'string' && slotsOf(pattern).some((slot) => slot.template === ref)) {
+      out.push({ kind: 'pattern', id: pattern.ref });
+    }
+  }
+  return out;
+}
+
+/** The patterns whose nets join this terminal of the definition (through a slot on it). */
+export function terminalPatternUses(
+  config: Configuration,
+  ref: string,
+  terminalId: string,
+): string[] {
+  const out: string[] = [];
+  for (const pattern of items(config, 'patterns')) {
+    const slots = new Set(
+      slotsOf(pattern)
+        .filter((slot) => slot.template === ref && typeof slot.id === 'string')
+        .map((slot) => slot.id as string),
+    );
+    if (slots.size === 0 || typeof pattern.ref !== 'string') continue;
+    const nets = Array.isArray(pattern.nets) ? pattern.nets : [];
+    const joined = nets.some((net: unknown) => {
+      const members = record(net)?.members;
+      return (
+        Array.isArray(members) &&
+        members.some((member: unknown) => {
+          const value = record(member);
+          return (
+            value !== null &&
+            typeof value.slot === 'string' &&
+            slots.has(value.slot) &&
+            value.terminal === terminalId
+          );
+        })
+      );
+    });
+    if (joined) out.push(pattern.ref);
+  }
   return out;
 }
 
 /**
- * A definition renamed, and every component and strip that names it pointed
+ * A definition renamed, and every component, strip and pattern slot that names it pointed
  * at the new ref in the same step (the caller shows them first). The version
  * is kept. Refused (unchanged) when the new id cannot be used.
  */
 export function renameDefinition(config: Configuration, ref: string, id: string): Configuration {
   const parts = refParts(ref);
   if (parts === null || definitionIdProblem(config, id, ref) !== null) return config;
+  // Patterns hold their slots' templates; keep their other keys as they are.
   const next = definitionRef(id.trim(), parts.version);
   if (next === ref) return config;
   const repoint = (key: 'components' | 'strips') =>
     items(config, key).map((item) => (item.template === ref ? { ...item, template: next } : item));
+  const patterns = items(config, 'patterns').map((pattern) =>
+    slotsOf(pattern).some((slot) => slot.template === ref)
+      ? {
+          ...pattern,
+          slots: slotsOf(pattern).map((slot) =>
+            slot.template === ref ? { ...slot, template: next } : slot,
+          ),
+        }
+      : pattern,
+  );
   return {
     ...mapTemplate(config, ref, (template) => ({ ...template, ref: next })),
     components: repoint('components'),
     strips: repoint('strips'),
+    patterns,
   };
 }
 
-/** A definition removed; refused (unchanged) while any component or strip names it. */
+/** A definition removed; refused (unchanged) while any component, strip or pattern names it. */
 export function removeDefinition(config: Configuration, ref: string): Configuration {
   if (definitionUsers(config, ref).length > 0) return config;
   return {

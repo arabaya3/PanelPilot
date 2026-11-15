@@ -13,6 +13,7 @@ import {
   renameDefinition,
   terminalKindChoices,
   terminalLinkUses,
+  terminalPatternUses,
   updateDefinition,
   updateDefinitionTerminal,
   type LinkEndUse,
@@ -162,6 +163,28 @@ describe('references to a definition', () => {
     expect(renameDefinition(original, REF, 'Bad Id')).toBe(original);
   });
 
+  it('counts a pattern slot on the definition as a user, repoints it on rename, and guards its terminals', () => {
+    const doc = defined();
+    const terminal = definitionsOf(doc)[0]?.terminals[0]?.id as string;
+    const withPattern = {
+      ...doc,
+      components: [],
+      patterns: [
+        {
+          ref: 'tenant/feed/v1',
+          slots: [{ id: 'iso', template: REF, device_kind: null }],
+          nets: [{ role: 'L1', members: [{ slot: 'iso', terminal }] }],
+        },
+      ],
+    };
+    expect(definitionUsers(withPattern, REF)).toEqual([{ kind: 'pattern', id: 'tenant/feed/v1' }]);
+    expect(removeDefinition(withPattern, REF)).toBe(withPattern);
+    expect(terminalPatternUses(withPattern, REF, terminal)).toEqual(['tenant/feed/v1']);
+    const renamed = renameDefinition(withPattern, REF, 'synth-b');
+    const slots = (renamed.patterns as Array<{ slots: Array<{ template: string }> }>)[0]?.slots;
+    expect(slots?.[0]?.template).toBe('tenant/synth-b/v1');
+  });
+
   it('finds the feeder-link ends that use a terminal or a component', () => {
     const doc = defined();
     const terminal = definitionsOf(doc)[0]?.terminals[0]?.id as string;
@@ -238,9 +261,82 @@ describe('feeder-link choices from the configuration being edited', () => {
     } as unknown as V2ModelSummary;
     const texts = linkTerminalOptions(model, defined(), 'MB-1').map((option) => option.text);
     expect(texts).toEqual(['Q9:L1 — MB-1', 'Q9:L2 — MB-1', 'Q1:X — MB-1']);
-    // With no configuration entries, the saved model is offered as before.
+    // With no configuration entries, a saved configuration component is gone too;
+    // a legacy part outside the configuration stays.
     expect(
       linkTerminalOptions(model, emptyConfiguration(), 'MB-1').map((option) => option.text),
-    ).toEqual(['Q7:A — MB-1', 'Q1:X — MB-1']);
+    ).toEqual(['Q1:X — MB-1']);
+    // Without a configuration at all (no project opened), the saved model as before.
+    expect(linkTerminalOptions(model, null, 'MB-1').map((option) => option.text)).toEqual([
+      'Q7:A — MB-1',
+      'Q1:X — MB-1',
+    ]);
+  });
+
+  it('does not offer a saved terminal or direct point the user has since removed', () => {
+    const doc = defined();
+    const kept = definitionsOf(doc)[0]?.terminals[1]?.id as string;
+    const removed = definitionsOf(doc)[0]?.terminals[0]?.id as string;
+    const edited = removeDefinitionTerminal(
+      {
+        ...doc,
+        strips: [
+          {
+            id: 'strip-x',
+            board: 'MB-1',
+            template: null,
+            designation: { function: null, location: null, product: 'X1' },
+            points: [{ id: 'p-keep', marking: '1' }],
+          },
+        ],
+      },
+      REF,
+      removed,
+    );
+    const owner = 'k-ac9decc4a2bb0df9fccdd809';
+    const strip = 's-543c1421a9e637a626173c00';
+    const row = (extra: Record<string, unknown>) => ({
+      board_id: 'MB-1',
+      designation: 'Q9',
+      side: null,
+      pattern_refs: [],
+      ...extra,
+    });
+    const model = {
+      definitions: [],
+      terminals: [
+        row({ owner_kind: 'component', owner_id: owner, terminal_id: removed, marking: 'L1' }),
+        row({ owner_kind: 'component', owner_id: owner, terminal_id: kept, marking: 'L2' }),
+        // A point removed from strip-x since the save (entered directly).
+        row({
+          owner_kind: 'strip',
+          owner_id: deriveStrip(),
+          terminal_id: 'p-removed',
+          marking: '9',
+          side: 'inner',
+          designation: 'X1',
+        }),
+        // A point a pattern placed on strip-x: stays while the strip does.
+        row({
+          owner_kind: 'strip',
+          owner_id: deriveStrip(),
+          terminal_id: 'p-pattern',
+          marking: '7',
+          side: 'inner',
+          designation: 'X1',
+          pattern_refs: ['tenant/feed/v1'],
+        }),
+      ],
+    } as unknown as V2ModelSummary;
+    function deriveStrip() {
+      return strip;
+    }
+    const texts = linkTerminalOptions(model, edited, 'MB-1').map((option) => option.text);
+    expect(texts).toEqual([
+      'Q9:L2 — MB-1',
+      'X1:1 (inner) — MB-1',
+      'X1:1 (outer) — MB-1',
+      'X1:7 (inner) — MB-1',
+    ]);
   });
 });
