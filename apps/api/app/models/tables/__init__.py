@@ -13,6 +13,7 @@ from app.models.tables import (  # noqa: F401
     calculations,
     design_projects,
     diagnostics,
+    engineering_reviews,
     escalation,
     ingestion,
     session,

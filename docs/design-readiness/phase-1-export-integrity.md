@@ -560,14 +560,15 @@ Four reviewers, none of whom implemented the area they reviewed, read the code a
 
 Three actions used to need only a signed-in account. They are now explicit permissions, checked by the server in the domain layer (`app/domain/permissions.py`). The page only hides or disables what a caller may not do; the server checks every request again.
 
-| Action                | Permission              | Owner | Admin | Reviewer | Other member | Trial | Refused with                                                        |
-| --------------------- | ----------------------- | ----- | ----- | -------- | ------------ | ----- | ------------------------------------------------------------------- |
-| Approve a revision    | `approve_revision`      | yes   | yes   | yes      | no           | no    | 403 `approval_not_permitted` (a trial: `approval_requires_account`) |
-| Delete a project      | `delete_project`        | yes   | yes   | no       | no           | no    | 403 `project_delete_not_permitted`                                  |
-| Save company settings | `edit_company_settings` | yes   | yes   | no       | no           | no    | 403 `settings_not_permitted`                                        |
-| Manage the team       | (team routes)           | yes   | yes   | no       | no           | no    | 403 `team_owner_only`                                               |
-| Transfer ownership    | `POST /team/owner`      | yes   | no    | no       | no           | no    | 403 `team_transfer_owner_only`                                      |
-| Remove the owner      | -                       | no    | no    | no       | no           | no    | 422 `team_owner_not_removable`                                      |
+| Action                                     | Permission                       | Owner              | Admin              | Reviewer           | Other member       | Trial | Refused with                                                        |
+| ------------------------------------------ | -------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | ----- | ------------------------------------------------------------------- |
+| Approve a revision                         | `approve_revision`               | yes                | yes                | yes                | no                 | no    | 403 `approval_not_permitted` (a trial: `approval_requires_account`) |
+| Delete a project                           | `delete_project`                 | yes                | yes                | no                 | no                 | no    | 403 `project_delete_not_permitted`                                  |
+| Save company settings                      | `edit_company_settings`          | yes                | yes                | no                 | no                 | no    | 403 `settings_not_permitted`                                        |
+| Manage the team                            | (team routes)                    | yes                | yes                | no                 | no                 | no    | 403 `team_owner_only`                                               |
+| Record an engineering review decision (M3) | `review_engineering_definitions` | only if designated | only if designated | only if designated | only if designated | no    | 403 `engineering_review_not_permitted`                              |
+| Transfer ownership                         | `POST /team/owner`               | yes                | no                 | no                 | no                 | no    | 403 `team_transfer_owner_only`                                      |
+| Remove the owner                           | -                                | no                 | no                 | no                 | no                 | no    | 422 `team_owner_not_removable`                                      |
 
 - **Owner** is the tenant's recorded owner, `tenants.owner_user_id`, never the oldest account. It must be an account of the same tenant (a composite foreign key to `users (id, tenant_id)`). **Admin** and **Reviewer** are stored roles.
 - **One `reviewer` role, two duties (deliberate):** the same stored role that lets an account clear operator review items (ADR 0001) now also lets it approve design revisions. The requirement named the existing role rather than a new one, so a reviewer granted for either duty holds both.

@@ -55,3 +55,7 @@ class Permission(StrEnum):
     APPROVE_REVISION = "approve_revision"
     DELETE_PROJECT = "delete_project"
     EDIT_COMPANY_SETTINGS = "edit_company_settings"
+    #: Record a review decision on a template, pattern or rule (M3). Held by no
+    #: role, nor by the owner or an admin implicitly: only by an account the
+    #: tenant's owner has designated (``app.domain.engineering_reviews``).
+    REVIEW_ENGINEERING_DEFINITIONS = "review_engineering_definitions"

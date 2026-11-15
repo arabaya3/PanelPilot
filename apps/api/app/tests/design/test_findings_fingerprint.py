@@ -133,3 +133,47 @@ def test_a_changed_check_is_caught(monkeypatch: Any) -> None:
     monkeypatch.setattr(integrity, "project_findings", more)
     recorded = json.loads(RECORDED.read_text(encoding="utf-8"))
     assert all(recorded["cases"][case] != value for case, value in _all().items())
+
+
+def test_review_decisions_change_only_the_review_codes() -> None:
+    """What a review decision may change is the review findings alone (M3).
+
+    The fingerprints above are of the stored designs as saved with no
+    decision (every definition unreviewed). A decision recorded on the
+    server since a save changes that design's findings without any rules
+    change, and ``_findings_mismatch`` lets exactly the review codes
+    (``_REVIEW_CODES``) differ for it, reporting the revision stale
+    (``review_decisions``). So every other code must be the same whatever
+    the decisions; else a review status would decide a check that the
+    rules version does not cover, and a rewrite of it would read as stale.
+    """
+    import dataclasses
+
+    from app.design.model import anchoring, entities
+
+    def every(model: entities.DesignModelV2, status: str) -> entities.DesignModelV2:
+        review = dataclasses.replace(anchoring.UNREVIEWED, status=status)
+        return dataclasses.replace(
+            model,
+            templates=tuple(dataclasses.replace(t, review=review) for t in model.templates),
+            patterns=tuple(dataclasses.replace(p, review=review) for p in model.patterns),
+        )
+
+    review_codes = design_projects._REVIEW_CODES
+    seen: set[str] = set()
+    for name in sorted(CONFIGS):
+        v1, configuration = config_case(name)
+        request = ProjectDesignRequest.model_validate(DESIGNED[CONFIGS[name]["fixture"]]["request"])
+        conditions = {board.name: board.conditions for board in request.boards}
+        read = read_snapshot(write.snapshot_v2_from_v1(v1, configuration))
+        assert read.v2 is not None
+        by_status = {}
+        for status in ("unreviewed", "approved", "rejected"):
+            found = design_projects._design_findings(
+                read.project, conditions, every(read.v2, status)
+            )
+            codes = sorted(item.code for item in found)
+            seen |= set(codes) & review_codes
+            by_status[status] = [code for code in codes if code not in review_codes]
+        assert by_status["approved"] == by_status["unreviewed"] == by_status["rejected"], name
+    assert seen == review_codes
