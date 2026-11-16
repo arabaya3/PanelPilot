@@ -91,18 +91,22 @@ function BindingPreview({
   preview,
   base,
   onUnauthorized,
+  savedRevision,
 }: {
   value: Configuration;
   binding: ConfigBinding;
   preview: PreviewFn;
   base: string;
+  savedRevision: number;
   onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
   const [state, setState] = useState<PreviewState>({ kind: 'idle' });
   // Only the latest request may set what is shown: an older answer is dropped.
   const latest = useRef(0);
-  const text = JSON.stringify(value);
+  // A preview answers this configuration against the latest saved revision (its load
+  // schedule): a newer saved revision makes it outdated as much as an edit does.
+  const text = `${String(savedRevision)}|${JSON.stringify(value)}`;
   const outdated = state.kind !== 'idle' && state.kind !== 'loading' && state.forText !== text;
 
   async function run() {
@@ -253,6 +257,7 @@ function BindingRow({
   announce,
   addFieldId,
   onUnauthorized,
+  savedRevision,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -265,6 +270,7 @@ function BindingRow({
   announce: (message: string) => void;
   addFieldId: string;
   onUnauthorized?: (() => void) | undefined;
+  savedRevision: number;
 }) {
   const t = useIsolatingTranslations('configuration');
   const pattern = bindablePatterns(value).find((item) => item.ref === binding.pattern);
@@ -536,6 +542,7 @@ function BindingRow({
               preview={preview}
               base={rowId}
               onUnauthorized={onUnauthorized}
+              savedRevision={savedRevision}
             />
           )}
         </>
@@ -567,6 +574,7 @@ export function BindingsEditor({
   rowIdOf,
   headingId,
   onUnauthorized,
+  savedRevision = 0,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -581,6 +589,8 @@ export function BindingsEditor({
   headingId: string;
   /** Called when a preview finds the session expired. */
   onUnauthorized?: (() => void) | undefined;
+  /** The latest saved revision, whose load schedule a preview is composed with. */
+  savedRevision?: number;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -630,6 +640,7 @@ export function BindingsEditor({
               announce={setStatus}
               addFieldId={addId}
               onUnauthorized={onUnauthorized}
+              savedRevision={savedRevision}
             />
           ))}
         </ul>

@@ -441,6 +441,7 @@ export function ConfigurationEditor({
   boardChoices = null,
   preview = null,
   onUnauthorized,
+  savedRevision = 0,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -450,6 +451,8 @@ export function ConfigurationEditor({
   preview?: PreviewFn | null;
   /** Called when the preview finds the session expired. */
   onUnauthorized?: (() => void) | undefined;
+  /** The latest saved revision (a newer one makes a shown preview outdated). */
+  savedRevision?: number;
   /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
   linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
@@ -682,6 +685,7 @@ export function ConfigurationEditor({
         conflict={conflict}
         preview={preview}
         onUnauthorized={onUnauthorized}
+        savedRevision={savedRevision}
         rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
         headingId={`${idBase}-bindings`}
       />

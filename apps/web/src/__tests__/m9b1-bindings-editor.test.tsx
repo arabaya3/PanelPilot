@@ -639,6 +639,57 @@ describe('M9b1 guided binding', () => {
     expect(screen.getByTestId('add-binding-design-first').textContent).toBe(B.designFirst);
   });
 
+  it('marks a shown preview outdated when a newer revision is saved (its load schedule may differ)', async () => {
+    // Regression: the preview is composed with the last saved load schedule; saving a new
+    // revision (e.g. a changed load schedule) without touching the configuration left it looking current.
+    const stored = {
+      ...INITIAL,
+      bindings: [
+        {
+          id: 'bind-1',
+          pattern: REF,
+          board: 'MB-1',
+          circuit: null,
+          slots: { src: { component: 'comp-ka' }, dst: { component: 'comp-kb' } },
+          strips: { out: 'strip-xp' },
+          markings: { p1: '7' },
+          cable: null,
+          wires: {},
+        },
+      ],
+    };
+    function Saved({ revision }: { revision: number }) {
+      const [value, setValue] = useState<Record<string, unknown>>(stored);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={revision}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={BOARDS}
+          onUnauthorized={vi.fn()}
+          validateImpl={(() => Promise.resolve(reviewed('7')))}
+        />
+      );
+    }
+    const view = renderApp(<Saved revision={1} />, { locale: 'en', theme: 'light' });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('binding-preview-run'));
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('binding-preview-outdated')).toBeNull();
+    view.rerender(<Saved revision={2} />);
+    expect(screen.getByTestId('binding-preview-outdated').textContent).toBe(B.previewOutdated);
+    // The label says which load schedule it uses.
+    expect(screen.getByTestId('binding-preview-label').textContent).toContain(
+      'last saved load schedule',
+    );
+  });
+
   it('has the same binding messages in Arabic and Hebrew', () => {
     const keys = (o: object): string[] =>
       Object.entries(o).flatMap(([k, v]) =>
