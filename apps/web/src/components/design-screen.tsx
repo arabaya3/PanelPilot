@@ -30,11 +30,15 @@ import {
   isConfigurationRefusal,
 } from '@/components/design/configuration-panel';
 import {
+  conflictTarget,
+  designationText,
   emptyConfiguration,
+  entryName,
   isEmptyConfiguration,
   normalized,
   type Configuration,
 } from '@/components/design/configuration-model';
+import type { BoardChoices } from '@/components/design/binding-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
@@ -597,6 +601,8 @@ function DesignWorkspace({
   const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
   const [dropUnrecoverable, setDropUnrecoverable] = useState(false);
   const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
+  // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
+  const [conflictJump, setConflictJump] = useState(0);
   /**
    * The schema the opened revision's stored design names (from its marker,
    * not a read of it): null when unknown, undefined from an older server.
@@ -1384,6 +1390,22 @@ function DesignWorkspace({
   }
 
   const designed = result.kind === 'designed' ? result.response.project : null;
+  // M9b1: each board's circuits and cables from the design, offered to a binding as stated.
+  const boardChoices: BoardChoices[] | null =
+    designed === null
+      ? null
+      : (designed.boards ?? []).map((board) => ({
+          id: board.id,
+          circuits: (board.circuits ?? []).map((circuit) => ({
+            id: circuit.id,
+            label: circuit.description ? `${circuit.id} · ${circuit.description}` : circuit.id,
+          })),
+          cables: (board.cables ?? []).map((cable) => {
+            const named = designationText(cable.designation ?? null);
+            return { id: cable.id, label: named ? `${named} (${cable.id})` : cable.id };
+          }),
+        }));
+  const refusedEntry = configRefusal !== null ? conflictTarget(configRefusal.params) : null;
   const designedProfile = result.kind === 'designed' ? result.profile : profile;
   // The inputs have changed since the design shown was made.
   const stale = result.kind === 'designed' && result.basis !== basis;
@@ -1952,6 +1974,33 @@ function DesignWorkspace({
             ) : (
               identity === 'trial' &&
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
+            )}
+            {refusedEntry !== null && (
+              <Notice
+                tone="warning"
+                live={false}
+                testId="overview-configuration-refused"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
+                    onClick={() => {
+                      selectView('configuration');
+                      setConflictJump((n) => n + 1);
+                    }}
+                    data-testid="overview-configuration-show"
+                  >
+                    {tc('overviewRefusedShow')}
+                  </button>
+                }
+              >
+                {tc('overviewRefused', {
+                  entry: tc(`editor.entryKind.${refusedEntry.kind}`, {
+                    id: entryName(configDoc, refusedEntry.kind, refusedEntry.entry),
+                  }),
+                  reason: refusedEntry.reason || '—',
+                })}
+              </Notice>
             )}
           </>,
         )}
@@ -2558,6 +2607,8 @@ function DesignWorkspace({
                   findings={validation?.findings ?? []}
                   findingsRevision={opened.revision}
                   linkUses={linkUsesOf(boards)}
+                  boardChoices={boardChoices}
+                  jumpToConflict={conflictJump}
                   saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {
                     void reauthorize();

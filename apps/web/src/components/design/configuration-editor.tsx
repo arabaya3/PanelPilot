@@ -18,15 +18,12 @@ import { useIsolatingTranslations } from '@/components/design/bidi';
 import {
   addComponent,
   addStrip,
-  bindingPoints,
-  bindingsOf,
   componentsOf,
   designationOf,
   designationText,
   addStripPoint,
   removeEntry,
   removeStripPoint,
-  setMarking,
   stripPoints,
   templateLabel,
   updateStripPoint,
@@ -45,6 +42,8 @@ import {
   stripLinkUses,
   type LinkEndUse,
 } from '@/components/design/definition-model';
+import { bindingUsesOf, type BoardChoices } from '@/components/design/binding-model';
+import { BindingsEditor, type PreviewFn } from '@/components/design/bindings-editor';
 import { DefinitionsEditor } from '@/components/design/definitions-editor';
 import { PatternsEditor } from '@/components/design/patterns-editor';
 import { TechnicalToken } from '@/components/technical-token';
@@ -439,9 +438,15 @@ export function ConfigurationEditor({
   conflict,
   idBase,
   linkUses = [],
+  boardChoices = null,
+  preview = null,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
+  /** Each board's circuits and cables from the opened design (M9b1); null when not known. */
+  boardChoices?: BoardChoices[] | null;
+  /** The server's read-only composition, for a binding's preview (M9b1); null for none. */
+  preview?: PreviewFn | null;
   /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
   linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
@@ -461,7 +466,6 @@ export function ConfigurationEditor({
 
   const components = componentsOf(value);
   const strips = stripsOf(value);
-  const bindings = bindingsOf(value);
 
   function entryRow(
     kind: 'component' | 'strip',
@@ -470,6 +474,7 @@ export function ConfigurationEditor({
     const section = kind === 'component' ? 'components' : 'strips';
     const rowId = entryElementId(idBase, kind, entry.id);
     const conflicted = marked(kind, entry.id);
+    const entryBindings = bindingUsesOf(value, kind, entry.id);
     const entryLinks =
       kind === 'component'
         ? componentLinkUses(entry.id, linkUses)
@@ -565,11 +570,22 @@ export function ConfigurationEditor({
             })}
           </p>
         )}
+        {entryBindings.length > 0 && (
+          <p className="text-xs" id={`${rowId}-bound`} data-testid={`${kind}-bound`}>
+            {t('bindings.entryBound', { bindings: entryBindings.join(', ') })}
+          </p>
+        )}
         <button
           type="button"
           className="btn btn-sm btn-danger self-start"
-          disabled={entryLinks.length > 0}
-          aria-describedby={entryLinks.length > 0 ? `${rowId}-linked` : undefined}
+          disabled={entryLinks.length > 0 || entryBindings.length > 0}
+          aria-describedby={
+            entryLinks.length > 0
+              ? `${rowId}-linked`
+              : entryBindings.length > 0
+                ? `${rowId}-bound`
+                : undefined
+          }
           onClick={() => {
             onChange(removeEntry(value, section, entry.id));
           }}
@@ -654,84 +670,16 @@ export function ConfigurationEditor({
         />
       </section>
 
-      <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-bindings`}>
-        <h3 id={`${idBase}-bindings`} className="text-base font-semibold">
-          {t('editor.bindings')}
-        </h3>
-        {bindings.length === 0 ? (
-          <p className="text-sm text-text-muted">{t('editor.noBindings')}</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {bindings.map((binding) => {
-              const rowId = entryElementId(idBase, 'binding', binding.id);
-              const conflicted = marked('binding', binding.id);
-              const points = bindingPoints(value, binding);
-              return (
-                <li
-                  key={binding.id}
-                  id={rowId}
-                  tabIndex={-1}
-                  className={`flex min-w-0 flex-col gap-2 rounded-md border p-3 ${
-                    conflicted ? 'border-status-critical' : 'border-border-subtle'
-                  }`}
-                  data-testid="binding-entry"
-                  data-conflict={conflicted || undefined}
-                >
-                  <p className="flex min-w-0 flex-wrap gap-2 text-sm">
-                    <span className="font-semibold">{t('editor.pattern')}:</span>
-                    <TechnicalToken className="break-all">{binding.pattern}</TechnicalToken>
-                    <span>
-                      {t('editor.bindingOn', {
-                        board: binding.board,
-                        circuit: binding.circuit ?? t('editor.noCircuit'),
-                      })}
-                    </span>
-                  </p>
-                  {points.length === 0 ? (
-                    <p className="text-xs text-text-muted">{t('editor.noPoints')}</p>
-                  ) : (
-                    <fieldset className="flex min-w-0 flex-col gap-2">
-                      <legend className="text-sm font-semibold">{t('editor.points')}</legend>
-                      {points.map((point) => (
-                        <div key={point.id} className="field min-w-0">
-                          <label htmlFor={`${rowId}-point-${point.id}`} className="field-label">
-                            {t('editor.pointMarking', {
-                              point: point.id,
-                              strip: point.strip === '' ? '—' : point.strip,
-                            })}
-                          </label>
-                          <input
-                            id={`${rowId}-point-${point.id}`}
-                            className="input w-full"
-                            dir="auto"
-                            maxLength={50}
-                            value={point.marking}
-                            placeholder={t('notGivenPlaceholder')}
-                            onChange={(event) => {
-                              onChange(setMarking(value, binding.id, point.id, event.target.value));
-                            }}
-                            data-testid="point-marking"
-                          />
-                        </div>
-                      ))}
-                    </fieldset>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-danger self-start"
-                    onClick={() => {
-                      onChange(removeEntry(value, 'bindings', binding.id));
-                    }}
-                    data-testid="binding-remove"
-                  >
-                    {t('editor.removeBinding')}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <BindingsEditor
+        value={value}
+        onChange={onChange}
+        boards={boards}
+        boardChoices={boardChoices}
+        conflict={conflict}
+        preview={preview}
+        rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
+        headingId={`${idBase}-bindings`}
+      />
     </div>
   );
 }

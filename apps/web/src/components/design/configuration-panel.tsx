@@ -15,6 +15,7 @@ import {
   type Configuration,
   type ConflictTarget,
 } from '@/components/design/configuration-model';
+import type { BoardChoices } from '@/components/design/binding-model';
 import type { LinkEndUse } from '@/components/design/definition-model';
 import {
   GroupedFindingsOfDesign,
@@ -120,6 +121,8 @@ export function ConfigurationPanel({
   findings,
   findingsRevision,
   linkUses = [],
+  boardChoices = null,
+  jumpToConflict = 0,
 }: {
   token: string;
   projectId: string;
@@ -147,6 +150,10 @@ export function ConfigurationPanel({
   findingsRevision?: number;
   /** The feeder-link ends the boards' link forms name now (M8). */
   linkUses?: LinkEndUse[];
+  /** Each board's circuits and cables from the opened design (M9b1); null when not known. */
+  boardChoices?: BoardChoices[] | null;
+  /** Bumped by the overview's "show it" action: the refused entry is focused (M9b1). */
+  jumpToConflict?: number;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -301,6 +308,18 @@ export function ConfigurationPanel({
     element?.focus();
   }
 
+  const conflictNow = outcome.kind === 'error' ? outcome.conflict : null;
+  useEffect(() => {
+    if (jumpToConflict === 0 || conflictNow === null) return;
+    const timer = window.setTimeout(() => {
+      editConflict(conflictNow);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // Only a new request to jump moves focus, not every render.
+  }, [jumpToConflict]);
+
   const reviewed = outcome.kind === 'reviewed' ? outcome : null;
   const reviewCurrent = reviewed !== null && reviewed.text === serialized;
   const conflict = outcome.kind === 'error' ? outcome.conflict : null;
@@ -402,6 +421,10 @@ export function ConfigurationPanel({
         conflict={conflict}
         idBase={id}
         linkUses={linkUses}
+        boardChoices={boardChoices}
+        preview={(configuration) =>
+          validateImpl({ token, id: projectId, configuration: normalized(configuration) })
+        }
       />
       <Notice tone="info" live={false} action={saveAction} testId="configuration-save-where">
         {t('saveWhere')}
