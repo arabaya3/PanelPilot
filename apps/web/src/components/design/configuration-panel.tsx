@@ -186,6 +186,23 @@ export function ConfigurationPanel({
       };
     }
     const named = code === 'configuration_refused' ? conflictTarget(params) : null;
+    if (named !== null && named.kind === 'pattern') {
+      // M9a: refused for a pattern itself: said with the net, slot and terminal the server names.
+      const dash = (value: string | undefined) =>
+        value === undefined || value === '' ? '—' : value;
+      return {
+        kind: 'error',
+        message: t('refusal.configuration_refused_pattern', {
+          pattern: entryName(doc, 'pattern', named.entry),
+          refusal: named.reason,
+          net: dash(params.role),
+          slot: dash(params.slot),
+          terminal: dash(params.terminal),
+        }),
+        disabled: null,
+        conflict: named,
+      };
+    }
     if (named !== null) {
       // Refused for one entry (M7b): said and marked like a conflict, with its board.
       const board =

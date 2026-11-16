@@ -281,7 +281,6 @@ REFUSED: dict[str, tuple[Any, str, bool]] = {
     # case: (mutation, code, names the pattern)
     "unknown_slot_template": (_unknown_slot_template, "unknown_template", True),
     "terminal_not_on_template": (_terminal_not_on_template, "terminal_not_on_template", True),
-    "member_twice": (_member_twice, "pattern_invalid", True),
     "member_in_two_nets": (_member_in_two_nets, "contradictory_nets", True),
     "duplicate_slot_id": (_duplicate_slot_id, "pattern_invalid", False),
     "duplicate_net_role": (_duplicate_net_role, "pattern_invalid", False),

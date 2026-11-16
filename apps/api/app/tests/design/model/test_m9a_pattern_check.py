@@ -19,6 +19,10 @@ from app.tests.design.model.v2_support import config_case
 def _unbound() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """The feeder case with its pattern copied as a second, unbound pattern."""
     v1, configuration = config_case("feeder_1p")
+    restricted = copy.deepcopy(configuration["templates"][0])
+    restricted["ref"] = "global/synth-restricted/v1"
+    restricted["restricted_scope"] = ["fire_pump"]
+    configuration["templates"].append(restricted)
     extra = copy.deepcopy(configuration["patterns"][0])
     extra["ref"] = "tenant/synth-unbound/v1"
     configuration["patterns"].append(extra)
@@ -52,7 +56,13 @@ CASES: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
         "terminal_not_on_template",
         {"pattern", "role", "slot", "template", "terminal"},
     ),
-    "member_twice_in_a_net": (_member_twice_in_a_net, "pattern_invalid", {"pattern", "role"}),
+    "restricted_template": (
+        lambda p: p["slots"].__setitem__(
+            0, {**p["slots"][0], "template": "global/synth-restricted/v1"}
+        ),
+        "restricted_scope",
+        {"pattern", "slot", "ref", "scope"},
+    ),
     "member_in_two_nets": (_member_in_two_nets, "contradictory_nets", {"pattern", "role"}),
 }
 
@@ -89,4 +99,14 @@ def test_a_slot_without_a_template_is_left_to_the_binding() -> None:
     v1, configuration, extra = _unbound()
     extra["slots"][0]["template"] = None
     extra["nets"][0]["members"][0]["terminal"] = "typed-by-the-user"
+    compose.compose(v1, configuration)
+
+
+@pytest.mark.parametrize("bound", [True, False])
+def test_a_member_repeated_in_one_net_is_accepted_as_a_binding_always_did(bound: bool) -> None:
+    # Regression (independent review): apply() has always skipped a repeated member,
+    # so a stored configuration with one must still compose, bound or not.
+    v1, configuration, extra = _unbound()
+    target = configuration["patterns"][0] if bound else extra
+    _member_twice_in_a_net(target)
     compose.compose(v1, configuration)

@@ -289,7 +289,12 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
         "terminal_not_on_template",
         {"pattern", "role", "slot", "template", "terminal"},
     ),
-    "restricted_scope": (_restricted_scope, "restricted_scope", {"ref", "scope"}),
+    # M9a: found on the pattern whose slot names it, and said so.
+    "restricted_scope": (
+        _restricted_scope,
+        "restricted_scope",
+        {"pattern", "slot", "ref", "scope"},
+    ),
     # M9a: a contradiction within one pattern is found on the pattern itself.
     "contradictory_nets": (_contradictory_nets, "contradictory_nets", {"pattern", "role"}),
     "unknown_circuit": (_unknown_circuit, "unknown_reference", {"binding", "circuit"}),

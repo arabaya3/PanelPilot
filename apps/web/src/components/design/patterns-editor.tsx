@@ -9,7 +9,7 @@
  * anything something else names says what names it first; nothing is dropped
  * silently. Problems the composer would refuse are said beside the field.
  */
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import type { Configuration } from '@/components/design/configuration-model';
@@ -84,6 +84,7 @@ function PatternRow({
   templates,
   conflicted,
   announce,
+  addFieldId,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -92,6 +93,8 @@ function PatternRow({
   templates: readonly string[];
   conflicted: boolean;
   announce: (message: string) => void;
+  /** Where focus goes when this pattern is removed: the add-pattern field. */
+  addFieldId: string;
 }) {
   const t = useIsolatingTranslations('configuration');
   const ref = pattern.ref;
@@ -872,7 +875,7 @@ function PatternRow({
         onClick={() => {
           onChange(removePattern(value, ref));
           announce(t('patterns.removed', { what: name('kindPattern', id) }));
-          focusLater('patterns-add-id');
+          focusLater(addFieldId);
         }}
         data-testid="pattern-remove"
       >
@@ -899,6 +902,12 @@ function PositionField({
 }) {
   // Kept as typed until it is a whole number ≥ 1; the stored value changes only then.
   const [typed, setTyped] = useState(String(value));
+  // A stored value changed elsewhere (an import, a restore) is shown, unless the user is mid-typing an invalid one.
+  useEffect(() => {
+    setTyped((current) =>
+      positionProblem(current) === null && Number(current) !== value ? String(value) : current,
+    );
+  }, [value]);
   const problem = positionProblem(typed);
   return (
     <div className="field w-24">
@@ -1360,23 +1369,24 @@ export function PatternsEditor({
               templates={templates}
               conflicted={conflictRef === pattern.ref}
               announce={setStatus}
+              addFieldId={`${id}-add-id`}
             />
           ))}
         </ul>
       )}
       <div className="flex min-w-0 flex-wrap items-end gap-2" data-testid="add-pattern">
         <div className="field min-w-0 flex-1">
-          <label htmlFor="patterns-add-id" className="field-label">
+          <label htmlFor={`${id}-add-id`} className="field-label">
             {t('patterns.id')}
           </label>
           <input
-            id="patterns-add-id"
+            id={`${id}-add-id`}
             className="input w-full"
             dir="ltr"
             maxLength={100}
             value={newId}
             aria-invalid={problem !== null || undefined}
-            aria-describedby={problem ? 'patterns-add-problem' : 'patterns-add-help'}
+            aria-describedby={problem ? `${id}-add-problem` : `${id}-add-help`}
             onChange={(event) => {
               setNewId(event.target.value);
             }}
@@ -1409,12 +1419,12 @@ export function PatternsEditor({
           {t('patterns.addAction')}
         </button>
       </div>
-      <p id="patterns-add-help" className="text-xs text-text-muted">
+      <p id={`${id}-add-help`} className="text-xs text-text-muted">
         {t('patterns.idHelp')}
       </p>
       {problem !== null && (
         <Problem
-          id="patterns-add-problem"
+          id={`${id}-add-problem`}
           text={t(`patterns.idProblem.${problem}`)}
           testId="add-pattern-problem"
         />

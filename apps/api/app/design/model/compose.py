@@ -353,13 +353,25 @@ class _Composer:
         The checks a binding would make on the pattern itself, with the same
         codes: a slot's template must be known (and not restricted); a member
         of a slot with a template must be one of its terminals; a member may
-        not be listed twice in a net, nor sit in two nets that would not be
-        one net (two board-scope nets with the same signal are one net).
+        not sit in two nets that would not be one net (two board-scope nets
+        with the same signal are one net). A member repeated within one net is
+        accepted, as a binding has always accepted it (the repeat joins nothing
+        new).
         """
         pattern = self.patterns[ref]
         templates: dict[str, entities.ComponentTemplate | None] = {}
         for slot in pattern["slots"]:
             given = slot["template"]
+            held = self.templates.get(given) or self.legacy_templates.get(given)
+            if held is not None and held.restricted_scope:
+                _refuse(
+                    "restricted_scope",
+                    "the template is restricted to uses this composer may not design",
+                    pattern=ref,
+                    slot=slot["id"],
+                    ref=held.ref,
+                    scope=",".join(held.restricted_scope),
+                )
             templates[slot["id"]] = (
                 None if given is None else self.template(given, pattern=ref, slot=slot["id"])
             )
@@ -370,7 +382,6 @@ class _Composer:
             same = (
                 ("board", "", net["signal"]) if net["scope"] == "board" else ("binding", role, "")
             )
-            seen: set[tuple[str, str, str]] = set()
             for member in net["members"]:
                 if "slot" in member:
                     template = templates.get(member["slot"])
@@ -387,14 +398,6 @@ class _Composer:
                     key = ("slot", member["slot"], member["terminal"])
                 else:
                     key = ("point", member["point"], member["side"])
-                if key in seen:
-                    _refuse(
-                        "pattern_invalid",
-                        "a member is listed twice in one net",
-                        pattern=ref,
-                        role=role,
-                    )
-                seen.add(key)
                 if owner.setdefault(key, same) != same:
                     _refuse(
                         "contradictory_nets",

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ConfigurationPanel } from '@/components/design/configuration-panel';
-import type { V2ModelSummary } from '@/lib/design';
+import type { Refusal, V2ModelSummary } from '@/lib/design';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
 import he from '@/messages/he.json';
@@ -230,6 +230,69 @@ describe('M9a guided pattern editor', () => {
       P.memberProblem.not_on_template,
     );
     expect(r.getByTestId('pattern-problems').textContent).toMatch(/save will be refused/);
+  });
+
+  it('says a save refusal of the pattern with its net, slot and terminal, and marks the pattern', () => {
+    const refused: Refusal = {
+      kind: 'refused',
+      detail: 'the configuration cannot be applied',
+      code: 'configuration_refused',
+      params: {
+        refusal: 'terminal_not_on_template',
+        pattern: 'tenant/synth-two-slot/v1',
+        role: 'n2',
+        slot: 'src',
+        template: DST,
+        terminal: 't-002',
+      },
+    };
+    function Refusing() {
+      const [value, setValue] = useState<Record<string, unknown>>(INITIAL);
+      latest = value;
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={MODEL}
+          externalRefusal={refused}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn()}
+        />
+      );
+    }
+    renderApp(<Refusing />, { locale: 'en', theme: 'light' });
+    const editor = screen.getByTestId('patterns-editor');
+    type(within(editor).getByTestId('add-pattern-id'), 'synth-two-slot');
+    fireEvent.click(within(editor).getByTestId('add-pattern-submit'));
+    expect(screen.getByTestId('configuration-error').textContent).toContain(
+      en.configuration.refusal.configuration_refused_pattern
+        .replace('{pattern}', 'tenant/synth-two-slot/v1')
+        .replace('{refusal}', 'terminal_not_on_template')
+        .replace('{net}', 'n2')
+        .replace('{slot}', 'src')
+        .replace('{terminal}', 't-002'),
+    );
+    expect(screen.getByTestId('pattern-entry').getAttribute('data-conflict')).toBe('true');
+  });
+
+  it("shows a point's offset changed elsewhere (an import), not a stale one", () => {
+    // Regression (independent review): the field kept the first value it was given.
+    build();
+    const doc = structuredClone(latest) as { patterns: { points: { offset: number }[] }[] };
+    at(at(doc.patterns, 0).points, 0).offset = 5;
+    const panel = screen.getByTestId('configuration-panel');
+    fireEvent.click(within(panel).getByText(en.configuration.advanced));
+    type(within(panel).getByTestId('configuration-json'), JSON.stringify(doc));
+    fireEvent.click(within(panel).getByTestId('configuration-import'));
+    const offsets = within(screen.getByTestId('pattern-entry')).getAllByTestId<HTMLInputElement>(
+      'pattern-point-offset',
+    );
+    expect(offsets.map((input) => input.value)).toEqual(['5', '2']);
   });
 
   it('blocks removing what is used and names the user', () => {

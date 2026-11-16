@@ -1973,7 +1973,8 @@
       "other": "Refused: {detail}",
       "configuration_conflict": "Not saved: {entry} refers to {refKind} {ref}, which no longer resolves ({reason}). Nothing was saved or dropped.",
       "configuration_not_recoverable": "Not saved: revision {revision} holds a configuration saved before it could be carried forward. Enter the configuration again and save.",
-      "configuration_refused_entry": "Not saved: {entry} on board {board} cannot be composed ({refusal}; reference {ref}). Edit or remove it, then save again."
+      "configuration_refused_entry": "Not saved: {entry} on board {board} cannot be composed ({refusal}; reference {ref}). Edit or remove it, then save again.",
+      "configuration_refused_pattern": "Not saved: pattern {pattern} cannot be composed ({refusal}; net {net}, slot {slot}, terminal {terminal}). Edit the pattern, then save again."
     },
     "saveHelp": "Save sends the form and this configuration together as one new revision. Nothing is saved if the server refuses it, and everything entered here stays.",
     "incomplete": "Complete the design form before saving: the configuration is saved with it.",
@@ -2193,7 +2194,6 @@
         "no_slot": "This slot is not in the pattern.",
         "no_point": "This point is not in the pattern.",
         "not_on_template": "The slot's template has no such terminal.",
-        "twice": "Listed twice in this net.",
         "two_nets": "Also a member of another net that is not the same net."
       },
       "addMember": "Add a member to net {net}",

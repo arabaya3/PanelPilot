@@ -599,7 +599,7 @@ export function templateTerminals(
   );
 }
 
-export type MemberProblem = 'no_slot' | 'no_point' | 'not_on_template' | 'twice' | 'two_nets';
+export type MemberProblem = 'no_slot' | 'no_point' | 'not_on_template' | 'two_nets';
 
 export type PatternProblems = {
   /** By slot id: its template is not one the configuration or registry offers. */
@@ -661,10 +661,8 @@ export function patternProblems(
           return;
         }
       }
-      if (seen.has(id)) {
-        problems.members[key] = 'twice';
-        return;
-      }
+      // A repeat within one net joins nothing new; the composer accepts it (as before M9a).
+      if (seen.has(id)) return;
       seen.add(id);
       const first = owner.get(id);
       if (first === undefined) owner.set(id, same);

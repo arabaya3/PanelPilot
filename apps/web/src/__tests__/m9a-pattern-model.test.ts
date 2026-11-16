@@ -177,7 +177,7 @@ describe('building a pattern without JSON', () => {
 });
 
 describe('what the composer would refuse, said before saving', () => {
-  it('a slot on an unknown template, a terminal its template lacks, a member twice or in two nets', () => {
+  it('a slot on an unknown template, a terminal its template lacks, a member in two nets (a repeat in one net is accepted)', () => {
     let doc = updateSlotTemplate(built(), REF, 'src', 'tenant/not-held/v1');
     expect(patternProblems(doc, at(patternsOf(doc), 0), known).slots).toEqual({
       src: 'unknown_template',
@@ -193,7 +193,6 @@ describe('what the composer would refuse, said before saving', () => {
     at(at(raw.patterns, 0).nets, 0).members.push({ point: 'p1', side: 'inner' });
     const twice = raw as unknown as Configuration;
     expect(patternProblems(twice, at(patternsOf(twice), 0), known).members).toEqual({
-      'n1#3': 'twice',
       'n2#2': 'two_nets',
     });
   });

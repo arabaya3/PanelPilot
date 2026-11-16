@@ -63,16 +63,21 @@ the codes it already uses at binding time:
   configuration and registry do not hold, or a restricted one.
 - `terminal_not_on_template`: a member names a terminal its slot's template
   does not have (slots without a template are checked when bound, as before).
-- `pattern_invalid`: a member is listed twice in one net.
 - `contradictory_nets`: one terminal or point side is a member of two nets of
   the pattern that would not be the same net (two `board`-scope nets with the
   same signal are one net, so they may share members).
 
-Refusals name `pattern` (its ref) so the editor marks that pattern. Nothing is
-saved. Compatibility: a stored configuration carrying such an unbound
-inconsistent pattern would now be refused when carried into a new save
-(`configuration_conflict`); opening, exporting and approving existing
-revisions is unchanged, and their snapshots and hashes are untouched.
+A member repeated within one net is accepted, as a binding has always
+accepted it (the repeat joins nothing new); the editor does not add one.
+Refusals name `pattern` (its ref; for a template refusal also the `slot`) so the
+editor marks that pattern and says the net, slot and terminal. Nothing is
+saved. Compatibility: a stored configuration carrying such an inconsistent pattern
+that no binding applied (for instance a slot naming a template since removed)
+would now be refused when carried into a new save (`configuration_conflict`).
+Bound patterns are refused exactly where they were before, with the same codes;
+three such refusals now name the pattern instead of the binding. Opening,
+exporting and approving existing revisions is unchanged, and their snapshots
+and hashes are untouched.
 
 ## 5. References
 
@@ -81,6 +86,11 @@ revisions is unchanged, and their snapshots and hashes are untouched.
   the users are listed. A definition a slot names cannot be removed (M8).
 - Renaming a pattern lists and repoints the bindings that name it.
 - Errors are shown beside the field (ids, offset, level, signal, members).
+
+Editing a pattern that a binding applies (adding a slot, strip role or point,
+or changing a slot's template away from the bound component's) is said on the
+pattern ("applied by bindings …") but checked only by the server on Save
+(`missing_binding`, `conflicting_binding`); the guided binding editor is M9b.
 
 ## 6. Review and approval
 
