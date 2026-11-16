@@ -2351,7 +2351,8 @@
         "user": "من إدخالك",
         "data": "بيانات مستوردة",
         "assumption": "مفترض"
-      }
+      },
+      "previewAssumed": "مفترض: {statement}"
     },
     "overviewRefused": "لم يُحفظ: لا يمكن تركيب {entry} في التهيئة ({reason}).",
     "overviewRefusedShow": "أظهره في التهيئة",

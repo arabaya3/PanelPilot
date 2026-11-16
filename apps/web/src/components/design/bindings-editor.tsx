@@ -108,15 +108,24 @@ function BindingPreview({
   onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
-  const previewValue = (cell: { value: string | null; source: string } | null | undefined) =>
-    cell === undefined || cell === null || cell.value === null
-      ? t('bindings.previewNotSet')
-      : t('bindings.previewGiven', {
-          value: cell.value,
-          source: ['user', 'data', 'assumption'].includes(cell.source)
-            ? t(`bindings.previewSource.${cell.source}`)
-            : cell.source,
-        });
+  const previewValue = (
+    cell:
+      | { value: string | null; source: string; assumption_statement?: string | null }
+      | null
+      | undefined,
+  ) => {
+    if (cell === undefined || cell === null || cell.value === null) {
+      return t('bindings.previewNotSet');
+    }
+    // An assumption is shown with the statement it rests on, as the editor shows it.
+    const source =
+      cell.source === 'assumption' && cell.assumption_statement
+        ? t('bindings.previewAssumed', { statement: cell.assumption_statement })
+        : ['user', 'data', 'assumption'].includes(cell.source)
+          ? t(`bindings.previewSource.${cell.source}`)
+          : cell.source;
+    return t('bindings.previewGiven', { value: cell.value, source });
+  };
   const [state, setState] = useState<PreviewState>({ kind: 'idle' });
   // Only the latest request may set what is shown: an older answer is dropped.
   const latest = useRef(0);

@@ -295,6 +295,15 @@ describe('M9c guided wire details', () => {
     expect(document.activeElement?.textContent).toContain('W7');
   });
 
+  it('stray keys that differ only in punctuation get their own targets', () => {
+    const { section } = open({ 'n/1': { number: 'A' }, n_1: { number: 'B' } });
+    const links = section.getAllByTestId('wire-problem-link');
+    const buttons = section.getAllByTestId('wire-remove-stray');
+    expect(new Set(buttons.map((b) => b.id)).size).toBe(2);
+    fireEvent.click(at(links, 1));
+    expect(document.activeElement).toBe(at(buttons, 1));
+  });
+
   it('renders in Arabic and Hebrew with the same messages', () => {
     const keys = (o: object): string[] =>
       Object.entries(o).flatMap(([k, v]) =>

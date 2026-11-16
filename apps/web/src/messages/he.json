@@ -2351,7 +2351,8 @@
         "user": "הוזן על ידכם",
         "data": "נתונים מיובאים",
         "assumption": "הנחה"
-      }
+      },
+      "previewAssumed": "הנחה: {statement}"
     },
     "overviewRefused": "לא נשמר: לא ניתן להרכיב את {entry} שבתצורה ({reason}).",
     "overviewRefusedShow": "הצגה בתצורה",

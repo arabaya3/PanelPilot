@@ -81,6 +81,11 @@ In addition:
 - **Unknown names** inside a wire's entry are kept untouched and said; editing
   another field never drops them.
 
+Ends are named as the wire schedule names them (the designation's product,
+else the component or strip id). A slot filled by a design device, or a strip
+role not yet mapped, is named by the slot id or role until the binding is
+complete (those bindings already show a problem).
+
 Removal is always explicit and listed first. Saving creates a new revision;
 earlier revisions and their exports are unchanged.
 

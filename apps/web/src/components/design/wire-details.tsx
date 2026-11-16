@@ -152,9 +152,9 @@ export function WireDetails({
         }),
       });
     }
-    row.otherKeys.forEach((other) => {
+    row.otherKeys.forEach((other, at) => {
       problemList.push({
-        id: `${rowId(index)}-extra-${other.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+        id: `${rowId(index)}-extra-${String(at)}`,
         text: t('wires.overviewEntry', {
           wire: `${row.from} – ${row.to}`,
           problem: t('wires.problem.extra_field', { name: other }),
@@ -162,9 +162,9 @@ export function WireDetails({
       });
     });
   });
-  problems.stray.forEach((key) => {
+  problems.stray.forEach((key, at) => {
     problemList.push({
-      id: `${base}-stray-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+      id: `${base}-stray-${String(at)}`,
       text: t('wires.problem.stray', { key }),
     });
   });
@@ -359,7 +359,7 @@ export function WireDetails({
                   );
                 })}
               </div>
-              {row.otherKeys.map((other) => {
+              {row.otherKeys.map((other, at) => {
                 const isPending =
                   pending?.kind === 'field' && pending.key === row.key && pending.field === other;
                 return (
@@ -390,7 +390,7 @@ export function WireDetails({
                         onClick={() => {
                           setPending({ kind: 'field', key: row.key, field: other });
                         }}
-                        id={`${rowId(index)}-extra-${other.replace(/[^A-Za-z0-9_-]/g, '_')}`}
+                        id={`${rowId(index)}-extra-${String(at)}`}
                         data-testid="wire-remove-extra"
                       >
                         {t('wires.removeExtra', { name: other })}
@@ -439,7 +439,7 @@ export function WireDetails({
           );
         })}
       </ul>
-      {problems.stray.map((key) => {
+      {problems.stray.map((key, at) => {
         const isPending = pending?.kind === 'entry' && pending.key === key;
         return (
           <div key={key} className="flex min-w-0 flex-col gap-1" data-testid="wire-stray">
@@ -465,7 +465,7 @@ export function WireDetails({
                 onClick={() => {
                   setPending({ kind: 'entry', key });
                 }}
-                id={`${base}-stray-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`}
+                id={`${base}-stray-${String(at)}`}
                 data-testid="wire-remove-stray"
               >
                 {t('wires.removeStray', { key })}

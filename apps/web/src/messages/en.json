@@ -2351,7 +2351,8 @@
         "user": "entered by you",
         "data": "imported data",
         "assumption": "assumed"
-      }
+      },
+      "previewAssumed": "assumed: {statement}"
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration",
