@@ -699,3 +699,71 @@ describe('M9b1 guided binding', () => {
     expect(keys(he.configuration.bindings).sort()).toEqual(keys(B).sort());
   });
 });
+
+describe('M9b2: cable cores in a binding', () => {
+  const bound = (cable: string | null) => ({
+    ...INITIAL,
+    bindings: [
+      {
+        id: 'bind-1',
+        pattern: REF,
+        board: 'MB-1',
+        circuit: null,
+        slots: { src: { component: 'comp-ka' }, dst: { component: 'comp-kb' } },
+        strips: { out: 'strip-xp' },
+        markings: { p1: '7' },
+        cable,
+        wires: {},
+      },
+    ],
+  });
+
+  it('a refused core is said beside the binding the server names', () => {
+    const refusal: Refusal = {
+      kind: 'refused',
+      detail: 'the configuration cannot be applied',
+      code: 'configuration_refused',
+      params: {
+        refusal: 'core_out_of_range',
+        binding: 'bind-1',
+        cable: 'cab-1',
+        core: '99',
+        ref: 'cab-1',
+        kind: 'cable',
+      },
+    };
+    renderApp(
+      <Harness validateImpl={vi.fn()} initial={bound('cab-1')} externalRefusal={refusal} />,
+      { locale: 'en', theme: 'light' },
+    );
+    const entry = screen.getByTestId('binding-entry');
+    expect(entry.getAttribute('data-conflict')).toBe('true');
+    expect(within(entry).getByTestId('binding-refused-core').textContent).toBe(
+      B.refusedCore.core_out_of_range,
+    );
+  });
+
+  it('a cable the open design cannot check yet is not called gone', () => {
+    function Undesigned() {
+      const [value, setValue] = useState<Record<string, unknown>>(bound('cab-1'));
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={null}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn()}
+        />
+      );
+    }
+    renderApp(<Undesigned />, { locale: 'en', theme: 'light' });
+    const cable = screen.getByTestId<HTMLSelectElement>('binding-cable');
+    expect(cable.selectedOptions[0]?.textContent).toBe(B.uncheckedOption.replace('{id}', 'cab-1'));
+  });
+});

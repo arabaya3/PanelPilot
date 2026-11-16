@@ -196,9 +196,13 @@ def test_a_core_the_cable_lacks_or_a_reused_core_is_refused(
     beyond = _edited([_c(0, 1, "cable_core", cores + 1)], cable=cable)
     for body in _refused(client, project_id, beyond):
         assert body["params"]["refusal"] == "core_out_of_range", body
+        # M9b2: the refusal names the binding, so the editor says it beside that binding.
+        assert body["params"]["binding"] == "bind-1", body
+        assert body["params"]["cable"] == cable, body
     reused = _edited([_c(0, 1, "cable_core", 1), _c(1, 2, "cable_core", 1)], cable=cable)
     for body in _refused(client, project_id, reused):
         assert body["params"]["refusal"] == "core_reused", body
+        assert body["params"]["binding"] == "bind-1", body
 
 
 W7 = {"number": {"value": "W7", "source": "user"}}

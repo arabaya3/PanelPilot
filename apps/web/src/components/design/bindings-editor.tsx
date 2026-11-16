@@ -293,8 +293,11 @@ function BindingRow({
     problem: BindingProblem | undefined,
     testId: string,
     noneLabel: string,
+    fromDesign = false,
   ) {
     const known = current === '' || options.some((option) => option.id === current);
+    // A choice offered from the design cannot be checked until the project is designed in this session.
+    const unchecked = fromDesign && boardChoices === null;
     return (
       <div className="field min-w-0 flex-1">
         <label htmlFor={fieldId} className="field-label">
@@ -313,7 +316,11 @@ function BindingRow({
           data-testid={testId}
         >
           <option value="">{noneLabel}</option>
-          {!known && <option value={current}>{t('bindings.goneOption', { id: current })}</option>}
+          {!known && (
+            <option value={current}>
+              {t(unchecked ? 'bindings.uncheckedOption' : 'bindings.goneOption', { id: current })}
+            </option>
+          )}
           {options.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
@@ -351,6 +358,12 @@ function BindingRow({
           })}
         </p>
       )}
+      {conflicted &&
+        (conflict.reason === 'core_out_of_range' || conflict.reason === 'core_reused') && (
+          <p className="text-xs" data-testid="binding-refused-core">
+            {t(`bindings.refusedCore.${conflict.reason}`)}
+          </p>
+        )}
       {problems.length > 0 && (
         <p className="text-xs font-semibold" data-testid="binding-problems">
           {t('bindings.problems', { count: String(problems.length) })}
@@ -384,6 +397,7 @@ function BindingRow({
               problemOf('circuit'),
               'binding-circuit',
               t('bindings.noCircuit'),
+              true,
             )}
           </div>
 
@@ -531,6 +545,7 @@ function BindingRow({
                 problemOf('cable'),
                 'binding-cable',
                 t('bindings.noCable'),
+                true,
               )}
             </div>
           )}

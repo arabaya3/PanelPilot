@@ -21,11 +21,15 @@ In the configuration tab, inside each net of a pattern:
 Nothing is inferred: no connection, type, core or label is filled in, and no
 connection is made automatically when members are added.
 
-## 2. Storage and API (unchanged)
+## 2. Storage and API
 
-No new storage, schema, codec, renderer, migration or endpoint, and no server
-change. A connection is the composer's existing shape,
-`{from, to, via, core, label}`, in `patterns[].nets[].connections`, where
+No new storage, schema, codec, renderer, migration or endpoint. One server
+change, to an error body only: the composer's `core_out_of_range` and
+`core_reused` refusals now also name the `binding` (as its other cable
+refusals, `missing_binding` and `unknown_reference`, already did), so a refused
+save is said beside that binding with what to change. The refusal codes, their
+HTTP status and every stored or hashed output are unchanged. A connection is
+the composer's existing shape, `{from, to, via, core, label}`, in `patterns[].nets[].connections`, where
 `from` and `to` are indexes into the net's `members`. The checks the editor
 says before saving are the server's own (`codec_v2.parse_pattern` and
 `compose.connect`); the server still decides, and a refused save creates no
@@ -43,9 +47,10 @@ revision.
 | core beyond the cable's cores          | the binding         | `core_out_of_range` |
 | one cable core used by two connections | the binding         | `core_reused`       |
 
-The core-count check uses the cable's `cores` as the opened design states it;
-where the design is not open it is not checked in the browser (the server
-still checks it).
+The core-count check uses the cable's `cores` as the opened design states it.
+Until the project is designed in the session the browser cannot check it, and
+the binding's cable and circuit read _not checked_ rather than _gone_; the
+server still checks them on save.
 
 ## 3. Reference integrity
 

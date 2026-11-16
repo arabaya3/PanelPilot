@@ -2338,7 +2338,12 @@
       "circuitHelp": "Circuits and cables are those of the current design. The preview and Save use the last saved load schedule: save a changed load schedule first.",
       "extraRemove": "Remove {key} from this binding",
       "extraRemoved": "{key} removed from the binding.",
-      "designFirst": "To choose a circuit or a cable, design the project first (Load schedule → Design): they come from the design."
+      "designFirst": "To choose a circuit or a cable, design the project first (Load schedule → Design): they come from the design.",
+      "uncheckedOption": "{id} (not checked: design the project to see the board's choices)",
+      "refusedCore": {
+        "core_out_of_range": "A cable-core connection of this pattern uses a core the chosen cable does not have. Change the core in the pattern's connection, or choose a cable with that core.",
+        "core_reused": "A core of the chosen cable is used by more than one connection. Give each cable-core connection its own core, or choose another cable."
+      }
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration"

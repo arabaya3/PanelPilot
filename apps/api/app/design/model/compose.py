@@ -817,11 +817,17 @@ class _Composer:
                 _refuse(
                     "core_out_of_range",
                     "the pattern uses a core the cable does not have",
+                    binding=bid,
                     cable=cable.id,
                     core=str(index_),
                 )
             if (cable.id, index_) in self.cores:
-                _refuse("core_reused", "one cable core would make two connections", cable=cable.id)
+                _refuse(
+                    "core_reused",
+                    "one cable core would make two connections",
+                    binding=bid,
+                    cable=cable.id,
+                )
             self.cores.add((cable.id, index_))
             core = {"cable_id": cable.id, "index": index_, "label": raw.get("label")}
         elif raw.get("core") is not None or raw.get("label") is not None:
