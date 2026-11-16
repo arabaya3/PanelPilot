@@ -534,6 +534,24 @@ function BindingRow({
               )}
             </div>
           )}
+          {problems.some((problem) => problem.field === 'core') && (
+            <ul className="flex min-w-0 flex-col gap-1" data-testid="binding-core-problems">
+              {problems.map((problem) =>
+                problem.field === 'core' ? (
+                  <li
+                    key={problem.key}
+                    className="text-xs font-semibold"
+                    data-testid="binding-core-problem"
+                  >
+                    {t(`bindings.problem.${problem.code}`, {
+                      key: problem.key,
+                      core: String(problem.core),
+                    })}
+                  </li>
+                ) : null,
+              )}
+            </ul>
+          )}
 
           {preview !== null && (
             <BindingPreview

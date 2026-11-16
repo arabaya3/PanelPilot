@@ -2189,7 +2189,7 @@
       "memberSlot": "Slot {slot}: terminal {terminal}",
       "memberPoint": "Point {point} ({role}): {side} side",
       "removeMember": "Remove member {member}",
-      "memberConnected": "A stored connection names this member. It is kept; connections are edited in a later step (or by JSON import).",
+      "memberConnected": "A connection names this member, so it cannot be removed. Remove or change that connection first.",
       "memberProblem": {
         "no_slot": "This slot is not in the pattern.",
         "no_point": "This point is not in the pattern.",
@@ -2210,7 +2210,6 @@
       "sideOuter": "outer",
       "addMemberAction": "Add member",
       "needSlotOrPoint": "Add a slot or a point first.",
-      "connections": "{count} stored connections (kept as they are; edited in a later step or by JSON import).",
       "problems": "{count} problem(s) in this pattern; the save will be refused until they are fixed.",
       "added": "{what} added.",
       "removed": "{what} removed.",
@@ -2219,7 +2218,44 @@
       "kindPoint": "Point {id}",
       "kindNet": "Net {id}",
       "kindMember": "Member",
-      "kindPattern": "Pattern {id}"
+      "kindPattern": "Pattern {id}",
+      "conn": {
+        "title": "Connections of net {net}",
+        "none": "No connections yet.",
+        "text": "{from} to {to}, {via}",
+        "noEnd": "(no such member)",
+        "from": "From",
+        "to": "To",
+        "viaLabel": "Connection type",
+        "core": "Core number",
+        "label": "Core label (optional)",
+        "coreHelp": "The core of the binding's cable, from 1. The cable itself is chosen in the binding.",
+        "via": {
+          "wire": "Wire",
+          "cable_core": "Cable core",
+          "jumper": "Jumper",
+          "busbar": "Busbar",
+          "internal": "Point sides (internal)",
+          "unknown": "Unknown type (as stored)"
+        },
+        "add": "Add a connection to net {net}",
+        "addAction": "Add connection",
+        "remove": "Remove connection {connection}",
+        "needMembers": "A connection joins two members: add at least two members first.",
+        "locked": "Wire details are saved for this connection in {uses}. It cannot be changed, because the details were entered for it as it is.",
+        "removeBlocked": "Cannot remove: wire details in {uses} are saved by the connection's position, and would be lost or moved to another connection.",
+        "netBlocked": "This net cannot be removed: wire details are saved for its connections in {uses}.",
+        "problem": {
+          "end_missing": "Choose both ends from this net's members.",
+          "same_end": "Both ends are the same member. Choose two different members.",
+          "unknown_via": "This connection type is not supported. Choose one of the listed types.",
+          "internal_not_sides": "Point sides (internal) joins the inner and outer sides of one strip point only. Choose both sides of the same point, or another type.",
+          "core_missing": "A cable core connection needs its core number.",
+          "core_invalid": "Enter the core as a whole number from 1.",
+          "core_not_allowed": "Only a cable core connection has a core number.",
+          "label_not_allowed": "Only a cable core connection has a label."
+        }
+      }
     },
     "bindings": {
       "intro": "A binding applies a connection pattern to a board: which components fill its slots, which strips play its strip roles, the marking of each point, and the cable where a connection needs one. Nothing is chosen for you.",
@@ -2265,7 +2301,9 @@
         "missing": "Enter the marking as printed.",
         "extra_slot": "Slot {key} is not in the pattern any more; the save will be refused until it is removed.",
         "extra_role": "Strip role {key} is not in the pattern any more; the save will be refused until it is removed.",
-        "extra_marking": "Point {key} is not in the pattern any more; the save will be refused until its marking is removed."
+        "extra_marking": "Point {key} is not in the pattern any more; the save will be refused until its marking is removed.",
+        "core_out_of_range": "Connection {key} uses core {core}, which this cable does not have. Choose a cable with that core, or change the core in the pattern.",
+        "core_reused": "Core {core} of this cable is used by more than one connection (connection {key}). Each cable core can make one connection only."
       },
       "refused": "The last save was refused for this binding ({reason}; {ref}). Change it, then save again.",
       "entryBound": "Used by bindings: {bindings}. Change or remove those bindings first.",
@@ -2277,7 +2315,7 @@
       "previewRun": "Preview the wiring",
       "previewRefresh": "Refresh the preview",
       "previewLoading": "Composing the preview…",
-      "previewOutdated": "The configuration changed since this preview. Refresh it to see the current result.",
+      "previewOutdated": "This preview is outdated: the configuration changed, or a newer revision was saved, since it was made. Refresh it to see the current result.",
       "previewRefused": "The server could not compose this configuration ({reason}). Fix what is marked, then refresh.",
       "previewNets": "Nets ({count})",
       "previewNet": "{signal}: {members}",

@@ -33,6 +33,9 @@ import {
   pointUses,
   positionProblem,
   problemCount,
+  addConnection,
+  connectionProblem,
+  removeConnection,
   removeMember,
   removeNet,
   removePattern,
@@ -44,8 +47,14 @@ import {
   SIDES,
   slotUses,
   templateTerminals,
+  updateConnection,
   updateNet,
   updatePatternSource,
+  VIAS,
+  wireDetailUses,
+  type ConnectionDraft,
+  type ConnectionProblem,
+  type Via,
   updatePoint,
   updateSlotTemplate,
   type NetScope,
@@ -773,6 +782,7 @@ function PatternRow({
               base={`${rowId}-net-${item.role}`}
               netProblem={problems.nets[item.role]}
               memberProblems={problems.members}
+              connectionProblems={problems.connections}
               announce={announce}
               newNetId={`${rowId}-new-net`}
             />
@@ -943,6 +953,7 @@ function NetCard({
   base,
   netProblem,
   memberProblems,
+  connectionProblems,
   announce,
   newNetId,
 }: {
@@ -953,6 +964,7 @@ function NetCard({
   base: string;
   netProblem: 'no_members' | 'no_signal' | undefined;
   memberProblems: Record<string, string>;
+  connectionProblems: Record<string, ConnectionProblem>;
   announce: (message: string) => void;
   newNetId: string;
 }) {
@@ -968,6 +980,7 @@ function NetCard({
   const chosenTerminal = terminals !== null ? terminal || (terminals[0]?.id ?? '') : terminal;
   const chosenPoint = point || (pattern.points[0]?.id ?? '');
   const effectiveKind = kind === 'slot' && pattern.slots.length === 0 ? 'point' : kind;
+  const netWireUses = wireDetailUses(value, ref, net.role);
 
   function memberText(member: PatternMember): string {
     if (isSlotMember(member)) {
@@ -1112,11 +1125,16 @@ function NetCard({
           );
         })}
       </ul>
-      {net.connections.length > 0 && (
-        <p className="text-xs text-text-muted" data-testid="pattern-net-connections">
-          {t('patterns.connections', { count: String(net.connections.length) })}
-        </p>
-      )}
+      <ConnectionList
+        value={value}
+        onChange={onChange}
+        pattern={pattern}
+        net={net}
+        base={base}
+        problems={connectionProblems}
+        memberText={memberText}
+        announce={announce}
+      />
 
       {pattern.slots.length === 0 && pattern.points.length === 0 ? (
         <p className="text-xs text-text-muted" data-testid="pattern-net-need-parts">
@@ -1282,9 +1300,18 @@ function NetCard({
           </button>
         </fieldset>
       )}
+      {netWireUses.length > 0 && (
+        <p id={`${base}-keep`} className="text-xs" data-testid="pattern-net-keep">
+          {t('patterns.conn.netBlocked', {
+            uses: netWireUses.map((use) => `${use.binding} (${use.key})`).join(', '),
+          })}
+        </p>
+      )}
       <button
         type="button"
         className="btn btn-sm btn-danger self-start max-w-full whitespace-normal text-start"
+        disabled={netWireUses.length > 0}
+        aria-describedby={netWireUses.length > 0 ? `${base}-keep` : undefined}
         aria-label={
           net.connections.length > 0
             ? t('patterns.removeNetConnections', {
@@ -1308,6 +1335,419 @@ function NetCard({
           : t('patterns.removeNet', { net: net.role })}
       </button>
     </li>
+  );
+}
+
+/* M9b2: the connections of a net, edited without JSON. */
+function ConnectionList({
+  value,
+  onChange,
+  pattern,
+  net,
+  base,
+  problems,
+  memberText,
+  announce,
+}: {
+  value: Configuration;
+  onChange: (next: Configuration) => void;
+  pattern: Pattern;
+  net: Pattern['nets'][number];
+  base: string;
+  problems: Record<string, ConnectionProblem>;
+  memberText: (member: PatternMember) => string;
+  announce: (message: string) => void;
+}) {
+  const t = useIsolatingTranslations('configuration');
+  const ref = pattern.ref;
+  const uses = wireDetailUses(value, ref, net.role);
+  const [draft, setDraft] = useState<{
+    from: string;
+    to: string;
+    via: Via;
+    core: string;
+    label: string;
+  }>({ from: '', to: '', via: 'wire', core: '', label: '' });
+  const [coreText, setCoreText] = useState<Record<number, string>>({});
+  const n = net.members.length;
+  const pick = (typed: string, fallback: number) => (typed === '' ? fallback : Number(typed));
+  const from = pick(draft.from, 0);
+  const to = pick(draft.to, n > 1 ? 1 : 0);
+  const coreOf = (typed: string): number | null => (/^\d+$/.test(typed) ? Number(typed) : null);
+  const newDraft: ConnectionDraft = {
+    from,
+    to,
+    via: draft.via,
+    core: coreOf(draft.core),
+    label: draft.label.trim() === '' ? null : draft.label,
+  };
+  const newProblem: ConnectionProblem | null =
+    n < 2
+      ? 'end_missing'
+      : draft.via === 'cable_core' && draft.core.trim() !== '' && coreOf(draft.core) === null
+        ? 'core_invalid'
+        : connectionProblem(net, newDraft);
+  const endText = (index: number) => {
+    const member = net.members[index];
+    return member === undefined
+      ? t('patterns.conn.noEnd')
+      : `${String(index + 1)}. ${memberText(member)}`;
+  };
+  const connText = (c: { from: number; to: number; via: string }) =>
+    t('patterns.conn.text', {
+      from: endText(c.from),
+      to: endText(c.to),
+      via: t(
+        `patterns.conn.via.${(VIAS as readonly string[]).includes(c.via) ? c.via : 'unknown'}`,
+      ),
+    });
+  const usesText = (list: { binding: string; key: string }[]) =>
+    list.map((use) => `${use.binding} (${use.key})`).join(', ');
+
+  function endSelect(
+    id: string,
+    label: string,
+    chosen: number,
+    onPick: (at: number) => void,
+    disabled: boolean,
+    testId: string,
+  ) {
+    return (
+      <div className="field min-w-0 sm:w-40">
+        <label htmlFor={id} className="field-label">
+          {label}
+        </label>
+        <select
+          id={id}
+          className="input w-full"
+          dir="auto"
+          value={String(chosen)}
+          disabled={disabled}
+          onChange={(event) => {
+            onPick(Number(event.target.value));
+          }}
+          data-testid={testId}
+        >
+          {chosen >= n && <option value={String(chosen)}>{t('patterns.conn.noEnd')}</option>}
+          {net.members.map((member, at) => (
+            <option key={at} value={String(at)}>
+              {`${String(at + 1)}. ${memberText(member)}`}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  function viaSelect(
+    id: string,
+    chosen: string,
+    onPick: (via: Via) => void,
+    disabled: boolean,
+    testId: string,
+  ) {
+    return (
+      <div className="field min-w-0 sm:w-40">
+        <label htmlFor={id} className="field-label">
+          {t('patterns.conn.viaLabel')}
+        </label>
+        <select
+          id={id}
+          className="input w-full"
+          value={chosen}
+          disabled={disabled}
+          onChange={(event) => {
+            onPick(event.target.value as Via);
+          }}
+          data-testid={testId}
+        >
+          {!(VIAS as readonly string[]).includes(chosen) && (
+            <option value={chosen}>{t('patterns.conn.via.unknown')}</option>
+          )}
+          {VIAS.map((via) => (
+            <option key={via} value={via}>
+              {t(`patterns.conn.via.${via}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2" data-testid="pattern-connections">
+      <h5 className="text-xs font-semibold">{t('patterns.conn.title', { net: net.role })}</h5>
+      {net.connections.length === 0 && (
+        <p className="text-xs text-text-muted" data-testid="pattern-connections-none">
+          {t('patterns.conn.none')}
+        </p>
+      )}
+      <ol
+        className="flex min-w-0 flex-col gap-2"
+        aria-label={t('patterns.conn.title', { net: net.role })}
+      >
+        {net.connections.map((connection, index) => {
+          const cid = `${base}-conn-${String(index)}`;
+          const problem = problems[`${net.role}#${String(index)}`];
+          const own = uses.filter((use) => use.index === index);
+          const later = uses.filter((use) => use.index >= index);
+          const locked = own.length > 0;
+          const text = connText(connection);
+          const draftOf = (patch: Partial<ConnectionDraft>): ConnectionDraft => ({
+            from: connection.from,
+            to: connection.to,
+            via: connection.via as Via,
+            core: connection.core,
+            label: connection.label,
+            ...patch,
+          });
+          const write = (patch: Partial<ConnectionDraft>) => {
+            onChange(updateConnection(value, ref, net.role, index, draftOf(patch)));
+          };
+          const typedCore =
+            coreText[index] ?? (connection.core === null ? '' : String(connection.core));
+          const coreBad = typedCore.trim() !== '' && coreOf(typedCore) === null;
+          const described = [
+            problem || coreBad ? `${cid}-problem` : '',
+            locked ? `${cid}-locked` : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <li
+              key={index}
+              className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2"
+              data-testid="pattern-connection"
+              aria-label={text}
+            >
+              <div className="flex min-w-0 flex-wrap items-end gap-2">
+                {endSelect(
+                  `${cid}-from`,
+                  t('patterns.conn.from'),
+                  connection.from,
+                  (at) => {
+                    write({ from: at });
+                  },
+                  locked,
+                  'pattern-connection-from',
+                )}
+                {endSelect(
+                  `${cid}-to`,
+                  t('patterns.conn.to'),
+                  connection.to,
+                  (at) => {
+                    write({ to: at });
+                  },
+                  locked,
+                  'pattern-connection-to',
+                )}
+                {viaSelect(
+                  `${cid}-via`,
+                  connection.via,
+                  (via) => {
+                    setCoreText((prev) => ({ ...prev, [index]: '' }));
+                    write({
+                      via,
+                      core: null,
+                      label: via === 'cable_core' ? connection.label : null,
+                    });
+                  },
+                  locked,
+                  'pattern-connection-via',
+                )}
+                {connection.via === 'cable_core' && (
+                  <>
+                    <div className="field min-w-0 sm:w-40">
+                      <label htmlFor={`${cid}-core`} className="field-label">
+                        {t('patterns.conn.core')}
+                      </label>
+                      <input
+                        id={`${cid}-core`}
+                        className="input w-full"
+                        dir="ltr"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={typedCore}
+                        disabled={locked}
+                        aria-invalid={Boolean(problem?.startsWith('core')) || coreBad || undefined}
+                        aria-describedby={described || undefined}
+                        onChange={(event) => {
+                          const typed = event.target.value;
+                          setCoreText((prev) => ({ ...prev, [index]: typed }));
+                          write({ core: coreOf(typed) });
+                        }}
+                        data-testid="pattern-connection-core"
+                      />
+                    </div>
+                    <div className="field min-w-0 sm:w-40">
+                      <label htmlFor={`${cid}-label`} className="field-label">
+                        {t('patterns.conn.label')}
+                      </label>
+                      <input
+                        id={`${cid}-label`}
+                        className="input w-full"
+                        dir="auto"
+                        maxLength={50}
+                        value={connection.label ?? ''}
+                        disabled={locked}
+                        onChange={(event) => {
+                          write({ label: event.target.value === '' ? null : event.target.value });
+                        }}
+                        data-testid="pattern-connection-label"
+                      />
+                    </div>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger max-w-full whitespace-normal text-start"
+                  disabled={later.length > 0}
+                  aria-describedby={later.length > 0 ? `${cid}-keep` : undefined}
+                  aria-label={t('patterns.conn.remove', { connection: text })}
+                  onClick={() => {
+                    onChange(removeConnection(value, ref, net.role, index));
+                    setCoreText({});
+                    announce(t('patterns.removed', { what: text }));
+                    focusLater(`${base}-conn-new-from`);
+                  }}
+                  data-testid="pattern-connection-remove"
+                >
+                  {t('editor.remove')}
+                </button>
+              </div>
+              {(problem !== undefined || coreBad) && (
+                <Problem
+                  id={`${cid}-problem`}
+                  text={t(
+                    `patterns.conn.problem.${coreBad ? 'core_invalid' : (problem ?? 'core_invalid')}`,
+                  )}
+                  testId="pattern-connection-problem"
+                />
+              )}
+              {locked && (
+                <p id={`${cid}-locked`} className="text-xs" data-testid="pattern-connection-locked">
+                  {t('patterns.conn.locked', { uses: usesText(own) })}
+                </p>
+              )}
+              {later.length > 0 && (
+                <p id={`${cid}-keep`} className="text-xs" data-testid="pattern-connection-keep">
+                  {t('patterns.conn.removeBlocked', { uses: usesText(later) })}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      {n < 2 ? (
+        <p className="text-xs text-text-muted" data-testid="pattern-connection-need-members">
+          {t('patterns.conn.needMembers')}
+        </p>
+      ) : (
+        <fieldset
+          className="flex min-w-0 flex-wrap items-end gap-2"
+          data-testid="pattern-add-connection"
+        >
+          <legend className="text-xs font-semibold">
+            {t('patterns.conn.add', { net: net.role })}
+          </legend>
+          {endSelect(
+            `${base}-conn-new-from`,
+            t('patterns.conn.from'),
+            from,
+            (at) => {
+              setDraft((d) => ({ ...d, from: String(at) }));
+            },
+            false,
+            'pattern-connection-new-from',
+          )}
+          {endSelect(
+            `${base}-conn-new-to`,
+            t('patterns.conn.to'),
+            to,
+            (at) => {
+              setDraft((d) => ({ ...d, to: String(at) }));
+            },
+            false,
+            'pattern-connection-new-to',
+          )}
+          {viaSelect(
+            `${base}-conn-new-via`,
+            draft.via,
+            (via) => {
+              setDraft((d) => ({ ...d, via, core: '', label: '' }));
+            },
+            false,
+            'pattern-connection-new-via',
+          )}
+          {draft.via === 'cable_core' && (
+            <>
+              <div className="field min-w-0 sm:w-40">
+                <label htmlFor={`${base}-conn-new-core`} className="field-label">
+                  {t('patterns.conn.core')}
+                </label>
+                <input
+                  id={`${base}-conn-new-core`}
+                  className="input w-full"
+                  dir="ltr"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={draft.core}
+                  aria-describedby={`${base}-conn-new-core-help`}
+                  onChange={(event) => {
+                    const typed = event.target.value;
+                    setDraft((d) => ({ ...d, core: typed }));
+                  }}
+                  data-testid="pattern-connection-new-core"
+                />
+                <p id={`${base}-conn-new-core-help`} className="text-xs text-text-muted">
+                  {t('patterns.conn.coreHelp')}
+                </p>
+              </div>
+              <div className="field min-w-0 sm:w-40">
+                <label htmlFor={`${base}-conn-new-label`} className="field-label">
+                  {t('patterns.conn.label')}
+                </label>
+                <input
+                  id={`${base}-conn-new-label`}
+                  className="input w-full"
+                  dir="auto"
+                  maxLength={50}
+                  value={draft.label}
+                  onChange={(event) => {
+                    const typed = event.target.value;
+                    setDraft((d) => ({ ...d, label: typed }));
+                  }}
+                  data-testid="pattern-connection-new-label"
+                />
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
+            disabled={newProblem !== null}
+            aria-describedby={newProblem !== null ? `${base}-conn-new-problem` : undefined}
+            onClick={() => {
+              if (newProblem !== null) return;
+              onChange(addConnection(value, ref, net.role, newDraft));
+              announce(t('patterns.added', { what: connText(newDraft) }));
+              setDraft((d) => ({ ...d, core: '', label: '' }));
+              focusLater(`${base}-conn-new-from`);
+            }}
+            data-testid="pattern-add-connection-submit"
+          >
+            {t('patterns.conn.addAction')}
+          </button>
+          {newProblem !== null && (
+            <Problem
+              id={`${base}-conn-new-problem`}
+              text={t(`patterns.conn.problem.${newProblem}`)}
+              testId="pattern-add-connection-problem"
+            />
+          )}
+        </fieldset>
+      )}
+    </div>
   );
 }
 

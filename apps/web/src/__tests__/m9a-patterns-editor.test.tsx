@@ -371,7 +371,7 @@ describe('M9a guided pattern editor', () => {
     };
     renderApp(<Harness initial={stored} />, { locale: 'en', theme: 'light' });
     const row = within(screen.getByTestId('pattern-entry'));
-    expect(row.getByTestId('pattern-net-connections').textContent).toMatch(/^1 stored connections/);
+    expect(row.getAllByTestId('pattern-connection')).toHaveLength(1);
     expect(
       row.getAllByTestId<HTMLButtonElement>('pattern-net-member-remove').every((b) => b.disabled),
     ).toBe(true);
