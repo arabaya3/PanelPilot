@@ -442,7 +442,11 @@ export function bindingRowIds(
  * type another, which {@link bindingIdProblem} checks.
  */
 export function suggestReuseId(config: Configuration, sourceId: string, board: string): string {
-  const stem = `${sourceId}-${board}`.replace(/[^A-Za-z0-9_.-]/g, '-').slice(0, 90);
+  const stem = `${sourceId}-${board}`
+    .replace(/[^A-Za-z0-9_.-]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/-$/, '')
+    .slice(0, 90);
   if (bindingIdProblem(config, stem) === null) return stem;
   for (let n = 2; n < 1000; n += 1) {
     const candidate = `${stem}-${String(n)}`;

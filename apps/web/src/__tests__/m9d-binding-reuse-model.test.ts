@@ -150,3 +150,34 @@ describe('the overview', () => {
     expect(problemTarget('r', { field: 'circuit', code: 'no_circuit' })).toBe('r-circuit');
   });
 });
+
+describe('independent review regressions', () => {
+  it('a component two bindings share is attributed to neither', () => {
+    let doc = reuseBinding(base(), 'bind-1', { id: 'b2', board: 'MB-1-bis' });
+    doc = {
+      ...doc,
+      bindings: (doc.bindings as Raw[]).map((b) =>
+        b.id === 'b2' ? { ...b, slots: { src: { component: 'comp-ka' } } } : b,
+      ),
+    };
+    const b1 = byId(doc, 'bind-1');
+    if (b1 === undefined) throw new Error('missing');
+    const finding: V2Finding = {
+      code: 'synthetic',
+      severity: 'warning',
+      message: 'synthetic',
+      location: { component: 'comp-ka' },
+      unresolved: false,
+      blocks_approval: false,
+      blocks_execution: false,
+      requires_engineering_confirmation: false,
+    };
+    expect(findingsOfBinding(doc, b1, [finding])).toEqual([]);
+  });
+
+  it('a board named in another script gives a readable suggestion', () => {
+    expect(suggestReuseId(base(), 'bind-1', 'لوحة 2')).toBe('bind-1-2');
+    // Nothing readable left: the source id alone is taken, so it is numbered.
+    expect(suggestReuseId(base(), 'bind-1', 'לוח')).toBe('bind-1-2');
+  });
+});

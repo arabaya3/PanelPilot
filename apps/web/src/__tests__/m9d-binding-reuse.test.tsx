@@ -106,8 +106,10 @@ let latest: Record<string, unknown> = {};
 function Harness({
   initial,
   validateImpl = vi.fn(),
+  boards = ['MB-1', 'SB-1'],
 }: {
   initial: Record<string, unknown>;
+  boards?: string[];
   validateImpl?: (options: {
     configuration: Record<string, unknown>;
   }) => Promise<ConfigurationOutcome>;
@@ -122,7 +124,7 @@ function Harness({
       value={value}
       onChange={setValue}
       status="none"
-      boards={['MB-1', 'SB-1']}
+      boards={boards}
       model={null}
       boardChoices={BOARDS}
       onUnauthorized={vi.fn()}
@@ -298,5 +300,32 @@ describe('M9d overview: server validation, current or outdated', () => {
       'wire_attribute_unset',
     );
     expect(screen.getByTestId('binding-overview-outdated').textContent).toContain('4');
+  });
+});
+
+describe('M9d independent review regressions', () => {
+  it('a chosen board the form no longer has counts as not chosen', () => {
+    const stored = doc({});
+    const view = renderApp(<Harness initial={stored} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-reuse'));
+    fireEvent.change(screen.getByTestId('binding-reuse-board'), { target: { value: 'SB-1' } });
+    view.rerender(<Harness initial={stored} boards={['MB-1', 'SB-2']} />);
+    expect(screen.getByTestId<HTMLSelectElement>('binding-reuse-board').value).toBe('');
+    expect(screen.getByTestId<HTMLButtonElement>('binding-reuse-submit').disabled).toBe(true);
+  });
+
+  it('a removed draft is forgotten: a new binding of the same name is not called reused', () => {
+    open();
+    fireEvent.click(screen.getByTestId('binding-reuse'));
+    fireEvent.change(screen.getByTestId('binding-reuse-board'), { target: { value: 'SB-1' } });
+    fireEvent.click(screen.getByTestId('binding-reuse-submit'));
+    expect(screen.getByTestId('binding-reuse-summary')).toBeTruthy();
+    fireEvent.click(at(screen.getAllByTestId('binding-remove'), 1));
+    const add = within(screen.getByTestId('add-binding'));
+    type(add.getByTestId('add-binding-id'), 'bind-1-SB-1');
+    fireEvent.change(add.getByTestId('add-binding-board'), { target: { value: 'SB-1' } });
+    fireEvent.click(add.getByTestId('add-binding-submit'));
+    expect(bindings().map((b) => b.id)).toEqual(['bind-1', 'bind-1-SB-1']);
+    expect(screen.queryByTestId('binding-reuse-summary')).toBeNull();
   });
 });

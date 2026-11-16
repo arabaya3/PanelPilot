@@ -41,10 +41,11 @@ export type OverviewValidation = {
   revision: number;
 };
 
-type Issue = { key: string; text: string; target: string };
+type Issue = { key: string; text: string; target: string; fallback: string };
 
-function focusId(id: string) {
-  const element = document.getElementById(id);
+function focusId(id: string, fallback: string) {
+  // A field the binding no longer renders (a kept key, say): the binding itself.
+  const element = document.getElementById(id) ?? document.getElementById(fallback);
   if (element !== null && 'scrollIntoView' in element) element.scrollIntoView({ block: 'center' });
   element?.focus();
 }
@@ -85,7 +86,19 @@ export function findingsOfBinding(
     ...ids.wires,
     ...ids.points,
     ...[...ids.nets].filter((net) => !ids.sharedNets.has(net)),
-    ...Object.values(state.slots).flatMap((slot) => ('component' in slot ? [slot.component] : [])),
+    // A component another binding also fills a slot with is shared: not attributed to either.
+    ...Object.values(state.slots)
+      .flatMap((slot) => ('component' in slot ? [slot.component] : []))
+      .filter(
+        (component) =>
+          !bindingsOf(config).some(
+            (other) =>
+              other.id !== binding.id &&
+              Object.values(bindingState(other).slots).some(
+                (slot) => 'component' in slot && slot.component === component,
+              ),
+          ),
+      ),
   ]);
   return findings.filter((finding) =>
     Object.values(finding.location).some((value) => mine.has(value)),
@@ -129,6 +142,7 @@ export function BindingOverview({
         }),
       }),
       target: problemTarget(rowId, problem),
+      fallback: rowId,
     }));
     const wires = wireProblems(value, binding);
     wireRows(value, binding).forEach((row, index) => {
@@ -143,6 +157,7 @@ export function BindingOverview({
             problem: t(`wires.problem.${problem}`),
           }),
           target: `${rowId}-wire-${String(index)}-${field}`,
+          fallback: rowId,
         });
       }
     });
@@ -152,6 +167,7 @@ export function BindingOverview({
         key: 'w-other',
         text: t('overview.wireOther', { count: String(others) }),
         target: `${rowId}-wires-title`,
+        fallback: rowId,
       });
     }
     return out;
@@ -212,7 +228,7 @@ export function BindingOverview({
                       className="max-w-full whitespace-normal text-start font-semibold underline"
                       dir="ltr"
                       onClick={() => {
-                        focusId(rowId);
+                        focusId(rowId, rowId);
                       }}
                       data-testid="overview-binding-link"
                     >
@@ -238,6 +254,7 @@ export function BindingOverview({
                             ref: refused.ref || '—',
                           }),
                           target: rowId,
+                          fallback: rowId,
                         },
                       ]}
                       testId="overview-refused"
@@ -259,6 +276,7 @@ export function BindingOverview({
                           message: finding.message,
                         }),
                         target: rowId,
+                        fallback: rowId,
                       }))}
                       testId={validation.current ? 'overview-found' : 'overview-found-outdated'}
                     />
@@ -298,7 +316,7 @@ function IssueList({
                 className="max-w-full whitespace-normal text-start text-xs underline"
                 dir="auto"
                 onClick={() => {
-                  focusId(issue.target);
+                  focusId(issue.target, issue.fallback);
                 }}
                 data-testid={`${testId}-link`}
               >

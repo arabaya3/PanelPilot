@@ -327,6 +327,8 @@ function BindingRow({
   // M9d: "Use on another board": the board is chosen by the user (no default), the id suggested.
   const [reuse, setReuse] = useState<{ board: string; id: string } | null>(null);
   const reuseBoards = boards.filter((name) => name !== binding.board);
+  // A chosen board the form no longer has (removed or renamed) counts as not chosen.
+  const reuseBoard = reuse !== null && reuseBoards.includes(reuse.board) ? reuse.board : '';
   const reuseIdProblem =
     reuse === null || reuse.id === '' ? null : bindingIdProblem(value, reuse.id);
   const summary = reusedFrom !== undefined ? reuseSummary(value, binding) : null;
@@ -735,7 +737,7 @@ function BindingRow({
                   id={`${rowId}-reuse-board`}
                   className="input w-full"
                   dir="auto"
-                  value={reuse.board}
+                  value={reuseBoard}
                   onChange={(event) => {
                     const board = event.target.value;
                     setReuse({
@@ -789,11 +791,12 @@ function BindingRow({
               <button
                 type="button"
                 className={wrapButton('secondary')}
-                disabled={reuse.board === '' || reuse.id === '' || reuseIdProblem !== null}
+                disabled={reuseBoard === '' || reuse.id === '' || reuseIdProblem !== null}
                 onClick={() => {
+                  if (reuseBoard === '') return;
                   const next = reuseBinding(value, binding.id, {
                     id: reuse.id,
-                    board: reuse.board,
+                    board: reuseBoard,
                   });
                   if (next === value) return;
                   const newId = reuse.id.trim();
@@ -801,7 +804,7 @@ function BindingRow({
                   onReused(newId, binding.id);
                   setReuse(null);
                   announce(
-                    t('reuse.created', { id: newId, board: reuse.board, source: binding.id }),
+                    t('reuse.created', { id: newId, board: reuseBoard, source: binding.id }),
                   );
                   focusLater(rowIdOf(newId));
                 }}
@@ -929,6 +932,15 @@ export function BindingsEditor({
   const [status, setStatus] = useState('');
   // M9d: bindings made with "Use on another board" in this session (new id → source id).
   const [reused, setReused] = useState<Record<string, string>>({});
+  // A removed binding's entry goes, so a later binding of the same name is not called reused.
+  const bindingIds = bindings.map((b) => b.id).join('\n');
+  useEffect(() => {
+    const present = new Set(bindingIds.split('\n'));
+    setReused((prev) => {
+      const kept = Object.entries(prev).filter(([newId]) => present.has(newId));
+      return kept.length === Object.keys(prev).length ? prev : Object.fromEntries(kept);
+    });
+  }, [bindingIds]);
   const idProblem = draft.id === '' ? null : bindingIdProblem(value, draft.id);
   const pattern = draft.pattern !== '' ? draft.pattern : (patterns[0]?.ref ?? '');
   const board = draft.board !== '' ? draft.board : (boards[0] ?? '');
