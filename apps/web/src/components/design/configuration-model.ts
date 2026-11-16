@@ -302,8 +302,8 @@ export function setMarking(
 
 /** What a `configuration_conflict` names: the entry to edit or remove. */
 export type ConflictTarget = {
-  kind: 'binding' | 'strip' | 'component' | 'link';
-  /** The configuration entry's id (or the fed board for a link). */
+  kind: 'binding' | 'strip' | 'component' | 'link' | 'template';
+  /** The configuration entry's id (the fed board for a link; the ref for a template). */
   entry: string;
   ref: string;
   /** The server's stated reference kind (`device`, `circuit`, `board`, `cable`, `terminal`...). */
@@ -324,6 +324,16 @@ export function conflictTarget(params: Record<string, string> | undefined): Conf
         reason: params.reason ?? params.refusal ?? '',
       };
     }
+  }
+  // M8: a refusal of a definition itself names only its ref (`kind` template).
+  if (params.kind === 'template' && typeof params.ref === 'string' && params.ref !== '') {
+    return {
+      kind: 'template',
+      entry: params.ref,
+      ref: params.ref,
+      refKind: 'template',
+      reason: params.reason ?? params.refusal ?? '',
+    };
   }
   return null;
 }

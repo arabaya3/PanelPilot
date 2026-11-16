@@ -58,6 +58,7 @@ import { FeederLinkForm, StoredLinks } from '@/components/design/feeder-link';
 import {
   calculatedValues,
   linkFindingsOf,
+  linkUsesOf,
   storedLinksOf,
   writesLinks,
   LINK_SCHEMA,
@@ -2184,6 +2185,7 @@ function DesignWorkspace({
                       );
                     }}
                     model={openedModel}
+                    configuration={opened !== null ? configDoc : null}
                     calculated={
                       result.kind === 'designed'
                         ? calculatedValues(result.response.project, active.fedFrom, active.name)
@@ -2555,6 +2557,7 @@ function DesignWorkspace({
                   externalRefusal={configRefusal}
                   findings={validation?.findings ?? []}
                   findingsRevision={opened.revision}
+                  linkUses={linkUsesOf(boards)}
                   saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {
                     void reauthorize();
@@ -2703,7 +2706,7 @@ function DesignWorkspace({
                                 <button
                                   key={format}
                                   type="button"
-                                  className="btn btn-sm btn-secondary"
+                                  className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
                                   data-testid={`revision-export-${format}`}
                                   disabled={exporting}
                                   aria-busy={exporting || undefined}
