@@ -329,13 +329,34 @@ function token(): string {
 function nextTerminalId(terminals: DefinitionTerminal[]): string {
   let highest = 0;
   for (const terminal of terminals) {
-    const match = /^t-(\d+)/.exec(terminal.id);
-    if (match) highest = Math.max(highest, Number(match[1]));
+    const sequence = terminalSequence(terminal.id);
+    if (sequence !== null) highest = Math.max(highest, sequence);
   }
   const used = new Set(terminals.map((terminal) => terminal.id));
-  let id = `t-${String(highest + 1).padStart(3, '0')}-${token()}`;
-  while (used.has(id)) id = `t-${String(highest + 1).padStart(3, '0')}-${token()}`;
+  const key = sequenceKey(highest + 1);
+  let id = `t-${key}-${token()}`;
+  while (used.has(id)) id = `t-${key}-${token()}`;
   return id;
+}
+
+/**
+ * The sequence part of a terminal id, sorting as a string in numeric order
+ * (the composer orders terminals by id with a plain string sort). 1–999 are
+ * three digits, as ids made before this change already are; from 1000 a width
+ * letter (`a` for 4 digits, `b` for 5, …, `m` for 16) sorts after every digit
+ * and after every shorter number, so entry order holds up to
+ * Number.MAX_SAFE_INTEGER.
+ */
+export function sequenceKey(sequence: number): string {
+  const digits = String(sequence);
+  if (digits.length <= 3) return digits.padStart(3, '0');
+  return String.fromCharCode('a'.charCodeAt(0) + digits.length - 4) + digits;
+}
+
+/** The sequence of a terminal id made here (either form), or null. */
+export function terminalSequence(id: string): number | null {
+  const match = /^t-[a-m](\d+)-/.exec(id) ?? /^t-(\d+)/.exec(id);
+  return match ? Number(match[1]) : null;
 }
 
 /**

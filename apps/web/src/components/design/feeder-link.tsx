@@ -105,6 +105,8 @@ export function FeederLinkForm({
             className="input w-full min-w-0 max-w-full"
             dir="auto"
             value={current.terminal}
+            aria-invalid={stale || undefined}
+            aria-describedby={stale ? `${base}-terminal-gone` : undefined}
             data-testid={`link-${role}-terminal`}
             onChange={(event) => {
               set({ terminal: event.target.value });
@@ -136,6 +138,7 @@ export function FeederLinkForm({
         )}
         {stale && (
           <p
+            id={`${base}-terminal-gone`}
             className="min-w-0 break-words text-xs font-semibold"
             role="status"
             data-testid={`link-${role}-terminal-gone`}

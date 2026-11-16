@@ -253,7 +253,33 @@ export function linkTerminalOptions(
       .filter((item) => typeof item.id === 'string')
       .map((item) => deriveId('s', item.id as string)),
   );
-  const rows = new Map<string, { kind: string; owner: string; patterned: boolean }>();
+  // The points the configuration's bindings place now, by the id the composer
+  // derives (`ids.derive("p", strip, binding, point)`; it resolves a binding's
+  // pattern only from the configuration). A saved pattern point outside this
+  // set belongs to a binding removed or changed since the save.
+  const patterns = new Map<string, Record<string, unknown>>();
+  for (const pattern of entries(config, 'patterns')) {
+    if (typeof pattern.ref === 'string') patterns.set(pattern.ref, pattern);
+  }
+  const boundPoints = new Set<string>();
+  for (const binding of entries(config, 'bindings')) {
+    if (typeof binding.id !== 'string' || typeof binding.pattern !== 'string') continue;
+    const pattern = patterns.get(binding.pattern);
+    const roles = asRecord(binding.strips);
+    if (pattern === undefined || roles === null) continue;
+    for (const item of Array.isArray(pattern.points) ? pattern.points : []) {
+      const point = asRecord(item);
+      if (point === null || typeof point.id !== 'string' || typeof point.strip !== 'string') {
+        continue;
+      }
+      const strip = roles[point.strip];
+      if (typeof strip === 'string') boundPoints.add(deriveId('p', strip, binding.id, point.id));
+    }
+  }
+  const rows = new Map<
+    string,
+    { kind: string; owner: string; patterned: boolean; terminal: string }
+  >();
   for (const row of model?.terminals ?? []) {
     const ref =
       row.owner_kind === 'component'
@@ -262,7 +288,14 @@ export function linkTerminalOptions(
           ? encodeTerminal({ point: row.terminal_id, side: row.side })
           : null;
     const patterned = Array.isArray(row.pattern_refs) && row.pattern_refs.length > 0;
-    if (ref !== null) rows.set(ref, { kind: row.owner_kind, owner: row.owner_id, patterned });
+    if (ref !== null) {
+      rows.set(ref, {
+        kind: row.owner_kind,
+        owner: row.owner_id,
+        patterned,
+        terminal: row.terminal_id,
+      });
+    }
   }
   const kept = saved.filter((option) => {
     if (offered.has(option.value)) return false;
@@ -276,9 +309,10 @@ export function linkTerminalOptions(
       return own === false;
     }
     if (row.kind === 'strip') {
-      // A strip's points: a point a pattern placed stays while the strip does;
-      // a point entered directly is offered only as the configuration now holds it.
-      return strips.has(row.owner) && row.patterned;
+      // A strip's points: a point a pattern placed stays while its strip and
+      // the binding that placed it do; a point entered directly is offered only
+      // as the configuration now holds it (already offered above).
+      return strips.has(row.owner) && row.patterned && boundPoints.has(row.terminal);
     }
     return true;
   });

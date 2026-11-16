@@ -25,6 +25,7 @@ import {
   linkUsesOf,
 } from '@/components/design/feeder-link-model';
 import type { V2ModelSummary } from '@/lib/design';
+import { deriveId } from '@/lib/sha256';
 
 /** M8: definitions entered in the guided editor. SYNTHETIC data. */
 
@@ -289,6 +290,16 @@ describe('feeder-link choices from the configuration being edited', () => {
             points: [{ id: 'p-keep', marking: '1' }],
           },
         ],
+        patterns: [
+          {
+            ref: 'tenant/feed/v1',
+            strips: ['out'],
+            points: [{ id: 'pt', strip: 'out', offset: 1, level: 1, kind: 'power_line' }],
+          },
+        ],
+        bindings: [
+          { id: 'b1', pattern: 'tenant/feed/v1', board: 'MB-1', strips: { out: 'strip-x' } },
+        ],
       },
       REF,
       removed,
@@ -316,12 +327,22 @@ describe('feeder-link choices from the configuration being edited', () => {
           side: 'inner',
           designation: 'X1',
         }),
-        // A point a pattern placed on strip-x: stays while the strip does.
+        // A point binding b1 placed on strip-x: stays while the strip and b1 do.
         row({
           owner_kind: 'strip',
           owner_id: deriveStrip(),
-          terminal_id: 'p-pattern',
+          terminal_id: deriveId('p', 'strip-x', 'b1', 'pt'),
           marking: '7',
+          side: 'inner',
+          designation: 'X1',
+          pattern_refs: ['tenant/feed/v1'],
+        }),
+        // A pattern point no binding in the configuration places any more.
+        row({
+          owner_kind: 'strip',
+          owner_id: deriveStrip(),
+          terminal_id: 'p-pattern-orphan',
+          marking: '6',
           side: 'inner',
           designation: 'X1',
           pattern_refs: ['tenant/feed/v1'],

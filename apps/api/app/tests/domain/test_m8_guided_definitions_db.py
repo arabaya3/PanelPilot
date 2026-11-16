@@ -37,9 +37,11 @@ from app.tests.domain import review_support
 from app.tests.domain.test_m7b_configuration_db import (  # noqa: F401  (fixtures)
     V3,
     Switch,
+    _configured,
     _count,
     _new_project,
     _opened,
+    _request,
     _revise,
     _switch,
 )
@@ -248,6 +250,21 @@ def test_a_terminal_removed_while_a_link_uses_it_saves_nothing(
     one["templates"][0]["terminals"] = [_definition()["terminals"][1]]
     refused = _revise(client, project_id, m7a_support.request(_link("t-001")), configuration=one)
     assert refused.status_code in (409, 422), refused.text[:400]
+    assert _count(client, project_id) == 2
+
+
+def test_a_binding_removed_while_a_link_names_its_point_saves_nothing(
+    client: TestClient, switch: Switch
+) -> None:
+    # The browser no longer offers a removed binding's points, and keeps a chosen
+    # one visible as gone; the server still refuses it if it is sent.
+    switch(V3)
+    project_id = _configured(client, V3)
+    without = copy.deepcopy(m7a_support.configuration())
+    without["bindings"] = without["bindings"][1:]  # MB-1's binding (its strip point) removed
+    refused = _revise(client, project_id, _request(V3), configuration=without)
+    assert refused.status_code in (409, 422), refused.text[:400]
+    assert "link_terminal_unknown" in refused.text
     assert _count(client, project_id) == 2
 
 
