@@ -52,15 +52,21 @@ composer's existing template shape in `configuration.templates` (M2 §3, M7b §2
 
 ## 4. Identity
 
-- Terminal ids are `t-<sequence>-<random>`: the zero-padded sequence keeps the
-  composer's id order equal to the order of entry; the random part means an id
-  is never reissued, so a link that named a removed terminal never lands on a
-  new one.
+- Terminal ids are `t-<sequence>-<random>`. The sequence sorts as a plain
+  string in numeric order (the composer orders terminals by id): `001`–`999`,
+  then a width letter and the digits (`a1000`…`a9999`, `b10000`…, up to `m` for
+  16 digits). Entry order holds up to `Number.MAX_SAFE_INTEGER` terminals per
+  definition, and ids made before this rule keep their place. The random part
+  means an id is never reissued, so a link that named a removed terminal never
+  lands on a new one.
 - The picker offers terminals of the configuration being edited by the ids the
   server derives (`ids.derive("k", component)`, `ids.derive("p", strip, "direct",
 point)`; computed in the browser with SHA-256, checked against the API's
   values in tests). Saved-model terminals the configuration no longer holds are
-  not offered; terminals only the saved model holds (pattern points) still are.
+  not offered. A point a pattern placed is offered only while its strip and the
+  binding that placed it are in the configuration (its id is
+  `ids.derive("p", strip, binding, point)`): removing the binding removes its
+  points from the picker at once.
 
 ## 5. References
 
@@ -70,8 +76,10 @@ point)`; computed in the browser with SHA-256, checked against the API's
   ref in the same step (the version is kept).
 - A terminal, component or strip point used by a feeder-link end in the form
   cannot be removed; the link end is named.
-- A link end whose terminal is no longer in the configuration is kept and said
-  ("no longer in the configuration"), never silently cleared.
+- A link end whose terminal is no longer in the configuration (a removed
+  terminal, point or binding) stays selected and is said ("no longer in the
+  configuration"; the picker is marked invalid and described by that note). It
+  is never silently cleared or replaced, and the server refuses it if saved.
 - The server still refuses anything else (unknown template, unknown link
   terminal, invalid template) and saves nothing; a refusal naming only a
   template ref marks that definition with an Edit action.
