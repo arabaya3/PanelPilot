@@ -23,7 +23,8 @@ import { deriveId } from '@/lib/sha256';
 export type BoardChoices = {
   id: string;
   circuits: { id: string; label: string }[];
-  cables: { id: string; label: string }[];
+  /** `cores` as the design states it (protective conductor included), or null where unknown. */
+  cables: { id: string; label: string; cores?: number | null }[];
 };
 
 /** A binding id as the composer and the editor accept it. */
@@ -52,7 +53,7 @@ export type BindablePattern = {
   roles: string[];
   points: { id: string; role: string }[];
   /** Per net role: its connections' via, in order (the composer derives their ids from the index). */
-  connections: { role: string; index: number; via: string }[];
+  connections: { role: string; index: number; via: string; core: number | null }[];
   needsCable: boolean;
 };
 
@@ -65,6 +66,10 @@ export function bindablePatterns(config: Configuration): BindablePattern[] {
         role: typeof net.role === 'string' ? net.role : '',
         index,
         via: typeof connection.via === 'string' ? connection.via : '',
+        core:
+          typeof connection.core === 'number' && Number.isInteger(connection.core)
+            ? connection.core
+            : null,
       })),
     );
     return [
@@ -248,6 +253,7 @@ export type BindingProblem =
   | { field: 'board'; code: 'no_board' }
   | { field: 'circuit'; code: 'no_circuit' }
   | { field: 'cable'; code: 'no_cable' | 'cable_needed' }
+  | { field: 'core'; key: string; code: 'core_out_of_range' | 'core_reused'; core: number }
   | { field: 'slot'; key: string; code: 'not_chosen' | 'gone' | 'other_board' | 'other_template' }
   | { field: 'role'; key: string; code: 'not_chosen' | 'gone' | 'other_board' }
   | { field: 'marking'; key: string; code: 'missing' }
@@ -333,6 +339,30 @@ export function bindingProblems(
     !board.cables.some((c) => c.id === state.cable)
   ) {
     out.push({ field: 'cable', code: 'no_cable' });
+  }
+  // The composer's core checks (compose.connect): a core the cable has, used once in the configuration.
+  const cable = board?.cables.find((c) => c.id === state.cable);
+  if (state.cable !== null) {
+    const taken = new Map<number, number>();
+    for (const other of bindingsOf(config)) {
+      if (other.id === binding.id || bindingState(other).cable !== state.cable) continue;
+      const theirs = bindablePatterns(config).find((item) => item.ref === other.pattern);
+      for (const c of theirs?.connections ?? []) {
+        if (c.via === 'cable_core' && c.core !== null)
+          taken.set(c.core, (taken.get(c.core) ?? 0) + 1);
+      }
+    }
+    const mine = new Map<number, number>();
+    for (const c of pattern.connections) {
+      if (c.via !== 'cable_core' || c.core === null) continue;
+      const key = `${c.role}/${String(c.index)}`;
+      if (typeof cable?.cores === 'number' && c.core > cable.cores) {
+        out.push({ field: 'core', key, code: 'core_out_of_range', core: c.core });
+      } else if ((mine.get(c.core) ?? 0) > 0 || (taken.get(c.core) ?? 0) > 0) {
+        out.push({ field: 'core', key, code: 'core_reused', core: c.core });
+      }
+      mine.set(c.core, (mine.get(c.core) ?? 0) + 1);
+    }
   }
   return out;
 }

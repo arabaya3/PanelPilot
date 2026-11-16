@@ -144,6 +144,7 @@ describe('building a pattern without JSON', () => {
       points: {},
       nets: {},
       members: {},
+      connections: {},
     });
   });
 

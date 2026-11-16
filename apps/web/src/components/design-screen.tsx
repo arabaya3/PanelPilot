@@ -1402,7 +1402,11 @@ function DesignWorkspace({
           })),
           cables: (board.cables ?? []).map((cable) => {
             const named = designationText(cable.designation ?? null);
-            return { id: cable.id, label: named ? `${named} (${cable.id})` : cable.id };
+            return {
+              id: cable.id,
+              label: named ? `${named} (${cable.id})` : cable.id,
+              cores: typeof cable.cores === 'number' ? cable.cores : null,
+            };
           }),
         }));
   const refusedEntry = configRefusal !== null ? conflictTarget(configRefusal.params) : null;

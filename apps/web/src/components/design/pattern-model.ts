@@ -40,7 +40,17 @@ export type PatternPoint = {
   kind: string;
 };
 export type PatternMember = { slot: string; terminal: string } | { point: string; side: Side };
-export type PatternConnection = { from: number; to: number; via: string };
+export type PatternConnection = {
+  from: number;
+  to: number;
+  via: string;
+  core: number | null;
+  label: string | null;
+};
+
+/** The connection kinds the composer accepts (entities.VIAS); nothing else is offered. */
+export const VIAS = ['wire', 'cable_core', 'jumper', 'busbar', 'internal'] as const;
+export type Via = (typeof VIAS)[number];
 export type PatternNet = {
   role: string;
   signal: string;
@@ -110,6 +120,8 @@ function netOf(raw: Record<string, unknown>): PatternNet {
       from: int(c.from),
       to: int(c.to),
       via: typeof c.via === 'string' ? c.via : '',
+      core: typeof c.core === 'number' && Number.isInteger(c.core) ? c.core : null,
+      label: typeof c.label === 'string' ? c.label : null,
     })),
   };
 }
@@ -507,8 +519,12 @@ export function updateNet(
   return mapNet(config, ref, role, (net) => ({ ...net, ...patch }));
 }
 
-/** A net removed, with its stored connections (the caller says how many first). */
+/**
+ * A net removed, with its stored connections (the caller says how many first).
+ * Refused (unchanged) while a binding holds wire details for one of them.
+ */
 export function removeNet(config: Configuration, ref: string, role: string): Configuration {
+  if (wireDetailUses(config, ref, role).length > 0) return config;
   return mapPattern(config, ref, (raw) => ({
     ...raw,
     nets: items(raw.nets).filter((net) => net.role !== role),
@@ -610,6 +626,8 @@ export type PatternProblems = {
   nets: Record<string, 'no_members' | 'no_signal'>;
   /** By `${role}#${index}`. */
   members: Record<string, MemberProblem>;
+  /** By `${role}#${index}`: what the pattern check would refuse in a stored connection. */
+  connections: Record<string, ConnectionProblem>;
 };
 
 /**
@@ -621,7 +639,13 @@ export function patternProblems(
   pattern: Pattern,
   knownTemplates: ReadonlySet<string>,
 ): PatternProblems {
-  const problems: PatternProblems = { slots: {}, points: {}, nets: {}, members: {} };
+  const problems: PatternProblems = {
+    slots: {},
+    points: {},
+    nets: {},
+    members: {},
+    connections: {},
+  };
   const slots = new Map(pattern.slots.map((slot) => [slot.id, slot]));
   const points = new Set(pattern.points.map((point) => point.id));
   for (const slot of pattern.slots) {
@@ -635,6 +659,10 @@ export function patternProblems(
   // The net a binding would make: per binding by role, per board by signal.
   const owner = new Map<string, string>();
   for (const net of pattern.nets) {
+    net.connections.forEach((connection, index) => {
+      const problem = connectionProblem(net, connection);
+      if (problem !== null) problems.connections[`${net.role}#${String(index)}`] = problem;
+    });
     if (net.members.length === 0) problems.nets[net.role] = 'no_members';
     else if (net.signal.trim() === '') problems.nets[net.role] = 'no_signal';
     const same = net.scope === 'board' ? `board|${net.signal}` : `binding|${net.role}`;
@@ -677,6 +705,176 @@ export function problemCount(problems: PatternProblems): number {
     Object.keys(problems.slots).length +
     Object.keys(problems.points).length +
     Object.keys(problems.nets).length +
-    Object.keys(problems.members).length
+    Object.keys(problems.members).length +
+    Object.keys(problems.connections).length
   );
+}
+
+/* ----------------------------------------------------------- connections --- */
+
+/**
+ * Per-wire details a binding holds for a connection of this net: the binding
+ * id and the key (`role/index`, the connection's position in the net; the
+ * composer derives the wire's and connection's ids from it). With `from`,
+ * only keys at that index or after it.
+ */
+export function wireDetailUses(
+  config: Configuration,
+  ref: string,
+  role: string,
+  from = 0,
+): { binding: string; key: string; index: number }[] {
+  const out: { binding: string; key: string; index: number }[] = [];
+  const prefix = `${role}/`;
+  for (const binding of items(config.bindings)) {
+    if (binding.pattern !== ref || typeof binding.id !== 'string') continue;
+    for (const key of Object.keys(record(binding.wires) ?? {})) {
+      if (!key.startsWith(prefix)) continue;
+      const tail = key.slice(prefix.length);
+      // Another role's key (`a/b/0` for role `a/b`), not this net's.
+      if (tail.includes('/')) continue;
+      // A key that is not a plain index (`x`, `01`) names no connection; kept, and counted as a use.
+      const index = /^(0|[1-9]\d*)$/.test(tail) ? Number(tail) : Number.POSITIVE_INFINITY;
+      if (index >= from) out.push({ binding: binding.id, key, index });
+    }
+  }
+  return out;
+}
+
+/** A connection as the editor writes it: core and label only for a cable core. */
+export type ConnectionDraft = {
+  from: number;
+  to: number;
+  via: Via;
+  core: number | null;
+  label: string | null;
+};
+
+function stored(draft: ConnectionDraft, trim = true): Record<string, unknown> {
+  const cable = draft.via === 'cable_core';
+  // While the user types in place the label is kept as typed (a space between words survives).
+  const typed = draft.label === null ? '' : trim ? draft.label.trim() : draft.label;
+  const label = cable && typed.trim() !== '' ? typed : null;
+  return {
+    from: draft.from,
+    to: draft.to,
+    via: draft.via,
+    core: cable ? draft.core : null,
+    label,
+  };
+}
+
+export type ConnectionProblem =
+  | 'end_missing'
+  | 'same_end'
+  | 'unknown_via'
+  | 'internal_not_sides'
+  | 'core_missing'
+  | 'core_invalid'
+  | 'core_not_allowed'
+  | 'label_not_allowed';
+
+/** What the pattern check (codec_v2.parse_pattern) would refuse in a connection; null if nothing. */
+export function connectionProblem(
+  net: PatternNet,
+  c: { from: number; to: number; via: string; core: number | null; label: string | null },
+): ConnectionProblem | null {
+  const n = net.members.length;
+  if (!(c.from >= 0 && c.from < n && c.to >= 0 && c.to < n)) return 'end_missing';
+  if (c.from === c.to) return 'same_end';
+  if (!(VIAS as readonly string[]).includes(c.via)) return 'unknown_via';
+  if (c.via === 'cable_core') {
+    if (c.core === null) return 'core_missing';
+    if (!Number.isInteger(c.core) || c.core < 1) return 'core_invalid';
+  } else {
+    if (c.core !== null) return 'core_not_allowed';
+    if (c.label !== null) return 'label_not_allowed';
+  }
+  if (c.via === 'internal') {
+    const a = net.members[c.from];
+    const b = net.members[c.to];
+    if (
+      a === undefined ||
+      b === undefined ||
+      isSlotMember(a) ||
+      isSlotMember(b) ||
+      a.point !== b.point
+    ) {
+      return 'internal_not_sides';
+    }
+  }
+  return null;
+}
+
+function netIn(config: Configuration, ref: string, role: string): PatternNet | undefined {
+  return patternsOf(config)
+    .find((item) => item.ref === ref)
+    ?.nets.find((item) => item.role === role);
+}
+
+/** A connection added at the end (earlier connections, and wire details keyed to them, keep their index). */
+export function addConnection(
+  config: Configuration,
+  ref: string,
+  role: string,
+  draft: ConnectionDraft,
+): Configuration {
+  const net = netIn(config, ref, role);
+  if (net === undefined) return config;
+  const entry = stored(draft);
+  if (connectionProblem(net, entry as PatternConnection) !== null) return config;
+  return mapNet(config, ref, role, (raw) => ({
+    ...raw,
+    connections: [...arr(raw.connections), entry],
+  }));
+}
+
+/**
+ * A connection changed in place, as the user edits it (a problem is said, not
+ * refused). Refused (unchanged) while a binding holds wire details for it:
+ * they were entered for that connection as it was.
+ */
+export function updateConnection(
+  config: Configuration,
+  ref: string,
+  role: string,
+  index: number,
+  draft: ConnectionDraft,
+): Configuration {
+  const net = netIn(config, ref, role);
+  if (net === undefined || index < 0 || index >= net.connections.length) return config;
+  if (wireDetailUses(config, ref, role).some((use) => use.index === index)) return config;
+  // Ends are members of this net and the kind is one the composer knows; what else the
+  // check would refuse (a missing core, sides of two points) is said beside the fields.
+  const n = net.members.length;
+  if (!(draft.from >= 0 && draft.from < n && draft.to >= 0 && draft.to < n)) return config;
+  if (!(VIAS as readonly string[]).includes(draft.via)) return config;
+  const entry = stored(draft, false);
+  return mapNet(config, ref, role, (raw) => ({
+    ...raw,
+    connections: arr(raw.connections).map((connection, at) =>
+      at === index ? { ...(record(connection) ?? {}), ...entry } : connection,
+    ),
+  }));
+}
+
+/**
+ * A connection removed. Wire details are keyed by position, so removing one
+ * would drop its details and move every later connection's details onto
+ * another connection: refused (unchanged) while a binding holds wire details
+ * at this index or after it.
+ */
+export function removeConnection(
+  config: Configuration,
+  ref: string,
+  role: string,
+  index: number,
+): Configuration {
+  const net = netIn(config, ref, role);
+  if (net === undefined || index < 0 || index >= net.connections.length) return config;
+  if (wireDetailUses(config, ref, role, index).length > 0) return config;
+  return mapNet(config, ref, role, (raw) => ({
+    ...raw,
+    connections: arr(raw.connections).filter((_, at) => at !== index),
+  }));
 }
