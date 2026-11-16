@@ -275,7 +275,9 @@ def _internal_to_a_component(c: dict[str, Any]) -> None:
 
 
 REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
-    "unknown_template": (_unknown_template, "unknown_template", {"binding", "slot", "ref"}),
+    # M9a: a slot's template and its terminals are checked on the pattern itself,
+    # bound or not, so these refusals name the pattern (same codes as before).
+    "unknown_template": (_unknown_template, "unknown_template", {"pattern", "slot", "ref"}),
     "unknown_pattern": (_unknown_pattern, "unknown_pattern", {"binding"}),
     "no_device_kind": (_no_device_kind, "missing_binding", {"binding", "slot"}),
     "no_candidate": (_no_candidate, "missing_binding", {"binding", "slot"}),
@@ -285,10 +287,11 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     "terminal_not_on_template": (
         _terminal_not_on_template,
         "terminal_not_on_template",
-        {"template", "terminal"},
+        {"pattern", "role", "slot", "template", "terminal"},
     ),
     "restricted_scope": (_restricted_scope, "restricted_scope", {"ref", "scope"}),
-    "contradictory_nets": (_contradictory_nets, "contradictory_nets", {"binding", "role"}),
+    # M9a: a contradiction within one pattern is found on the pattern itself.
+    "contradictory_nets": (_contradictory_nets, "contradictory_nets", {"pattern", "role"}),
     "unknown_circuit": (_unknown_circuit, "unknown_reference", {"binding", "circuit"}),
     "unknown_device": (_unknown_device, "unknown_reference", {"binding", "device"}),
     "unknown_board": (_unknown_board, "unknown_reference", {"binding", "board"}),
