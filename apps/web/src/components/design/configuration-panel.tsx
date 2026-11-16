@@ -186,6 +186,23 @@ export function ConfigurationPanel({
       };
     }
     const named = code === 'configuration_refused' ? conflictTarget(params) : null;
+    if (named !== null && named.kind === 'pattern') {
+      // M9a: refused for a pattern itself: said with the net, slot and terminal the server names.
+      const dash = (value: string | undefined) =>
+        value === undefined || value === '' ? '—' : value;
+      return {
+        kind: 'error',
+        message: t('refusal.configuration_refused_pattern', {
+          pattern: entryName(doc, 'pattern', named.entry),
+          refusal: named.reason,
+          net: dash(params.role),
+          slot: dash(params.slot),
+          terminal: dash(params.terminal),
+        }),
+        disabled: null,
+        conflict: named,
+      };
+    }
     if (named !== null) {
       // Refused for one entry (M7b): said and marked like a conflict, with its board.
       const board =
@@ -435,7 +452,7 @@ export function ConfigurationPanel({
                         })}
                       </button>
                     </>
-                  ) : conflict.kind === 'template' ? (
+                  ) : conflict.kind === 'template' || conflict.kind === 'pattern' ? (
                     <button
                       type="button"
                       className="btn btn-sm btn-secondary"
@@ -444,7 +461,11 @@ export function ConfigurationPanel({
                       }}
                       data-testid="conflict-edit"
                     >
-                      {t('conflict.editDefinition')}
+                      {t(
+                        conflict.kind === 'pattern'
+                          ? 'conflict.editPattern'
+                          : 'conflict.editDefinition',
+                      )}
                     </button>
                   ) : (
                     <span data-testid="conflict-link">{t('conflict.link')}</span>

@@ -302,7 +302,7 @@ export function setMarking(
 
 /** What a `configuration_conflict` names: the entry to edit or remove. */
 export type ConflictTarget = {
-  kind: 'binding' | 'strip' | 'component' | 'link' | 'template';
+  kind: 'binding' | 'strip' | 'component' | 'link' | 'template' | 'pattern';
   /** The configuration entry's id (the fed board for a link; the ref for a template). */
   entry: string;
   ref: string;
@@ -324,6 +324,16 @@ export function conflictTarget(params: Record<string, string> | undefined): Conf
         reason: params.reason ?? params.refusal ?? '',
       };
     }
+  }
+  // M9a: a refusal of a pattern itself (bound or not) names the pattern's ref.
+  if (typeof params.pattern === 'string' && params.pattern !== '') {
+    return {
+      kind: 'pattern',
+      entry: params.pattern,
+      ref: params.pattern,
+      refKind: 'pattern',
+      reason: params.reason ?? params.refusal ?? '',
+    };
   }
   // M8: a refusal of a definition itself names only its ref (`kind` template).
   if (params.kind === 'template' && typeof params.ref === 'string' && params.ref !== '') {

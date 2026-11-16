@@ -337,12 +337,74 @@ class _Composer:
         # Every configuration component is composed, bound to a slot or not.
         for name in sorted(self.component_defs):
             self.config_component(name)
+        # M9a: every configured pattern is checked, bound or not.
+        for ref in sorted(self.patterns):
+            self.check_pattern(ref)
         for binding_id in sorted(self.bindings):
             self.apply(self.bindings[binding_id])
         skip = set(self.bound_devices)
         for legacy in migrate_v2.legacy_components(self.design_json, skip):
             self.components[legacy["id"]] = legacy
         return self.payload()
+
+    def check_pattern(self, ref: str) -> None:
+        """A configured pattern's slot templates and membership, bound or not (M9a).
+
+        The checks a binding would make on the pattern itself, with the same
+        codes: a slot's template must be known (and not restricted); a member
+        of a slot with a template must be one of its terminals; a member may
+        not sit in two nets that would not be one net (two board-scope nets
+        with the same signal are one net). A member repeated within one net is
+        accepted, as a binding has always accepted it (the repeat joins nothing
+        new).
+        """
+        pattern = self.patterns[ref]
+        templates: dict[str, entities.ComponentTemplate | None] = {}
+        for slot in pattern["slots"]:
+            given = slot["template"]
+            held = self.templates.get(given) or self.legacy_templates.get(given)
+            if held is not None and held.restricted_scope:
+                _refuse(
+                    "restricted_scope",
+                    "the template is restricted to uses this composer may not design",
+                    pattern=ref,
+                    slot=slot["id"],
+                    ref=held.ref,
+                    scope=",".join(held.restricted_scope),
+                )
+            templates[slot["id"]] = (
+                None if given is None else self.template(given, pattern=ref, slot=slot["id"])
+            )
+        owner: dict[tuple[str, str, str], tuple[str, str, str]] = {}
+        for net in pattern["nets"]:
+            role = net["role"]
+            # The net a binding would make: per binding by role, per board by signal.
+            same = (
+                ("board", "", net["signal"]) if net["scope"] == "board" else ("binding", role, "")
+            )
+            for member in net["members"]:
+                if "slot" in member:
+                    template = templates.get(member["slot"])
+                    if template is not None and template.terminal(member["terminal"]) is None:
+                        _refuse(
+                            "terminal_not_on_template",
+                            "the pattern joins a terminal its template does not have",
+                            pattern=ref,
+                            role=role,
+                            slot=member["slot"],
+                            template=template.ref,
+                            terminal=str(member["terminal"]),
+                        )
+                    key = ("slot", member["slot"], member["terminal"])
+                else:
+                    key = ("point", member["point"], member["side"])
+                if owner.setdefault(key, same) != same:
+                    _refuse(
+                        "contradictory_nets",
+                        "one terminal would be a member of two nets",
+                        pattern=ref,
+                        role=role,
+                    )
 
     def add_strip(self, strip_id: str) -> None:
         raw = self.strip_defs[strip_id]
