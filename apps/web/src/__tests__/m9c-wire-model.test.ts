@@ -191,3 +191,42 @@ describe('details stay with their connection', () => {
     expect(wiresOf(after)).toEqual({ 'n1/0': { number: { value: 'W7', source: 'user' } } });
   });
 });
+
+describe('independent review regressions', () => {
+  it('value shapes the composer refuses are said (assumption statement rules, extra keys)', () => {
+    const problems = (raw: unknown) => {
+      const doc = base({ 'n1/0': { number: raw } });
+      return wireProblems(doc, only(doc)).values['n1/0|number'] ?? null;
+    };
+    expect(problems({ value: 'W1', source: 'assumption' })).toBe('missing_statement');
+    expect(problems({ value: 'W1', source: 'assumption', statement: ' ' })).toBe(
+      'missing_statement',
+    );
+    expect(problems({ value: 'W1', source: 'user', statement: 'x' })).toBe('statement_not_allowed');
+    expect(problems({ value: 'W1', source: 'user', assumption: 'a-1' })).toBe('unreadable');
+    expect(problems({ value: 'W1', source: 'assumption', statement: 'synthetic' })).toBeNull();
+  });
+
+  it('an entry that is not an object is said, never overwritten, and removable', () => {
+    const doc = base({ 'n1/0': 'W7' });
+    const row = wireRows(doc, only(doc))[0];
+    expect(row?.unreadableEntry).toBe('"W7"');
+    expect(wireProblems(doc, only(doc)).unreadable).toEqual(['n1/0']);
+    expect(setUserValue(doc, 'bind-1', 'n1/0', 'number', 'W8')).toBe(doc);
+    expect(wiresOf(removeWireEntry(doc, 'bind-1', 'n1/0'))).toEqual({});
+  });
+
+  it('ends are named as the schedule names them: the product, else the id', () => {
+    const doc = base();
+    const components = doc.components as Raw[];
+    const withFunction = {
+      ...doc,
+      components: [
+        { ...components[0], designation: { function: '=A1', location: '+L', product: 'KA' } },
+      ],
+      strips: [{ id: 'strip-x', board: 'MB-1', designation: null }],
+    };
+    const row = wireRows(withFunction, only(withFunction))[0];
+    expect([row?.from, row?.to]).toEqual(['KA:A1', 'strip-x:7']);
+  });
+});

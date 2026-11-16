@@ -2343,6 +2343,14 @@
       "refusedCore": {
         "core_out_of_range": "A cable-core connection of this pattern uses a core the chosen cable does not have. Change the core in the pattern's connection, or choose a cable with that core.",
         "core_reused": "A core of the chosen cable is used by more than one connection. Give each cable-core connection its own core, or choose another cable."
+      },
+      "previewWireDetails": "number {number}; cross-section mm² {cross_section}; colour {colour}",
+      "previewNotSet": "not set",
+      "previewGiven": "{value} ({source})",
+      "previewSource": {
+        "user": "entered by you",
+        "data": "imported data",
+        "assumption": "assumed"
       }
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
@@ -2374,12 +2382,15 @@
         "unreadable": "This stored value cannot be read. Remove it to continue.",
         "unknown_source": "This value names a source the design does not accept. Replace or remove it.",
         "extra_field": "This wire's details also hold “{name}”, which is not a wire detail; the save will be refused until it is removed.",
-        "stray": "Details are held for {key}, which is not a wire connection of this pattern any more; the save will be refused until they are removed."
+        "stray": "Details are held for {key}, which is not a wire connection of this pattern any more; the save will be refused until they are removed.",
+        "missing_statement": "An assumption must say what it assumes. Replace or remove this value.",
+        "statement_not_allowed": "Only an assumption has a statement. Replace or remove this value.",
+        "entry_unreadable": "These wire details are stored in a form the design cannot read; the save will be refused until they are removed."
       },
       "cancel": "Cancel",
       "replace": "Replace with my own value",
       "replaceNamed": "Replace {field} of {wire} with my own value",
-      "replaceConfirm": "Replace {field} “{value}” ({source}) with a value you enter? The stored value and its source will be replaced in the next saved revision; earlier revisions keep it.",
+      "replaceConfirm": "Replace {field} “{value}” ({source}) with a value you enter? The stored value and its source are removed from the next saved revision and the field is left empty for you to type; earlier revisions keep it.",
       "replaceAction": "Replace",
       "replaced": "{field} of {wire} is ready for your value.",
       "removeField": "Remove",
@@ -2397,7 +2408,8 @@
       "removedStray": "Details held for {key} removed.",
       "removeBindingConfirm": "Binding {id} holds wire details: {values}. Removing the binding removes them too. Earlier revisions keep them.",
       "removeBindingAction": "Remove binding {id} and its wire details",
-      "boardLocked": "The board cannot be changed while this binding holds wire details: on another board they would describe a different wire. Remove the details first."
+      "boardLocked": "The board cannot be changed while this binding holds wire details: on another board they would describe a different wire. Remove the details first.",
+      "overviewEntry": "{wire}: {problem}"
     }
   },
   "feederLink": {

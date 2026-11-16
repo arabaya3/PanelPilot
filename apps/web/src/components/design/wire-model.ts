@@ -20,7 +20,6 @@ import {
   bindingsOf,
   type ConfigBinding,
   type Configuration,
-  designationText,
 } from '@/components/design/configuration-model';
 import { templateTerminals } from '@/components/design/pattern-model';
 
@@ -60,6 +59,11 @@ export function wireValue(raw: unknown): WireValue {
   if (obj === null || typeof obj.value !== 'string' || typeof obj.source !== 'string') {
     return { kind: 'unreadable' };
   }
+  // compose.wire_attribute reads exactly value, source and an optional statement.
+  if (Object.keys(obj).some((k) => k !== 'value' && k !== 'source' && k !== 'statement')) {
+    return { kind: 'unreadable' };
+  }
+  if ('statement' in obj && typeof obj.statement !== 'string') return { kind: 'unreadable' };
   return {
     kind: 'given',
     value: obj.value,
@@ -79,6 +83,8 @@ export type WireRow = {
   values: Record<WireField, WireValue>;
   /** Stored keys of this wire's entry that are not wire fields (kept exactly). */
   otherKeys: string[];
+  /** The stored entry when it is not an object (kept exactly; the composer refuses it), else null. */
+  unreadableEntry: string | null;
 };
 
 function endText(
@@ -97,18 +103,25 @@ function endText(
       templateTerminals(config, template)?.find((t) => t.id === terminal)?.marking || terminal;
     const given = record(record(binding.slots)?.[m.slot]);
     const component = items(config.components).find((c) => c.id === given?.component);
-    const named = component ? designationText(component.designation) : '';
-    return `${named || m.slot}:${marking}`;
+    // As schedules.label names it: the designation's product, else the component id.
+    const product = record(component?.designation)?.product;
+    const named =
+      typeof product === 'string' && product !== ''
+        ? product
+        : (component?.id as string | undefined);
+    return `${named ?? m.slot}:${marking}`;
   }
   if (typeof m.point === 'string') {
     const point = items(pattern.points).find((p) => p.id === m.point);
     const role = typeof point?.strip === 'string' ? point.strip : '';
     const stripId = record(binding.strips)?.[role];
     const strip = items(config.strips).find((s) => s.id === stripId);
-    const named = strip ? designationText(strip.designation) : '';
+    const product = record(strip?.designation)?.product;
+    const named =
+      typeof product === 'string' && product !== '' ? product : (strip?.id as string | undefined);
     const marking = binding.markings[m.point];
     const shown = typeof marking === 'string' && marking !== '' ? marking : m.point;
-    return `${named || role}:${shown}`;
+    return `${named ?? role}:${shown}`;
   }
   return '?';
 }
@@ -128,8 +141,11 @@ export function wireRows(config: Configuration, binding: ConfigBinding): WireRow
     items(net.connections).forEach((connection, index) => {
       if (connection.via !== 'wire') return;
       const key = `${role}/${String(index)}`;
-      const entry = record(wires[key]) ?? {};
+      const stored = wires[key];
+      const entry = record(stored) ?? {};
       rows.push({
+        unreadableEntry:
+          stored === undefined || record(stored) !== null ? null : JSON.stringify(stored),
         key,
         role,
         signal: typeof net.signal === 'string' ? net.signal : '',
@@ -213,7 +229,10 @@ export function setUserValue(
 ): Configuration {
   const binding = bindingsOf(config).find((item) => item.id === bindingId);
   if (binding === undefined) return config;
-  const current = wireValue(record(record(binding.wires)?.[key])?.[field]);
+  const stored = record(binding.wires)?.[key];
+  // An entry that is not an object is removed only explicitly, never overwritten.
+  if (stored !== undefined && record(stored) === null) return config;
+  const current = wireValue(record(stored)?.[field]);
   if (current.kind === 'unreadable') return config;
   if (current.kind === 'given' && current.source !== 'user') return config;
   return mapWires(config, bindingId, (wires) => ({
@@ -262,13 +281,27 @@ export function removeWireEntry(
   });
 }
 
-export type WireProblem = 'empty' | 'too_long' | 'not_decimal' | 'unreadable' | 'unknown_source';
+export type WireProblem =
+  | 'empty'
+  | 'too_long'
+  | 'not_decimal'
+  | 'unreadable'
+  | 'unknown_source'
+  | 'missing_statement'
+  | 'statement_not_allowed';
 
 /** What the composer or the snapshot reader would refuse in a value, or null. */
 export function wireValueProblem(field: WireField, value: WireValue): WireProblem | null {
   if (value.kind === 'unset') return null;
   if (value.kind === 'unreadable') return 'unreadable';
   if (!(WIRE_SOURCES as readonly string[]).includes(value.source)) return 'unknown_source';
+  if (
+    value.source === 'assumption' &&
+    (value.statement === null || value.statement.trim() === '')
+  ) {
+    return 'missing_statement';
+  }
+  if (value.source !== 'assumption' && value.statement !== null) return 'statement_not_allowed';
   if (value.value === '') return 'empty';
   if (value.value.length > MAX_WIRE_TEXT) return 'too_long';
   if (field === 'cross_section_mm2') {
@@ -284,11 +317,22 @@ export type WireProblems = {
   stray: string[];
   /** `${key}|${name}`: a stored name in a wire's entry that is not a wire field (the composer refuses it). */
   extra: string[];
+  /** Keys whose stored entry is not an object. */
+  unreadable: string[];
 };
 
 export function wireProblems(config: Configuration, binding: ConfigBinding): WireProblems {
-  const out: WireProblems = { values: {}, stray: strayWireKeys(config, binding), extra: [] };
+  const out: WireProblems = {
+    values: {},
+    stray: strayWireKeys(config, binding),
+    extra: [],
+    unreadable: [],
+  };
   for (const row of wireRows(config, binding)) {
+    if (row.unreadableEntry !== null) {
+      out.unreadable.push(row.key);
+      continue;
+    }
     for (const name of row.otherKeys) out.extra.push(`${row.key}|${name}`);
     for (const field of WIRE_FIELDS) {
       const problem = wireValueProblem(field, row.values[field]);
@@ -299,5 +343,10 @@ export function wireProblems(config: Configuration, binding: ConfigBinding): Wir
 }
 
 export function wireProblemCount(problems: WireProblems): number {
-  return Object.keys(problems.values).length + problems.stray.length + problems.extra.length;
+  return (
+    Object.keys(problems.values).length +
+    problems.stray.length +
+    problems.extra.length +
+    problems.unreadable.length
+  );
 }

@@ -16,7 +16,6 @@ import type { ConfigBinding, Configuration } from '@/components/design/configura
 import {
   removeWireEntry,
   removeWireValue,
-  replaceWithUserValue,
   setUserValue,
   WIRE_FIELDS,
   wireProblems,
@@ -53,7 +52,15 @@ export function WireDetails({
   announce: (message: string) => void;
 }) {
   const t = useIsolatingTranslations('configuration');
-  const [pending, setPending] = useState<Pending | null>(null);
+  // A confirmation holds the stored entry it was opened for; once that changes it is dropped.
+  const [opened, setOpened] = useState<{ pending: Pending; snapshot: string } | null>(null);
+  const storedWires = (binding.wires ?? {}) as Record<string, unknown>;
+  const snapshotOf = (key: string) => JSON.stringify(storedWires[key] ?? null);
+  const pending =
+    opened !== null && opened.snapshot === snapshotOf(opened.pending.key) ? opened.pending : null;
+  const setPending = (next: Pending | null) => {
+    setOpened(next === null ? null : { pending: next, snapshot: snapshotOf(next.key) });
+  };
   const rows = wireRows(value, binding);
   const problems = wireProblems(value, binding);
   const fieldId = (index: number, field: string) =>
@@ -135,6 +142,33 @@ export function WireDetails({
     }
   });
 
+  rows.forEach((row, index) => {
+    if (row.unreadableEntry !== null) {
+      problemList.push({
+        id: `${rowId(index)}-unreadable`,
+        text: t('wires.overviewEntry', {
+          wire: `${row.from} – ${row.to}`,
+          problem: t('wires.problem.entry_unreadable'),
+        }),
+      });
+    }
+    row.otherKeys.forEach((other) => {
+      problemList.push({
+        id: `${rowId(index)}-extra-${other.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+        text: t('wires.overviewEntry', {
+          wire: `${row.from} – ${row.to}`,
+          problem: t('wires.problem.extra_field', { name: other }),
+        }),
+      });
+    });
+  });
+  problems.stray.forEach((key) => {
+    problemList.push({
+      id: `${base}-stray-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+      text: t('wires.problem.stray', { key }),
+    });
+  });
+
   return (
     <section
       className="flex min-w-0 flex-col gap-2"
@@ -179,7 +213,9 @@ export function WireDetails({
         {rows.map((row, index) => {
           const name = rowName(row);
           const anyGiven =
-            WIRE_FIELDS.some((f) => row.values[f].kind !== 'unset') || row.otherKeys.length > 0;
+            row.unreadableEntry !== null ||
+            WIRE_FIELDS.some((f) => row.values[f].kind !== 'unset') ||
+            row.otherKeys.length > 0;
           return (
             <li
               key={row.key}
@@ -196,13 +232,19 @@ export function WireDetails({
               >
                 {name}
               </p>
+              {row.unreadableEntry !== null && (
+                <p className="text-xs font-semibold" dir="auto" data-testid="wire-unreadable">
+                  {t('wires.problem.entry_unreadable')}
+                </p>
+              )}
               <div className="flex min-w-0 flex-wrap items-start gap-2">
                 {WIRE_FIELDS.map((field) => {
                   const v = row.values[field];
                   const id = fieldId(index, field);
                   const problem = problems.values[`${row.key}|${field}`];
                   const editable =
-                    v.kind === 'unset' || (v.kind === 'given' && v.source === 'user');
+                    row.unreadableEntry === null &&
+                    (v.kind === 'unset' || (v.kind === 'given' && v.source === 'user'));
                   const described = [`${id}-source`, problem ? `${id}-problem` : '']
                     .filter(Boolean)
                     .join(' ');
@@ -287,7 +329,7 @@ export function WireDetails({
                           }),
                           t('wires.replaceAction'),
                           () => {
-                            onChange(replaceWithUserValue(value, binding.id, row.key, field, ''));
+                            onChange(removeWireValue(value, binding.id, row.key, field));
                             setPending(null);
                             announce(t('wires.replaced', { field: fieldName(field), wire: name }));
                             focusLater(id);
@@ -348,6 +390,7 @@ export function WireDetails({
                         onClick={() => {
                           setPending({ kind: 'field', key: row.key, field: other });
                         }}
+                        id={`${rowId(index)}-extra-${other.replace(/[^A-Za-z0-9_-]/g, '_')}`}
                         data-testid="wire-remove-extra"
                       >
                         {t('wires.removeExtra', { name: other })}
@@ -361,10 +404,13 @@ export function WireDetails({
                   confirmBox(
                     t('wires.removeEntryConfirm', {
                       wire: name,
-                      values: WIRE_FIELDS.filter((f) => row.values[f].kind !== 'unset')
-                        .map((f) => `${fieldName(f)}: ${shown(row.values[f]) || '—'}`)
-                        .concat(row.otherKeys)
-                        .join('; '),
+                      // The stored entry as it is, when it cannot be read field by field.
+                      values:
+                        row.unreadableEntry ??
+                        WIRE_FIELDS.filter((f) => row.values[f].kind !== 'unset')
+                          .map((f) => `${fieldName(f)}: ${shown(row.values[f]) || '—'}`)
+                          .concat(row.otherKeys)
+                          .join('; '),
                     }),
                     t('wires.removeAction'),
                     () => {
@@ -383,6 +429,7 @@ export function WireDetails({
                     onClick={() => {
                       setPending({ kind: 'entry', key: row.key });
                     }}
+                    id={row.unreadableEntry !== null ? `${rowId(index)}-unreadable` : undefined}
                     data-testid="wire-remove-entry"
                   >
                     {t('wires.removeEntry')}
@@ -418,6 +465,7 @@ export function WireDetails({
                 onClick={() => {
                   setPending({ kind: 'entry', key });
                 }}
+                id={`${base}-stray-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`}
                 data-testid="wire-remove-stray"
               >
                 {t('wires.removeStray', { key })}

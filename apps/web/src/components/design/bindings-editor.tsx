@@ -108,6 +108,15 @@ function BindingPreview({
   onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
+  const previewValue = (cell: { value: string | null; source: string } | null | undefined) =>
+    cell === undefined || cell === null || cell.value === null
+      ? t('bindings.previewNotSet')
+      : t('bindings.previewGiven', {
+          value: cell.value,
+          source: ['user', 'data', 'assumption'].includes(cell.source)
+            ? t(`bindings.previewSource.${cell.source}`)
+            : cell.source,
+        });
   const [state, setState] = useState<PreviewState>({ kind: 'idle' });
   // Only the latest request may set what is shown: an older answer is dropped.
   const latest = useRef(0);
@@ -228,6 +237,14 @@ function BindingPreview({
                   end: wire.end,
                   signal: wire.signal,
                 })}
+                {/* M9c: the wire's details as the server composed them, each with its source. */}
+                <span className="block text-text-muted" data-testid="binding-preview-wire-details">
+                  {t('bindings.previewWireDetails', {
+                    number: previewValue(wire.number),
+                    cross_section: previewValue(wire.cross_section_mm2),
+                    colour: previewValue(wire.colour),
+                  })}
+                </span>
               </li>
             ))}
           </ul>
@@ -287,6 +304,9 @@ function BindingRow({
   const wireCount = wireProblemCount(wireProblems(value, binding));
   const withWires = hasWireDetails(binding);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  useEffect(() => {
+    if (!withWires) setConfirmRemove(false);
+  }, [withWires]);
   const board = boardChoices?.find((item) => item.id === binding.board);
   const problemOf = (field: BindingProblem['field'], key?: string) =>
     problems.find((p) => p.field === field && (!('key' in p) || p.key === key));
@@ -622,7 +642,7 @@ function BindingRow({
           aria-labelledby={`${rowId}-remove-confirm`}
           data-testid="binding-remove-confirm"
         >
-          <p id={`${rowId}-remove-confirm`} className="text-xs" dir="auto">
+          <p id={`${rowId}-remove-confirm`} tabIndex={-1} className="text-xs" dir="auto">
             {t('wires.removeBindingConfirm', {
               id: binding.id,
               values: wireDetailsOf(binding)

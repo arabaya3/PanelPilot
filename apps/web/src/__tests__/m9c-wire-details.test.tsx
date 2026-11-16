@@ -193,7 +193,9 @@ describe('M9c guided wire details', () => {
     fireEvent.click(row.getByTestId('wire-replace'));
     fireEvent.click(row.getByTestId('wire-replace-confirm-confirm'));
     await tick();
-    expect(wires()).toEqual({ 'n1/0': { colour: { value: '', source: 'user' } } });
+    // Replace removes the stored value and leaves the field empty and editable: nothing is copied.
+    expect(wires()).toEqual({});
+    expect(row.getByTestId<HTMLInputElement>('wire-colour').readOnly).toBe(false);
     expect(document.activeElement).toBe(row.getByTestId('wire-colour'));
     type(row.getByTestId('wire-colour'), 'BU');
     expect(wires()).toEqual({ 'n1/0': { colour: { value: 'BU', source: 'user' } } });
@@ -249,6 +251,48 @@ describe('M9c guided wire details', () => {
     fireEvent.click(section.getByTestId('wire-remove-stray'));
     fireEvent.click(section.getByTestId('wire-remove-stray-confirm-confirm'));
     expect(wires()).toEqual({ 'n1/0': { number: 'W1', gauge: 'x' } });
+  });
+
+  it('an unreadable entry is read only and removed only after its stored form is listed', () => {
+    const { section, row } = open({ 'n1/0': 'W7' });
+    expect(row.getByTestId('wire-unreadable').textContent).toBe(W.problem.entry_unreadable);
+    expect(row.getByTestId<HTMLInputElement>('wire-number').readOnly).toBe(true);
+    const link = section.getByTestId('wire-problem-link');
+    fireEvent.click(link);
+    expect(document.activeElement).toBe(row.getByTestId('wire-remove-entry'));
+    fireEvent.click(row.getByTestId('wire-remove-entry'));
+    expect(row.getByTestId('wire-remove-entry-confirm').textContent).toContain('"W7"');
+    fireEvent.click(row.getByTestId('wire-remove-entry-confirm-confirm'));
+    expect(wires()).toEqual({});
+  });
+
+  it('a confirmation is dropped when the value it named changes underneath it', () => {
+    const { row } = open({ 'n1/0': { number: { value: 'W7', source: 'user' } } });
+    fireEvent.click(row.getByTestId('wire-remove-field'));
+    expect(row.getByTestId('wire-remove-field-confirm')).toBeTruthy();
+    type(row.getByTestId('wire-number'), 'W9');
+    expect(row.queryByTestId('wire-remove-field-confirm')).toBeNull();
+    expect(wires()).toEqual({ 'n1/0': { number: { value: 'W9', source: 'user' } } });
+  });
+
+  it('stray and extra problems are linked from the overview to their removal', () => {
+    const { section, row } = open({
+      'n1/0': { number: 'W1', gauge: 'x' },
+      'n1/9': { number: 'W9' },
+    });
+    const links = section.getAllByTestId('wire-problem-link');
+    expect(links).toHaveLength(2);
+    fireEvent.click(at(links, 0));
+    expect(document.activeElement).toBe(row.getByTestId('wire-remove-extra'));
+    fireEvent.click(at(links, 1));
+    expect(document.activeElement).toBe(section.getByTestId('wire-remove-stray'));
+  });
+
+  it('the binding removal confirmation takes focus', async () => {
+    open({ 'n1/0': { number: { value: 'W7', source: 'user' } } });
+    fireEvent.click(screen.getByTestId('binding-remove'));
+    await tick();
+    expect(document.activeElement?.textContent).toContain('W7');
   });
 
   it('renders in Arabic and Hebrew with the same messages', () => {
