@@ -302,7 +302,10 @@ describe('M9b1 guided binding', () => {
     });
     expect(validateImpl).toHaveBeenCalledTimes(1);
     expect(row.getByTestId('binding-preview-nets').textContent).toBe('S1: KA:A1, XP:7 (inner)');
-    expect(row.getByTestId('binding-preview-wires').textContent).toBe('KA:A1 to XP:7 (inner) (S1)');
+    // M9c: each wire also shows its details as composed (none given here: each not set).
+    expect(row.getByTestId('binding-preview-wires').textContent).toBe(
+      'KA:A1 to XP:7 (inner) (S1)number not set; cross-section mm² not set; colour not set',
+    );
     expect(row.getByTestId('binding-preview-connections').textContent).toBe(
       'KA:A1 to XP:7 (inner), wire',
     );

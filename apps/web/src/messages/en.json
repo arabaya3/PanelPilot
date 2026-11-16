@@ -2242,9 +2242,9 @@
         "addAction": "Add connection",
         "remove": "Remove connection {connection}",
         "needMembers": "A connection joins two members: add at least two members first.",
-        "locked": "Wire details are saved for this connection in {uses}. It cannot be changed, because the details were entered for it as it is.",
-        "removeBlocked": "Cannot remove: wire details in {uses} are saved by the connection's position, and would be lost or moved to another connection.",
-        "netBlocked": "This net cannot be removed: wire details are saved for its connections in {uses}.",
+        "locked": "Wire details are saved for this connection in {uses}. It cannot be changed, because the details were entered for it as it is. To change it, remove those details in the binding’s Wire details first.",
+        "removeBlocked": "Cannot remove: wire details in {uses} are saved by the connection's position, and would be lost or moved to another connection. To change it, remove those details in the binding’s Wire details first.",
+        "netBlocked": "This net cannot be removed: wire details are saved for its connections in {uses}. To change it, remove those details in the binding’s Wire details first.",
         "problem": {
           "end_missing": "Choose both ends from this net's members.",
           "same_end": "Both ends are the same member. Choose two different members.",
@@ -2343,10 +2343,75 @@
       "refusedCore": {
         "core_out_of_range": "A cable-core connection of this pattern uses a core the chosen cable does not have. Change the core in the pattern's connection, or choose a cable with that core.",
         "core_reused": "A core of the chosen cable is used by more than one connection. Give each cable-core connection its own core, or choose another cable."
-      }
+      },
+      "previewWireDetails": "number {number}; cross-section mm² {cross_section}; colour {colour}",
+      "previewNotSet": "not set",
+      "previewGiven": "{value} ({source})",
+      "previewSource": {
+        "user": "entered by you",
+        "data": "imported data",
+        "assumption": "assumed"
+      },
+      "previewAssumed": "assumed: {statement}"
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
-    "overviewRefusedShow": "Show it in the configuration"
+    "overviewRefusedShow": "Show it in the configuration",
+    "wires": {
+      "title": "Wire details",
+      "note": "Values you enter are stored as entered by you. They are not checked by an engineer or by the design rules, and nothing is filled in for a value left empty.",
+      "none": "This binding's pattern has no wire connections.",
+      "overview": "{count} wire detail problem(s); the save will be refused until they are fixed:",
+      "overviewItem": "{wire}, {field}: {problem}",
+      "rowName": "Board {board} · binding {binding} · pattern {pattern} · net {net} ({signal}): {from} to {to}",
+      "field": {
+        "number": "Wire number",
+        "cross_section_mm2": "Cross-section (mm²)",
+        "colour": "Colour"
+      },
+      "source": {
+        "unset": "Not set",
+        "unreadable": "Stored in a form the design cannot read",
+        "user": "Entered by you (not checked)",
+        "data": "From imported data",
+        "assumption": "Assumption: {statement}",
+        "other": "Source {source} (not one the design accepts)"
+      },
+      "problem": {
+        "empty": "Empty. Enter a value, or use Remove to leave it unset.",
+        "too_long": "Too long: at most 200 characters.",
+        "not_decimal": "Enter a positive number in mm², such as 1.5 (digits and one point only).",
+        "unreadable": "This stored value cannot be read. Remove it to continue.",
+        "unknown_source": "This value names a source the design does not accept. Replace or remove it.",
+        "extra_field": "This wire's details also hold “{name}”, which is not a wire detail; the save will be refused until it is removed.",
+        "stray": "Details are held for {key}, which is not a wire connection of this pattern any more; the save will be refused until they are removed.",
+        "missing_statement": "An assumption must say what it assumes. Replace or remove this value.",
+        "statement_not_allowed": "Only an assumption has a statement. Replace or remove this value.",
+        "entry_unreadable": "These wire details are stored in a form the design cannot read; the save will be refused until they are removed."
+      },
+      "cancel": "Cancel",
+      "replace": "Replace with my own value",
+      "replaceNamed": "Replace {field} of {wire} with my own value",
+      "replaceConfirm": "Replace {field} “{value}” ({source}) with a value you enter? The stored value and its source are removed from the next saved revision and the field is left empty for you to type; earlier revisions keep it.",
+      "replaceAction": "Replace",
+      "replaced": "{field} of {wire} is ready for your value.",
+      "removeField": "Remove",
+      "removeFieldNamed": "Remove {field} of {wire}",
+      "removeFieldConfirm": "Remove {field} “{value}” ({source})? It will be unset in the next saved revision; earlier revisions keep it.",
+      "removeAction": "Remove",
+      "removedField": "{field} of {wire} removed.",
+      "removeExtra": "Remove “{name}”",
+      "removeEntry": "Remove all details of this wire",
+      "removeEntryNamed": "Remove all details of {wire}",
+      "removeEntryConfirm": "Remove all details of {wire}? This removes {values}. Earlier revisions keep them.",
+      "removedEntry": "All details of {wire} removed.",
+      "removeStray": "Remove the details held for {key}",
+      "removeStrayConfirm": "Remove the details held for {key}? Earlier revisions keep them.",
+      "removedStray": "Details held for {key} removed.",
+      "removeBindingConfirm": "Binding {id} holds wire details: {values}. Removing the binding removes them too. Earlier revisions keep them.",
+      "removeBindingAction": "Remove binding {id} and its wire details",
+      "boardLocked": "The board cannot be changed while this binding holds wire details: on another board they would describe a different wire. Remove the details first.",
+      "overviewEntry": "{wire}: {problem}"
+    }
   },
   "feederLink": {
     "panelTitle": "Board-to-board links",

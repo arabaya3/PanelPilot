@@ -311,19 +311,31 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     # A component on a board the design lacks is refused on its own (M7b: every
     # configuration component is composed), before any binding uses it.
     "component_board_unknown": (_board_mismatch, "unknown_reference", {"board", "component"}),
-    "numeric_wire_number": (_numeric_wire_number, "configuration_invalid", {"field"}),
+    "numeric_wire_number": (
+        _numeric_wire_number,
+        "configuration_invalid",
+        {"binding", "field", "wire"},
+    ),
     "assumption_without_statement": (
         _assumption_without_statement,
         "configuration_invalid",
-        {"field"},
+        {"binding", "field", "wire"},
     ),
     "statement_without_assumption": (
         _statement_without_assumption,
         "configuration_invalid",
-        {"field"},
+        {"binding", "field", "wire"},
     ),
-    "unknown_wire_source": (_unknown_wire_source, "configuration_invalid", {"field"}),
-    "empty_given_value": (_empty_given_value, "configuration_invalid", {"field"}),
+    "unknown_wire_source": (
+        _unknown_wire_source,
+        "configuration_invalid",
+        {"binding", "field", "wire"},
+    ),
+    "empty_given_value": (
+        _empty_given_value,
+        "configuration_invalid",
+        {"binding", "field", "wire"},
+    ),
     "pattern_without_review": (_pattern_without_review, "configuration_invalid", {"where"}),
     "pattern_ref_with_at": (_pattern_ref_with_at, "pattern_invalid", set()),
     "internal_to_a_component": (_internal_to_a_component, "pattern_invalid", set()),
