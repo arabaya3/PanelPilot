@@ -76,7 +76,9 @@ from __future__ import annotations
 
 import copy
 import operator
+import re
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any, NoReturn
 
 from app.design.model import codec_v2, entities, ids, migrate_v2, versions
@@ -97,6 +99,22 @@ _BINDING_KEYS = (
 )
 _WIRE_FIELDS = ("number", "cross_section_mm2", "colour")
 _GIVEN_SOURCES = ("user", "data", "assumption")
+#: The stored v2 bounds of a wire value (codec_v2: MAX_TEXT and _POSITIVE_DECIMAL), checked
+#: here so a value outside them is refused naming its binding, wire and field (M9c) rather
+#: than reaching the snapshot reader as an unnamed ``composition_invalid``.
+_WIRE_TEXT_MAX = 200
+_WIRE_DECIMAL = re.compile(r"^[0-9]{1,6}(\.[0-9]{1,6})?$")
+
+
+def _check_wire_value(value: str, name: str, where: dict[str, str]) -> None:
+    if not value:
+        _refuse("configuration_invalid", "a given wire value is not empty", **where)
+    if len(value) > _WIRE_TEXT_MAX:
+        _refuse("configuration_invalid", "a wire value is at most 200 characters", **where)
+    if name == "cross_section_mm2" and (not _WIRE_DECIMAL.match(value) or Decimal(value) <= 0):
+        _refuse("configuration_invalid", "a cross-section is a positive plain decimal", **where)
+
+
 #: The kind of a strip point entered without one: says it is not given, invents nothing.
 UNSPECIFIED_KIND = "unspecified"
 
@@ -855,12 +873,14 @@ class _Composer:
 
     def wire_attribute(self, value: Any, name: str, bid: str, key: str, wid: str) -> dict[str, Any]:
         """A wire attribute as given: text is data, an object names its source; never filled in."""
+        where = {"field": name, "binding": bid, "wire": key}
         if value is None:
             return {"value": None, "source": "unset", "assumption": None}
         if isinstance(value, str):
+            _check_wire_value(value, name, where)
             return {"value": value, "source": "data", "assumption": None}
         if not isinstance(value, Mapping):
-            _refuse("configuration_invalid", "wire data is given as text", field=name)
+            _refuse("configuration_invalid", "wire data is given as text", **where)
         value = _obj(
             value, ("value", "source"), f"bindings[{bid}].wires.{key}.{name}", ("statement",)
         )
@@ -869,15 +889,16 @@ class _Composer:
             _refuse(
                 "configuration_invalid",
                 "a given wire value is text with source user, data or assumption",
-                field=name,
+                **where,
             )
+        _check_wire_value(given, name, where)
         statement = value.get("statement")
         if source != "assumption":
             if "statement" in value:
-                _refuse("configuration_invalid", "only an assumption has a statement", field=name)
+                _refuse("configuration_invalid", "only an assumption has a statement", **where)
             return {"value": given, "source": source, "assumption": None}
         if not isinstance(statement, str) or not statement.strip():
-            _refuse("configuration_invalid", "an assumption states what it assumes", field=name)
+            _refuse("configuration_invalid", "an assumption states what it assumes", **where)
         aid = ids.derive("a", bid, key, name)
         self.assumptions[aid] = {
             "id": aid,

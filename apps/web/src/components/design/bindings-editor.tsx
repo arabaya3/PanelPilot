@@ -39,6 +39,13 @@ import {
   designationText,
   setMarking,
 } from '@/components/design/configuration-model';
+import { WireDetails } from '@/components/design/wire-details';
+import {
+  hasWireDetails,
+  wireDetailsOf,
+  wireProblemCount,
+  wireProblems,
+} from '@/components/design/wire-model';
 import type { ConfigurationOutcome, V2ModelSummary } from '@/lib/design';
 
 export type PreviewFn = (configuration: Configuration) => Promise<ConfigurationOutcome>;
@@ -276,6 +283,10 @@ function BindingRow({
   const pattern = bindablePatterns(value).find((item) => item.ref === binding.pattern);
   const state = bindingState(binding);
   const problems = bindingProblems(value, binding, boardChoices);
+  // M9c: wire details are counted with the binding's problems and said beside their fields.
+  const wireCount = wireProblemCount(wireProblems(value, binding));
+  const withWires = hasWireDetails(binding);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const board = boardChoices?.find((item) => item.id === binding.board);
   const problemOf = (field: BindingProblem['field'], key?: string) =>
     problems.find((p) => p.field === field && (!('key' in p) || p.key === key));
@@ -294,6 +305,7 @@ function BindingRow({
     testId: string,
     noneLabel: string,
     fromDesign = false,
+    locked = false,
   ) {
     const known = current === '' || options.some((option) => option.id === current);
     // A choice offered from the design cannot be checked until the project is designed in this session.
@@ -309,7 +321,12 @@ function BindingRow({
           dir="auto"
           value={current}
           aria-invalid={problem !== undefined || undefined}
-          aria-describedby={problem ? `${fieldId}-problem` : undefined}
+          disabled={locked}
+          aria-describedby={
+            [problem ? `${fieldId}-problem` : '', locked ? `${fieldId}-locked` : '']
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
           onChange={(event) => {
             onPick(event.target.value);
           }}
@@ -327,6 +344,11 @@ function BindingRow({
             </option>
           ))}
         </select>
+        {locked && (
+          <p id={`${fieldId}-locked`} className="text-xs" data-testid="binding-board-locked">
+            {t('wires.boardLocked')}
+          </p>
+        )}
         {problem !== undefined && (
           <Problem id={`${fieldId}-problem`} text={t(`bindings.problem.${problem.code}`)} />
         )}
@@ -364,9 +386,9 @@ function BindingRow({
             {t(`bindings.refusedCore.${conflict.reason}`)}
           </p>
         )}
-      {problems.length > 0 && (
+      {problems.length + wireCount > 0 && (
         <p className="text-xs font-semibold" data-testid="binding-problems">
-          {t('bindings.problems', { count: String(problems.length) })}
+          {t('bindings.problems', { count: String(problems.length + wireCount) })}
         </p>
       )}
       {pattern === undefined ? (
@@ -380,11 +402,16 @@ function BindingRow({
               binding.board,
               boards.map((name) => ({ id: name, label: name })),
               (next) => {
-                if (next !== '') onChange(updateBinding(value, binding.id, { board: next }));
+                // M9c: on another board the details would describe another wire; refused while held.
+                if (next !== '' && !withWires) {
+                  onChange(updateBinding(value, binding.id, { board: next }));
+                }
               },
               problemOf('board'),
               'binding-board',
               t('bindings.chooseBoard'),
+              false,
+              withWires,
             )}
             {select(
               `${rowId}-circuit`,
@@ -568,6 +595,14 @@ function BindingRow({
             </ul>
           )}
 
+          <WireDetails
+            value={value}
+            onChange={onChange}
+            binding={binding}
+            base={rowId}
+            announce={announce}
+          />
+
           {preview !== null && (
             <BindingPreview
               value={value}
@@ -580,19 +615,69 @@ function BindingRow({
           )}
         </>
       )}
-      <button
-        type="button"
-        className={wrapButton('danger') + ' self-start'}
-        aria-label={t('bindings.removeNamed', { id: binding.id })}
-        onClick={() => {
-          onChange(removeBinding(value, binding.id));
-          announce(t('bindings.removed', { id: binding.id }));
-          focusLater(addFieldId);
-        }}
-        data-testid="binding-remove"
-      >
-        {t('editor.removeBinding')}
-      </button>
+      {confirmRemove && withWires ? (
+        <div
+          className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2"
+          role="group"
+          aria-labelledby={`${rowId}-remove-confirm`}
+          data-testid="binding-remove-confirm"
+        >
+          <p id={`${rowId}-remove-confirm`} className="text-xs" dir="auto">
+            {t('wires.removeBindingConfirm', {
+              id: binding.id,
+              values: wireDetailsOf(binding)
+                .map((d) => `${d.key}${d.field ? ` ${d.field}` : ''}: ${d.value}`)
+                .join('; '),
+            })}
+          </p>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <button
+              type="button"
+              className={wrapButton('danger')}
+              onClick={() => {
+                onChange(removeBinding(value, binding.id));
+                announce(t('bindings.removed', { id: binding.id }));
+                focusLater(addFieldId);
+              }}
+              data-testid="binding-remove-confirm-yes"
+            >
+              {t('wires.removeBindingAction', { id: binding.id })}
+            </button>
+            <button
+              type="button"
+              className={wrapButton('secondary')}
+              onClick={() => {
+                setConfirmRemove(false);
+                focusLater(`${rowId}-remove`);
+              }}
+              data-testid="binding-remove-confirm-no"
+            >
+              {t('wires.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          id={`${rowId}-remove`}
+          type="button"
+          className={wrapButton('danger') + ' self-start'}
+          aria-label={t('bindings.removeNamed', { id: binding.id })}
+          onClick={() => {
+            // M9c: a binding holding wire details is removed only after they are listed.
+            if (withWires) {
+              setConfirmRemove(true);
+              focusLater(`${rowId}-remove-confirm`);
+              return;
+            }
+            onChange(removeBinding(value, binding.id));
+            announce(t('bindings.removed', { id: binding.id }));
+            focusLater(addFieldId);
+          }}
+          data-testid="binding-remove"
+        >
+          {t('editor.removeBinding')}
+        </button>
+      )}
     </li>
   );
 }
