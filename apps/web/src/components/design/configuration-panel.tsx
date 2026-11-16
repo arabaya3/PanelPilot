@@ -435,7 +435,7 @@ export function ConfigurationPanel({
                         })}
                       </button>
                     </>
-                  ) : conflict.kind === 'template' ? (
+                  ) : conflict.kind === 'template' || conflict.kind === 'pattern' ? (
                     <button
                       type="button"
                       className="btn btn-sm btn-secondary"
@@ -444,7 +444,11 @@ export function ConfigurationPanel({
                       }}
                       data-testid="conflict-edit"
                     >
-                      {t('conflict.editDefinition')}
+                      {t(
+                        conflict.kind === 'pattern'
+                          ? 'conflict.editPattern'
+                          : 'conflict.editDefinition',
+                      )}
                     </button>
                   ) : (
                     <span data-testid="conflict-link">{t('conflict.link')}</span>

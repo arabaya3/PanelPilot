@@ -46,6 +46,7 @@ import {
   type LinkEndUse,
 } from '@/components/design/definition-model';
 import { DefinitionsEditor } from '@/components/design/definitions-editor';
+import { PatternsEditor } from '@/components/design/patterns-editor';
 import { TechnicalToken } from '@/components/technical-token';
 import type { V2ModelSummary } from '@/lib/design';
 
@@ -602,6 +603,14 @@ export function ConfigurationEditor({
             element.scrollIntoView({ block: 'center' });
           element?.focus();
         }}
+      />
+
+      <PatternsEditor
+        value={value}
+        onChange={onChange}
+        templates={choices.map((choice) => choice.ref)}
+        conflictRef={conflict !== null && conflict.kind === 'pattern' ? conflict.entry : null}
+        rowIdOf={(ref) => entryElementId(idBase, 'pattern', ref)}
       />
 
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-components`}>
