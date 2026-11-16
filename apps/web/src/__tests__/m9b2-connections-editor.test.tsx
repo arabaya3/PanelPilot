@@ -277,6 +277,64 @@ describe('M9b2 guided connections', () => {
     expect(bindings[0]?.wires).toEqual({ 'line/0': { number: { value: 'W7', source: 'user' } } });
   });
 
+  it('a label typed in place keeps its inner space and loses end spaces on leaving', () => {
+    const { card } = open();
+    const row = within(at(card.getAllByTestId('pattern-connection'), 0));
+    pick(row.getByTestId('pattern-connection-via'), 'cable_core');
+    type(row.getByTestId('pattern-connection-core'), '1');
+    const label = row.getByTestId('pattern-connection-label');
+    type(label, 'L1 ');
+    type(label, 'L1 A ');
+    expect(connections()[0]).toMatchObject({ label: 'L1 A ' });
+    fireEvent.blur(label);
+    expect(connections()[0]).toMatchObject({ label: 'L1 A' });
+  });
+
+  it('ends chosen before the members changed are not used', () => {
+    const { card } = open();
+    const add = within(card.getByTestId('pattern-add-connection'));
+    // Choose the third member (index 2) as From, then remove the connection and the second member.
+    pick(add.getByTestId('pattern-connection-new-from'), '2');
+    fireEvent.click(card.getByTestId('pattern-connection-remove'));
+    fireEvent.click(at(card.getAllByTestId('pattern-net-member-remove'), 1));
+    // Two members left: the form starts again from the first and second, not a stale index.
+    expect(add.getByTestId<HTMLSelectElement>('pattern-connection-new-from').value).toBe('0');
+    expect(add.getByTestId<HTMLSelectElement>('pattern-connection-new-to').value).toBe('1');
+    fireEvent.click(add.getByTestId('pattern-add-connection-submit'));
+    expect(connections()).toEqual([{ from: 0, to: 1, via: 'wire', core: null, label: null }]);
+  });
+
+  it('typed core text never hides a stored core it was not typed over', () => {
+    const { card } = open();
+    const row = () => within(at(card.getAllByTestId('pattern-connection'), 0));
+    pick(row().getByTestId('pattern-connection-via'), 'cable_core');
+    type(row().getByTestId('pattern-connection-core'), 'x');
+    expect(row().getByTestId('pattern-connection-problem').textContent).toBe(
+      C.problem.core_invalid,
+    );
+    // The stored core changes elsewhere (here: the type changes and back): the field follows it.
+    pick(row().getByTestId('pattern-connection-via'), 'wire');
+    pick(row().getByTestId('pattern-connection-via'), 'cable_core');
+    expect(row().getByTestId<HTMLInputElement>('pattern-connection-core').value).toBe('');
+    expect(row().getByTestId('pattern-connection-problem').textContent).toBe(
+      C.problem.core_missing,
+    );
+  });
+
+  it('new-connection problem is linked from the end and type fields', () => {
+    const { card } = open();
+    const add = within(card.getByTestId('pattern-add-connection'));
+    pick(add.getByTestId('pattern-connection-new-to'), '0');
+    const problem = add.getByTestId('pattern-add-connection-problem').id;
+    for (const id of [
+      'pattern-connection-new-from',
+      'pattern-connection-new-to',
+      'pattern-connection-new-via',
+    ]) {
+      expect(add.getByTestId(id).getAttribute('aria-describedby')).toBe(problem);
+    }
+  });
+
   it('renders in Arabic and Hebrew with the same controls', () => {
     for (const locale of ['ar', 'he'] as const) {
       const { unmount } = renderApp(<Harness initial={stored(null)} />, { locale, theme: 'light' });

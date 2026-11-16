@@ -296,6 +296,43 @@ describe('wire details stay attached to their connection, or the change is refus
   });
 });
 
+describe('independent review regressions', () => {
+  it('another role key or a non-index key: not misread as this net index', () => {
+    const doc = base({ 'n1/b/0': { number: 'W1' }, 'n1/01': { number: 'W2' } });
+    // `n1/b/0` belongs to role `n1/b`; `n1/01` names no connection and is kept as a use.
+    expect(wireDetailUses(doc, REF, 'n1')).toEqual([
+      { binding: 'bind-1', key: 'n1/01', index: Number.POSITIVE_INFINITY },
+    ]);
+    expect(wireDetailUses(base({ 'n1/b/0': {} }), REF, 'n1')).toEqual([]);
+  });
+
+  it('an in-place label keeps a space between words while typed', () => {
+    let doc = addConnection(base(), REF, 'n1', {
+      from: 0,
+      to: 2,
+      via: 'cable_core',
+      core: 1,
+      label: null,
+    });
+    doc = updateConnection(doc, REF, 'n1', 2, {
+      from: 0,
+      to: 2,
+      via: 'cable_core',
+      core: 1,
+      label: 'L1 ',
+    });
+    expect(rawConnections(doc)[2]?.label).toBe('L1 ');
+    doc = updateConnection(doc, REF, 'n1', 2, {
+      from: 0,
+      to: 2,
+      via: 'cable_core',
+      core: 1,
+      label: 'L1 A',
+    });
+    expect(rawConnections(doc)[2]?.label).toBe('L1 A');
+  });
+});
+
 describe('cable cores, checked as the composer checks them', () => {
   const BOARDS: BoardChoices[] = [
     { id: 'MB-1', circuits: [], cables: [{ id: 'cab-1', label: 'W1', cores: 3 }] },

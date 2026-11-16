@@ -731,8 +731,10 @@ export function wireDetailUses(
     for (const key of Object.keys(record(binding.wires) ?? {})) {
       if (!key.startsWith(prefix)) continue;
       const tail = key.slice(prefix.length);
-      // A key that is not a plain index names no connection; it is kept and counted as a use.
-      const index = /^\d+$/.test(tail) ? Number(tail) : Number.POSITIVE_INFINITY;
+      // Another role's key (`a/b/0` for role `a/b`), not this net's.
+      if (tail.includes('/')) continue;
+      // A key that is not a plain index (`x`, `01`) names no connection; kept, and counted as a use.
+      const index = /^(0|[1-9]\d*)$/.test(tail) ? Number(tail) : Number.POSITIVE_INFINITY;
       if (index >= from) out.push({ binding: binding.id, key, index });
     }
   }
@@ -748,10 +750,11 @@ export type ConnectionDraft = {
   label: string | null;
 };
 
-function stored(draft: ConnectionDraft): Record<string, unknown> {
+function stored(draft: ConnectionDraft, trim = true): Record<string, unknown> {
   const cable = draft.via === 'cable_core';
-  const label =
-    cable && draft.label !== null && draft.label.trim() !== '' ? draft.label.trim() : null;
+  // While the user types in place the label is kept as typed (a space between words survives).
+  const typed = draft.label === null ? '' : trim ? draft.label.trim() : draft.label;
+  const label = cable && typed.trim() !== '' ? typed : null;
   return {
     from: draft.from,
     to: draft.to,
@@ -846,7 +849,7 @@ export function updateConnection(
   const n = net.members.length;
   if (!(draft.from >= 0 && draft.from < n && draft.to >= 0 && draft.to < n)) return config;
   if (!(VIAS as readonly string[]).includes(draft.via)) return config;
-  const entry = stored(draft);
+  const entry = stored(draft, false);
   return mapNet(config, ref, role, (raw) => ({
     ...raw,
     connections: arr(raw.connections).map((connection, at) =>

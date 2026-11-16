@@ -1367,10 +1367,17 @@ function ConnectionList({
     via: Via;
     core: string;
     label: string;
-  }>({ from: '', to: '', via: 'wire', core: '', label: '' });
-  const [coreText, setCoreText] = useState<Record<number, string>>({});
+    members: string;
+  }>({ from: '', to: '', via: 'wire', core: '', label: '', members: '' });
+  // Typed core text per row, kept only while the stored core is the one it was typed over.
+  const [coreText, setCoreText] = useState<Record<number, { text: string; core: number | null }>>(
+    {},
+  );
   const n = net.members.length;
-  const pick = (typed: string, fallback: number) => (typed === '' ? fallback : Number(typed));
+  // Ends chosen for another list of members (one was added or removed since) are not used.
+  const membersKey = JSON.stringify(net.members);
+  const pick = (typed: string, fallback: number) =>
+    typed === '' || draft.members !== membersKey ? fallback : Number(typed);
   const from = pick(draft.from, 0);
   const to = pick(draft.to, n > 1 ? 1 : 0);
   const coreOf = (typed: string): number | null => (/^\d+$/.test(typed) ? Number(typed) : null);
@@ -1411,6 +1418,7 @@ function ConnectionList({
     onPick: (at: number) => void,
     disabled: boolean,
     testId: string,
+    describedBy?: string,
   ) {
     return (
       <div className="field min-w-0 sm:w-40">
@@ -1423,6 +1431,7 @@ function ConnectionList({
           dir="auto"
           value={String(chosen)}
           disabled={disabled}
+          aria-describedby={describedBy}
           onChange={(event) => {
             onPick(Number(event.target.value));
           }}
@@ -1445,6 +1454,7 @@ function ConnectionList({
     onPick: (via: Via) => void,
     disabled: boolean,
     testId: string,
+    describedBy?: string,
   ) {
     return (
       <div className="field min-w-0 sm:w-40">
@@ -1456,6 +1466,7 @@ function ConnectionList({
           className="input w-full"
           value={chosen}
           disabled={disabled}
+          aria-describedby={describedBy}
           onChange={(event) => {
             onPick(event.target.value as Via);
           }}
@@ -1504,8 +1515,13 @@ function ConnectionList({
           const write = (patch: Partial<ConnectionDraft>) => {
             onChange(updateConnection(value, ref, net.role, index, draftOf(patch)));
           };
+          const kept = coreText[index];
           const typedCore =
-            coreText[index] ?? (connection.core === null ? '' : String(connection.core));
+            kept !== undefined && kept.core === connection.core
+              ? kept.text
+              : connection.core === null
+                ? ''
+                : String(connection.core);
           const coreBad = typedCore.trim() !== '' && coreOf(typedCore) === null;
           const described = [
             problem || coreBad ? `${cid}-problem` : '',
@@ -1530,6 +1546,7 @@ function ConnectionList({
                   },
                   locked,
                   'pattern-connection-from',
+                  described || undefined,
                 )}
                 {endSelect(
                   `${cid}-to`,
@@ -1540,12 +1557,13 @@ function ConnectionList({
                   },
                   locked,
                   'pattern-connection-to',
+                  described || undefined,
                 )}
                 {viaSelect(
                   `${cid}-via`,
                   connection.via,
                   (via) => {
-                    setCoreText((prev) => ({ ...prev, [index]: '' }));
+                    setCoreText((prev) => ({ ...prev, [index]: { text: '', core: null } }));
                     write({
                       via,
                       core: null,
@@ -1554,6 +1572,7 @@ function ConnectionList({
                   },
                   locked,
                   'pattern-connection-via',
+                  described || undefined,
                 )}
                 {connection.via === 'cable_core' && (
                   <>
@@ -1573,7 +1592,10 @@ function ConnectionList({
                         aria-describedby={described || undefined}
                         onChange={(event) => {
                           const typed = event.target.value;
-                          setCoreText((prev) => ({ ...prev, [index]: typed }));
+                          setCoreText((prev) => ({
+                            ...prev,
+                            [index]: { text: typed, core: coreOf(typed) },
+                          }));
                           write({ core: coreOf(typed) });
                         }}
                         data-testid="pattern-connection-core"
@@ -1590,8 +1612,16 @@ function ConnectionList({
                         maxLength={50}
                         value={connection.label ?? ''}
                         disabled={locked}
+                        aria-describedby={described || undefined}
                         onChange={(event) => {
                           write({ label: event.target.value === '' ? null : event.target.value });
+                        }}
+                        onBlur={(event) => {
+                          // Spaces at the ends are not kept once the user leaves the field.
+                          const trimmed = event.target.value.trim();
+                          if (trimmed !== event.target.value) {
+                            write({ label: trimmed === '' ? null : trimmed });
+                          }
                         }}
                         data-testid="pattern-connection-label"
                       />
@@ -1605,7 +1635,9 @@ function ConnectionList({
                   aria-describedby={later.length > 0 ? `${cid}-keep` : undefined}
                   aria-label={t('patterns.conn.remove', { connection: text })}
                   onClick={() => {
-                    onChange(removeConnection(value, ref, net.role, index));
+                    const next = removeConnection(value, ref, net.role, index);
+                    if (next === value) return;
+                    onChange(next);
                     setCoreText({});
                     announce(t('patterns.removed', { what: text }));
                     focusLater(`${base}-conn-new-from`);
@@ -1655,20 +1687,32 @@ function ConnectionList({
             t('patterns.conn.from'),
             from,
             (at) => {
-              setDraft((d) => ({ ...d, from: String(at) }));
+              setDraft((d) => ({
+                ...d,
+                from: String(at),
+                to: d.members === membersKey ? d.to : String(to),
+                members: membersKey,
+              }));
             },
             false,
             'pattern-connection-new-from',
+            newProblem !== null ? `${base}-conn-new-problem` : undefined,
           )}
           {endSelect(
             `${base}-conn-new-to`,
             t('patterns.conn.to'),
             to,
             (at) => {
-              setDraft((d) => ({ ...d, to: String(at) }));
+              setDraft((d) => ({
+                ...d,
+                to: String(at),
+                from: d.members === membersKey ? d.from : String(from),
+                members: membersKey,
+              }));
             },
             false,
             'pattern-connection-new-to',
+            newProblem !== null ? `${base}-conn-new-problem` : undefined,
           )}
           {viaSelect(
             `${base}-conn-new-via`,
@@ -1678,6 +1722,7 @@ function ConnectionList({
             },
             false,
             'pattern-connection-new-via',
+            newProblem !== null ? `${base}-conn-new-problem` : undefined,
           )}
           {draft.via === 'cable_core' && (
             <>
