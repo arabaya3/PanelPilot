@@ -424,6 +424,15 @@ export function ConfigurationPanel({
         boardChoices={boardChoices}
         onUnauthorized={onUnauthorized}
         savedRevision={latestRevision}
+        validation={
+          reviewed === null
+            ? null
+            : {
+                findings: reviewed.review.model.findings,
+                current: reviewCurrent,
+                revision: reviewed.review.based_on_revision,
+              }
+        }
         preview={(configuration) =>
           validateImpl({ token, id: projectId, configuration: normalized(configuration) })
         }

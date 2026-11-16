@@ -433,3 +433,75 @@ export function bindingRowIds(
   }
   return out;
 }
+
+/* ----------------------------------------------------------------- reuse --- */
+
+/**
+ * M9d: a free binding id for using `sourceId`'s pattern on `board`: the source
+ * id and the board, then a number where taken. Only a suggestion: the user may
+ * type another, which {@link bindingIdProblem} checks.
+ */
+export function suggestReuseId(config: Configuration, sourceId: string, board: string): string {
+  const stem = `${sourceId}-${board}`.replace(/[^A-Za-z0-9_.-]/g, '-').slice(0, 90);
+  if (bindingIdProblem(config, stem) === null) return stem;
+  for (let n = 2; n < 1000; n += 1) {
+    const candidate = `${stem}-${String(n)}`;
+    if (bindingIdProblem(config, candidate) === null) return candidate;
+  }
+  return '';
+}
+
+/**
+ * M9d: a new binding of the same pattern on another board. Only the pattern
+ * reference is reused (the pattern itself is shared, not copied); everything
+ * board-specific starts unset: circuit, slots, strips, markings, cable and wire
+ * details. The source binding is not changed. Refused (unchanged) for a taken
+ * or malformed id, an unknown source, or the source's own board.
+ */
+export function reuseBinding(
+  config: Configuration,
+  sourceId: string,
+  entry: { id: string; board: string },
+): Configuration {
+  const source = bindingsOf(config).find((item) => item.id === sourceId);
+  if (source === undefined || entry.board === '' || entry.board === source.board) return config;
+  return addBinding(config, {
+    id: entry.id,
+    pattern: source.pattern,
+    board: entry.board,
+    circuit: null,
+  });
+}
+
+/** What a reused binding shares with its source, and what the user must enter for it. */
+export type ReuseSummary = {
+  pattern: string;
+  /** Other bindings of the same pattern: an edit of the pattern changes them too. */
+  sharedWith: string[];
+  connections: number;
+  /** Cable-core connections: their core number is part of the shared pattern, not of either binding. */
+  patternCores: { role: string; index: number; core: number | null }[];
+  toEnter: { slots: string[]; roles: string[]; points: string[]; cable: boolean; wires: number };
+};
+
+export function reuseSummary(config: Configuration, binding: ConfigBinding): ReuseSummary | null {
+  const pattern = bindablePatterns(config).find((item) => item.ref === binding.pattern);
+  if (pattern === undefined) return null;
+  return {
+    pattern: pattern.ref,
+    sharedWith: bindingsOf(config)
+      .filter((item) => item.pattern === pattern.ref && item.id !== binding.id)
+      .map((item) => item.id),
+    connections: pattern.connections.length,
+    patternCores: pattern.connections
+      .filter((c) => c.via === 'cable_core')
+      .map((c) => ({ role: c.role, index: c.index, core: c.core })),
+    toEnter: {
+      slots: pattern.slots.map((slot) => slot.id),
+      roles: pattern.roles,
+      points: pattern.points.map((point) => point.id),
+      cable: pattern.needsCable,
+      wires: pattern.connections.filter((c) => c.via === 'wire').length,
+    },
+  };
+}

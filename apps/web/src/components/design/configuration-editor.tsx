@@ -12,6 +12,7 @@
  * invented. Bindings and patterns are kept as loaded; a binding can have its
  * point markings edited or be removed.
  */
+import type { OverviewValidation } from '@/components/design/binding-overview';
 import { useId, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -442,6 +443,7 @@ export function ConfigurationEditor({
   preview = null,
   onUnauthorized,
   savedRevision = 0,
+  validation = null,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -453,6 +455,8 @@ export function ConfigurationEditor({
   onUnauthorized?: (() => void) | undefined;
   /** The latest saved revision (a newer one makes a shown preview outdated). */
   savedRevision?: number;
+  /** M9d: the last server validation, shown in the bindings overview. */
+  validation?: OverviewValidation | null;
   /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
   linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
@@ -686,6 +690,7 @@ export function ConfigurationEditor({
         preview={preview}
         onUnauthorized={onUnauthorized}
         savedRevision={savedRevision}
+        validation={validation}
         rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
         headingId={`${idBase}-bindings`}
       />
