@@ -672,7 +672,7 @@ describe('M9b1 guided binding', () => {
           model={null}
           boardChoices={BOARDS}
           onUnauthorized={vi.fn()}
-          validateImpl={(() => Promise.resolve(reviewed('7')))}
+          validateImpl={() => Promise.resolve(reviewed('7'))}
         />
       );
     }
