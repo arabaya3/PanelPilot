@@ -14,6 +14,8 @@ import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
 import he from '@/messages/he.json';
 
+import { deriveId } from '@/lib/sha256';
+
 import { renderApp } from './helpers';
 
 /**
@@ -238,7 +240,7 @@ function Harness({
       jumpToConflict={jump}
       boardChoices={BOARDS}
       onUnauthorized={vi.fn()}
-      validateImpl={validateImpl as never}
+      validateImpl={validateImpl}
     />
   );
 }
@@ -317,7 +319,7 @@ describe('M9b1 guided binding', () => {
       .fn<() => Promise<ConfigurationOutcome>>()
       .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
       .mockImplementationOnce(() => Promise.resolve(reviewed('8')));
-    const { row } = build(validateImpl as never);
+    const { row } = build(validateImpl);
     fireEvent.click(row.getByTestId('binding-preview-run')); // first, slow
     type(row.getByTestId('point-marking'), '8');
     // A second preview for the newer edit (the button is enabled again once loading is replaced).
@@ -342,7 +344,7 @@ describe('M9b1 guided binding', () => {
     const validateImpl = vi.fn(
       () => new Promise<ConfigurationOutcome>((resolve) => pending.push(resolve)),
     );
-    const { row } = build(validateImpl as never);
+    const { row } = build(validateImpl);
     fireEvent.click(row.getByTestId('binding-preview-run'));
     // A new request while the first is pending (as after the first resolves; simulated directly).
     await act(async () => {
@@ -480,6 +482,138 @@ describe('M9b1 guided binding', () => {
       false,
     );
     errors.mockRestore();
+  });
+
+  it('on an expired session the preview says so and asks for a new sign-in (independent review)', async () => {
+    const onUnauthorized = vi.fn();
+    function Expired() {
+      const [value, setValue] = useState<Record<string, unknown>>({
+        ...INITIAL,
+        bindings: [
+          {
+            id: 'bind-1',
+            pattern: REF,
+            board: 'MB-1',
+            circuit: null,
+            slots: {},
+            strips: {},
+            markings: {},
+            cable: null,
+            wires: {},
+          },
+        ],
+      });
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={BOARDS}
+          onUnauthorized={onUnauthorized}
+          validateImpl={(() => Promise.resolve({ kind: 'unauthorized' })) as never}
+        />
+      );
+    }
+    renderApp(<Expired />, { locale: 'en', theme: 'light' });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('binding-preview-run'));
+      await Promise.resolve();
+    });
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('binding-preview-refused').textContent).toContain(B.previewSignIn);
+  });
+
+  it('shows keys an edited pattern no longer has, with an explicit remove (independent review)', () => {
+    const stale = {
+      ...INITIAL,
+      bindings: [
+        {
+          id: 'bind-1',
+          pattern: REF,
+          board: 'MB-1',
+          circuit: null,
+          slots: { src: { component: 'comp-ka' }, dst: { component: 'comp-kb' } },
+          strips: { out: 'strip-xp', old: 'strip-xp' },
+          markings: { p1: '7' },
+          cable: null,
+          wires: {},
+        },
+      ],
+    };
+    renderApp(<Harness validateImpl={vi.fn()} initial={stale} />, { locale: 'en', theme: 'light' });
+    expect(screen.getByTestId('binding-extra').textContent).toBe(
+      B.problem.extra_role.replace('{key}', 'old'),
+    );
+    expect((latest.bindings as { strips: object }[])[0]?.strips).toEqual({
+      out: 'strip-xp',
+      old: 'strip-xp',
+    });
+    fireEvent.click(screen.getByTestId('binding-extra-remove'));
+    expect((latest.bindings as { strips: object }[])[0]?.strips).toEqual({ out: 'strip-xp' });
+    expect(screen.queryByTestId('binding-extra')).toBeNull();
+    expect(screen.getByTestId('binding-circuit-help').textContent).toBe(B.circuitHelp);
+  });
+
+  it('describes both reasons on a remove that is linked and bound (independent review)', () => {
+    const stored = {
+      ...INITIAL,
+      bindings: [
+        {
+          id: 'bind-1',
+          pattern: REF,
+          board: 'MB-1',
+          circuit: null,
+          slots: { src: { component: 'comp-ka' } },
+          strips: { out: 'strip-xp' },
+          markings: { p1: '7' },
+          cable: null,
+          wires: {},
+        },
+      ],
+    };
+    function Linked() {
+      const [value, setValue] = useState<Record<string, unknown>>(stored);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={BOARDS}
+          linkUses={[
+            {
+              fedBoard: 'SB-1',
+              role: 'from',
+              terminal: { component: deriveId('k', 'comp-ka'), terminal: 't-001' },
+            },
+          ]}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn()}
+        />
+      );
+    }
+    renderApp(<Linked />, { locale: 'en', theme: 'light' });
+    // KA is both a feeder-link end and bound: its remove names both reasons.
+    const ka = screen
+      .getAllByTestId('component-entry')
+      .find((entry) => within(entry).queryByTestId('component-linked') !== null);
+    if (ka === undefined) throw new Error('no linked component');
+    const ids = (
+      within(ka).getByTestId('component-remove').getAttribute('aria-describedby') ?? ''
+    ).split(' ');
+    expect(ids.map((id) => document.getElementById(id)?.getAttribute('data-testid'))).toEqual([
+      'component-linked',
+      'component-bound',
+    ]);
   });
 
   it('has the same binding messages in Arabic and Hebrew', () => {

@@ -170,6 +170,22 @@ export function setRole(
   return updateEntry(config, 'bindings', id, { strips });
 }
 
+/** A key the pattern no longer has, removed from the binding at the user's request. */
+export function removeExtra(
+  config: Configuration,
+  id: string,
+  kind: 'extra_slot' | 'extra_role' | 'extra_marking',
+  key: string,
+): Configuration {
+  const raw = bindingRaw(config, id);
+  if (raw === undefined) return config;
+  const section = kind === 'extra_slot' ? 'slots' : kind === 'extra_role' ? 'strips' : 'markings';
+  const kept = Object.fromEntries(
+    Object.entries(record(raw[section]) ?? {}).filter(([name]) => name !== key),
+  );
+  return updateEntry(config, 'bindings', id, { [section]: kept });
+}
+
 export function removeBinding(config: Configuration, id: string): Configuration {
   return removeEntry(config, 'bindings', id);
 }
@@ -234,7 +250,8 @@ export type BindingProblem =
   | { field: 'cable'; code: 'no_cable' | 'cable_needed' }
   | { field: 'slot'; key: string; code: 'not_chosen' | 'gone' | 'other_board' | 'other_template' }
   | { field: 'role'; key: string; code: 'not_chosen' | 'gone' | 'other_board' }
-  | { field: 'marking'; key: string; code: 'missing' };
+  | { field: 'marking'; key: string; code: 'missing' }
+  | { field: 'extra'; key: string; code: 'extra_slot' | 'extra_role' | 'extra_marking' };
 
 /**
  * The references a save of this binding would be refused for, found before
@@ -296,6 +313,18 @@ export function bindingProblems(
       out.push({ field: 'marking', key: point.id, code: 'missing' });
     }
   }
+  // Keys the pattern no longer has (an edited pattern): the composer refuses them; said, never dropped.
+  const slotIds = new Set(pattern.slots.map((slot) => slot.id));
+  for (const key of Object.keys(record(binding.slots) ?? {})) {
+    if (!slotIds.has(key)) out.push({ field: 'extra', key, code: 'extra_slot' });
+  }
+  for (const key of Object.keys(record(binding.strips) ?? {})) {
+    if (!pattern.roles.includes(key)) out.push({ field: 'extra', key, code: 'extra_role' });
+  }
+  const pointIds = new Set(pattern.points.map((point) => point.id));
+  for (const key of Object.keys(binding.markings)) {
+    if (!pointIds.has(key)) out.push({ field: 'extra', key, code: 'extra_marking' });
+  }
   if (pattern.needsCable && state.cable === null)
     out.push({ field: 'cable', code: 'cable_needed' });
   if (
@@ -335,13 +364,20 @@ export function bindingUsesOf(
 export function bindingRowIds(
   config: Configuration,
   binding: ConfigBinding,
-): { connections: Set<string>; wires: Set<string>; points: Set<string>; nets: Set<string> } {
+): {
+  connections: Set<string>;
+  wires: Set<string>;
+  points: Set<string>;
+  nets: Set<string>;
+  sharedNets: Set<string>;
+} {
   const pattern = bindablePatterns(config).find((item) => item.ref === binding.pattern);
   const out = {
     connections: new Set<string>(),
     wires: new Set<string>(),
     points: new Set<string>(),
     nets: new Set<string>(),
+    sharedNets: new Set<string>(),
   };
   if (pattern === undefined) return out;
   for (const connection of pattern.connections) {
@@ -360,7 +396,9 @@ export function bindingRowIds(
       out.nets.add(deriveId('n', binding.id, net.role));
     } else if (net.scope === 'board' && typeof net.signal === 'string') {
       // One net per board and signal, shared with other bindings on the board.
-      out.nets.add(deriveId('n', binding.board, net.signal));
+      const shared = deriveId('n', binding.board, net.signal);
+      out.nets.add(shared);
+      out.sharedNets.add(shared);
     }
   }
   return out;

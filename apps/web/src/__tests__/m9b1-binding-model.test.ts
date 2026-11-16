@@ -9,6 +9,7 @@ import {
   bindingUsesOf,
   componentChoices,
   removeBinding,
+  removeExtra,
   setRole,
   setSlot,
   stripChoices,
@@ -246,5 +247,36 @@ describe('the preview picks this binding rows by the ids the server derives', ()
       'n-5e5e6bb5cd4ce9397522aa96',
       'n-a55eae8a8ed8e0240fc78b53',
     ]);
+  });
+});
+
+describe('keys the pattern no longer has (independent review)', () => {
+  it('are said, and removed only when the user asks', () => {
+    const doc = {
+      ...bound(),
+      bindings: [
+        {
+          ...only(bound()),
+          slots: { ...(only(bound()).slots as object), gone: { component: 'comp-kb' } },
+          strips: { out: 'strip-xp', old: 'strip-xp' },
+          markings: { p1: '7', p9: '9' },
+        },
+      ],
+    };
+    expect(bindingProblems(doc, only(doc), BOARDS)).toEqual([
+      { field: 'extra', key: 'gone', code: 'extra_slot' },
+      { field: 'extra', key: 'old', code: 'extra_role' },
+      { field: 'extra', key: 'p9', code: 'extra_marking' },
+    ]);
+    let fixed = removeExtra(doc, 'bind-1', 'extra_slot', 'gone');
+    fixed = removeExtra(fixed, 'bind-1', 'extra_role', 'old');
+    fixed = removeExtra(fixed, 'bind-1', 'extra_marking', 'p9');
+    expect(bindingProblems(fixed, only(fixed), BOARDS)).toEqual([]);
+    expect(only(fixed).markings).toEqual({ p1: '7' });
+  });
+
+  it('marks a board-scope net as shared with other bindings', () => {
+    const ids = bindingRowIds(bound(), only(bound()));
+    expect([...ids.sharedNets]).toEqual(['n-5e5e6bb5cd4ce9397522aa96']);
   });
 });

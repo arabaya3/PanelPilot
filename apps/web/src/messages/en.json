@@ -2262,7 +2262,10 @@
         "gone": "No longer in the configuration. Choose another.",
         "other_board": "It is on another board. Choose one on this board.",
         "other_template": "Its definition is not the slot's. Choose a component on the slot's definition.",
-        "missing": "Enter the marking as printed."
+        "missing": "Enter the marking as printed.",
+        "extra_slot": "Slot {key} is not in the pattern any more; the save will be refused until it is removed.",
+        "extra_role": "Strip role {key} is not in the pattern any more; the save will be refused until it is removed.",
+        "extra_marking": "Point {key} is not in the pattern any more; the save will be refused until its marking is removed."
       },
       "refused": "The last save was refused for this binding ({reason}; {ref}). Change it, then save again.",
       "entryBound": "Used by bindings: {bindings}. Change or remove those bindings first.",
@@ -2290,7 +2293,13 @@
         "jumper": "jumper",
         "busbar": "busbar",
         "internal": "inside the point"
-      }
+      },
+      "previewNetShared": "{signal} (one net per board and signal, shared with other bindings on this board): {members}",
+      "previewSignIn": "your session has ended; sign in again, then refresh",
+      "previewFailed": "the preview could not be reached; try again",
+      "circuitHelp": "Circuits and cables are those of the current design. The preview and Save use the last saved load schedule: save a changed load schedule first.",
+      "extraRemove": "Remove {key} from this binding",
+      "extraRemoved": "{key} removed from the binding."
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration"

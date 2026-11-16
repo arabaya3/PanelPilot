@@ -422,6 +422,7 @@ export function ConfigurationPanel({
         idBase={id}
         linkUses={linkUses}
         boardChoices={boardChoices}
+        onUnauthorized={onUnauthorized}
         preview={(configuration) =>
           validateImpl({ token, id: projectId, configuration: normalized(configuration) })
         }

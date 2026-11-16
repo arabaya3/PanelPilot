@@ -440,6 +440,7 @@ export function ConfigurationEditor({
   linkUses = [],
   boardChoices = null,
   preview = null,
+  onUnauthorized,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -447,6 +448,8 @@ export function ConfigurationEditor({
   boardChoices?: BoardChoices[] | null;
   /** The server's read-only composition, for a binding's preview (M9b1); null for none. */
   preview?: PreviewFn | null;
+  /** Called when the preview finds the session expired. */
+  onUnauthorized?: (() => void) | undefined;
   /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
   linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
@@ -580,11 +583,12 @@ export function ConfigurationEditor({
           className="btn btn-sm btn-danger self-start"
           disabled={entryLinks.length > 0 || entryBindings.length > 0}
           aria-describedby={
-            entryLinks.length > 0
-              ? `${rowId}-linked`
-              : entryBindings.length > 0
-                ? `${rowId}-bound`
-                : undefined
+            [
+              entryLinks.length > 0 ? `${rowId}-linked` : '',
+              entryBindings.length > 0 ? `${rowId}-bound` : '',
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined
           }
           onClick={() => {
             onChange(removeEntry(value, section, entry.id));
@@ -677,6 +681,7 @@ export function ConfigurationEditor({
         boardChoices={boardChoices}
         conflict={conflict}
         preview={preview}
+        onUnauthorized={onUnauthorized}
         rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
         headingId={`${idBase}-bindings`}
       />

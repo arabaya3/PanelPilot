@@ -64,6 +64,13 @@ load schedule; unsaved load-schedule edits are not in it (it says so).
   a role's strip missing or on another board, a point without a marking). The
   server still decides; a refused save names the binding, marks it, says the
   reason beside the binding and in the overview, and saves nothing.
+- A key the pattern no longer has (after the pattern was edited: a slot, a
+  strip role, a point's marking) is said, and removed only when the user
+  chooses to; the composer refuses it otherwise.
+- Circuits and cables are offered from the current design; the preview and Save
+  use the last saved load schedule, and the editor says so beside the circuit.
+- A board-scope net in the preview is marked as shared with other bindings on
+  that board (its members include theirs).
 - A component, strip or pattern a binding names cannot be removed; the binding
   is named. A selection that no longer resolves stays shown as such; it is
   never cleared or replaced.

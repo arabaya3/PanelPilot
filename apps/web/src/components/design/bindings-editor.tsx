@@ -22,6 +22,7 @@ import {
   bindingState,
   componentChoices,
   removeBinding,
+  removeExtra,
   setRole,
   setSlot,
   stripChoices,
@@ -71,7 +72,9 @@ function rowsOf(model: V2ModelSummary, ids: ReturnType<typeof bindingRowIds>) {
   const connections = model.connections.filter((connection) => ids.connections.has(connection.id));
   const nets = new Set([...ids.nets, ...connections.map((connection) => connection.net_id)]);
   return {
-    nets: model.nets.filter((net) => nets.has(net.id)),
+    nets: model.nets
+      .filter((net) => nets.has(net.id))
+      .map((net) => ({ net, shared: ids.sharedNets.has(net.id) })),
     connections,
     wires: model.wires.filter((wire) => ids.wires.has(wire.wire_id)),
     points: model.strips.flatMap((strip) =>
@@ -87,11 +90,13 @@ function BindingPreview({
   binding,
   preview,
   base,
+  onUnauthorized,
 }: {
   value: Configuration;
   binding: ConfigBinding;
   preview: PreviewFn;
   base: string;
+  onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
   const [state, setState] = useState<PreviewState>({ kind: 'idle' });
@@ -117,7 +122,19 @@ function BindingPreview({
               .filter((part) => part !== '')
               .join('; ')
           : '';
-      setState({ kind: 'refused', forText, message: message || '—' });
+      if (result.kind === 'unauthorized') onUnauthorized?.();
+      setState({
+        kind: 'refused',
+        forText,
+        message:
+          result.kind === 'refused'
+            ? message || '—'
+            : t(
+                result.kind === 'unauthorized'
+                  ? 'bindings.previewSignIn'
+                  : 'bindings.previewFailed',
+              ),
+      });
     }
   }
 
@@ -166,9 +183,12 @@ function BindingPreview({
             {t('bindings.previewNets', { count: String(rows.nets.length) })}
           </h5>
           <ul className="flex min-w-0 flex-col gap-1" data-testid="binding-preview-nets">
-            {rows.nets.map((net) => (
+            {rows.nets.map(({ net, shared }) => (
               <li key={net.id} className="break-words" dir="auto">
-                {t('bindings.previewNet', { signal: net.signal, members: net.members.join(', ') })}
+                {t(shared ? 'bindings.previewNetShared' : 'bindings.previewNet', {
+                  signal: net.signal,
+                  members: net.members.join(', '),
+                })}
               </li>
             ))}
           </ul>
@@ -232,6 +252,7 @@ function BindingRow({
   preview,
   announce,
   addFieldId,
+  onUnauthorized,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -243,6 +264,7 @@ function BindingRow({
   preview: PreviewFn | null;
   announce: (message: string) => void;
   addFieldId: string;
+  onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
   const pattern = bindablePatterns(value).find((item) => item.ref === binding.pattern);
@@ -359,6 +381,38 @@ function BindingRow({
             )}
           </div>
 
+          <p className="text-xs text-text-muted" data-testid="binding-circuit-help">
+            {t('bindings.circuitHelp')}
+          </p>
+          {problems.some((problem) => problem.field === 'extra') && (
+            <ul className="flex min-w-0 flex-col gap-1" data-testid="binding-extras">
+              {problems.flatMap((problem) =>
+                problem.field === 'extra'
+                  ? [
+                      <li
+                        key={`${problem.code}-${problem.key}`}
+                        className="flex min-w-0 flex-wrap items-center gap-2"
+                      >
+                        <span className="text-xs font-semibold" data-testid="binding-extra">
+                          {t(`bindings.problem.${problem.code}`, { key: problem.key })}
+                        </span>
+                        <button
+                          type="button"
+                          className={wrapButton('secondary')}
+                          onClick={() => {
+                            onChange(removeExtra(value, binding.id, problem.code, problem.key));
+                            announce(t('bindings.extraRemoved', { key: problem.key }));
+                          }}
+                          data-testid="binding-extra-remove"
+                        >
+                          {t('bindings.extraRemove', { key: problem.key })}
+                        </button>
+                      </li>,
+                    ]
+                  : [],
+              )}
+            </ul>
+          )}
           <fieldset className="flex min-w-0 flex-col gap-2" data-testid="binding-slots">
             <legend className="text-sm font-semibold">{t('bindings.slots')}</legend>
             {pattern.slots.length === 0 && (
@@ -476,7 +530,13 @@ function BindingRow({
           )}
 
           {preview !== null && (
-            <BindingPreview value={value} binding={binding} preview={preview} base={rowId} />
+            <BindingPreview
+              value={value}
+              binding={binding}
+              preview={preview}
+              base={rowId}
+              onUnauthorized={onUnauthorized}
+            />
           )}
         </>
       )}
@@ -506,6 +566,7 @@ export function BindingsEditor({
   preview,
   rowIdOf,
   headingId,
+  onUnauthorized,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -518,6 +579,8 @@ export function BindingsEditor({
   preview: PreviewFn | null;
   rowIdOf: (id: string) => string;
   headingId: string;
+  /** Called when a preview finds the session expired. */
+  onUnauthorized?: (() => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -566,6 +629,7 @@ export function BindingsEditor({
               preview={preview}
               announce={setStatus}
               addFieldId={addId}
+              onUnauthorized={onUnauthorized}
             />
           ))}
         </ul>
