@@ -222,7 +222,7 @@ function PatternRow({
         </div>
         <button
           type="button"
-          className="btn btn-sm btn-secondary"
+          className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
           disabled={renaming.trim() === id || renameProblem !== null}
           onClick={() => {
             onChange(renamePattern(value, ref, renaming));
@@ -297,7 +297,7 @@ function PatternRow({
                   </div>
                   <button
                     type="button"
-                    className="btn btn-sm btn-danger"
+                    className="btn btn-sm btn-danger max-w-full whitespace-normal text-start"
                     disabled={used}
                     aria-describedby={used ? `${base}-used` : undefined}
                     aria-label={t('patterns.removeSlot', { slot: slot.id })}
@@ -380,7 +380,7 @@ function PatternRow({
           </div>
           <button
             type="button"
-            className="btn btn-sm btn-secondary"
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
             disabled={slotId.trim() === '' || slotIdProblem !== null}
             onClick={() => {
               onChange(addSlot(value, ref, { id: slotId, template: slotTemplate || null }));
@@ -422,7 +422,7 @@ function PatternRow({
                   </span>
                   <button
                     type="button"
-                    className="btn btn-sm btn-danger"
+                    className="btn btn-sm btn-danger max-w-full whitespace-normal text-start"
                     disabled={used}
                     aria-describedby={used ? `${base}-used` : undefined}
                     aria-label={t('patterns.removeRole', { role: item })}
@@ -471,7 +471,7 @@ function PatternRow({
           </div>
           <button
             type="button"
-            className="btn btn-sm btn-secondary"
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
             disabled={role.trim() === '' || roleProblem !== null}
             onClick={() => {
               onChange(addRole(value, ref, role));
@@ -580,7 +580,7 @@ function PatternRow({
                   </div>
                   <button
                     type="button"
-                    className="btn btn-sm btn-danger"
+                    className="btn btn-sm btn-danger max-w-full whitespace-normal text-start"
                     disabled={used}
                     aria-describedby={used ? `${base}-used` : undefined}
                     aria-label={t('patterns.removePoint', { point: item.id })}
@@ -707,7 +707,7 @@ function PatternRow({
               </div>
               <button
                 type="button"
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
                 disabled={
                   point.id.trim() === '' ||
                   pointIdProblem !== null ||
@@ -836,7 +836,7 @@ function PatternRow({
           </div>
           <button
             type="button"
-            className="btn btn-sm btn-secondary"
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
             disabled={net.role.trim() === '' || netRoleProblem !== null || net.signal.trim() === ''}
             onClick={() => {
               onChange(addNet(value, ref, net));
@@ -868,7 +868,7 @@ function PatternRow({
       )}
       <button
         type="button"
-        className="btn btn-sm btn-danger self-start"
+        className="btn btn-sm btn-danger self-start max-w-full whitespace-normal text-start"
         disabled={users.length > 0}
         aria-describedby={users.length > 0 ? `${rowId}-remove-blocked` : undefined}
         aria-label={t('patterns.removeNamed', { id })}
@@ -1078,7 +1078,7 @@ function NetCard({
                 </span>
                 <button
                   type="button"
-                  className="btn btn-sm btn-danger"
+                  className="btn btn-sm btn-danger max-w-full whitespace-normal text-start"
                   disabled={connected}
                   aria-describedby={described || undefined}
                   aria-label={t('patterns.removeMember', { member: text })}
@@ -1267,7 +1267,7 @@ function NetCard({
           )}
           <button
             type="button"
-            className="btn btn-sm btn-secondary"
+            className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
             disabled={memberToAdd === null}
             onClick={() => {
               if (memberToAdd === null) return;
@@ -1284,7 +1284,7 @@ function NetCard({
       )}
       <button
         type="button"
-        className="btn btn-sm btn-danger self-start"
+        className="btn btn-sm btn-danger self-start max-w-full whitespace-normal text-start"
         aria-label={
           net.connections.length > 0
             ? t('patterns.removeNetConnections', {
@@ -1405,7 +1405,7 @@ export function PatternsEditor({
         </div>
         <button
           type="button"
-          className="btn btn-sm btn-secondary"
+          className="btn btn-sm btn-secondary max-w-full whitespace-normal text-start"
           disabled={newId.trim() === '' || problem !== null}
           onClick={() => {
             onChange(addPattern(value, newId));

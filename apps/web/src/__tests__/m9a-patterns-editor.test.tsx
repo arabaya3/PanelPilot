@@ -280,6 +280,17 @@ describe('M9a guided pattern editor', () => {
     expect(screen.getByTestId('pattern-entry').getAttribute('data-conflict')).toBe('true');
   });
 
+  it('lets every button wrap rather than widen a narrow page', () => {
+    // Regression (390 px browser run): "Rename, and update the bindings that use it (1)" widened the page.
+    build();
+    const buttons = within(screen.getByTestId('patterns-editor')).getAllByRole('button');
+    expect(buttons.length).toBeGreaterThan(10);
+    for (const button of buttons) {
+      expect(button.className).toContain('whitespace-normal');
+      expect(button.className).toContain('max-w-full');
+    }
+  });
+
   it("shows a point's offset changed elsewhere (an import), not a stale one", () => {
     // Regression (independent review): the field kept the first value it was given.
     build();
