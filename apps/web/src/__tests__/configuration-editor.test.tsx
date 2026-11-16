@@ -334,10 +334,15 @@ describe('the guided editor', () => {
     expect(screen.getByLabelText(/Marking of point n/)).toBe(markings[1]);
     fireEvent.change(nth(markings, 1), { target: { value: 'N1' } });
     expect(nth(screen.getAllByTestId<HTMLInputElement>('point-marking'), 1).value).toBe('N1');
-    const remove = screen.getByTestId('strip-remove');
+    // M9b1: strip X1 plays binding b1's role, so it cannot be removed; the binding is named.
+    const stripRemove = screen.getByTestId<HTMLButtonElement>('strip-remove');
+    expect(stripRemove.disabled).toBe(true);
+    expect(screen.getByTestId('strip-bound').textContent).toContain('b1');
+    // A component no binding uses can be.
+    const remove = screen.getByTestId('component-remove');
     expect(remove.tagName).toBe('BUTTON');
     fireEvent.click(remove);
-    expect(screen.queryByTestId('strip-entry')).toBeNull();
+    expect(screen.queryByTestId('component-entry')).toBeNull();
   });
 });
 
