@@ -382,7 +382,7 @@ function BindingRow({
           </div>
 
           <p className="text-xs text-text-muted" data-testid="binding-circuit-help">
-            {t('bindings.circuitHelp')}
+            {boardChoices === null ? t('bindings.designFirst') : t('bindings.circuitHelp')}
           </p>
           {problems.some((problem) => problem.field === 'extra') && (
             <ul className="flex min-w-0 flex-col gap-1" data-testid="binding-extras">
@@ -751,6 +751,11 @@ export function BindingsEditor({
           </div>
           {idProblem !== null && (
             <Problem id={`${addId}-problem`} text={t(`bindings.idProblem.${idProblem}`)} />
+          )}
+          {boardChoices === null && (
+            <p className="text-xs text-text-muted" data-testid="add-binding-design-first">
+              {t('bindings.designFirst')}
+            </p>
           )}
         </fieldset>
       )}

@@ -2299,7 +2299,8 @@
       "previewFailed": "the preview could not be reached; try again",
       "circuitHelp": "Circuits and cables are those of the current design. The preview and Save use the last saved load schedule: save a changed load schedule first.",
       "extraRemove": "Remove {key} from this binding",
-      "extraRemoved": "{key} removed from the binding."
+      "extraRemoved": "{key} removed from the binding.",
+      "designFirst": "To choose a circuit or a cable, design the project first (Load schedule → Design): they come from the design."
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration"

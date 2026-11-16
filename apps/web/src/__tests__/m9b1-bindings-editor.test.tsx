@@ -616,6 +616,29 @@ describe('M9b1 guided binding', () => {
     ]);
   });
 
+  it('says to design first when no design is known, instead of offering no circuit silently', () => {
+    function Undesigned() {
+      const [value, setValue] = useState<Record<string, unknown>>(INITIAL);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={null}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn()}
+        />
+      );
+    }
+    renderApp(<Undesigned />, { locale: 'en', theme: 'light' });
+    expect(screen.getByTestId('add-binding-design-first').textContent).toBe(B.designFirst);
+  });
+
   it('has the same binding messages in Arabic and Hebrew', () => {
     const keys = (o: object): string[] =>
       Object.entries(o).flatMap(([k, v]) =>
