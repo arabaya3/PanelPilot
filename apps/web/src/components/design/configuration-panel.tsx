@@ -7,6 +7,7 @@ import { ConfigurationEditor, entryElementId } from '@/components/design/configu
 import {
   conflictTarget,
   duplicateEntries,
+  emptyConfiguration,
   isEmptyConfiguration,
   normalized,
   removeEntry,
@@ -15,7 +16,13 @@ import {
   type Configuration,
   type ConflictTarget,
 } from '@/components/design/configuration-model';
-import type { BoardChoices } from '@/components/design/binding-model';
+import {
+  choicesOf,
+  movedOf,
+  type BoardChoices,
+  type MovedReference,
+} from '@/components/design/binding-model';
+import type { ConfirmedReference } from '@/components/design/draft';
 import type { LinkEndUse } from '@/components/design/definition-model';
 import {
   GroupedFindingsOfDesign,
@@ -27,7 +34,9 @@ import { TechnicalToken } from '@/components/technical-token';
 import { LoadingState, Notice } from '@/components/ui';
 import {
   validateConfiguration,
+  type ConfigurationOutcome,
   type ConfigurationReview,
+  type ProjectDesignRequest,
   type ConfigurationStatus,
   type DesignFinding,
   type Refusal,
@@ -122,6 +131,9 @@ export function ConfigurationPanel({
   findingsRevision,
   linkUses = [],
   boardChoices = null,
+  currentRequest = null,
+  confirmed = [],
+  onConfirm,
   jumpToConflict = 0,
 }: {
   token: string;
@@ -154,6 +166,15 @@ export function ConfigurationPanel({
   boardChoices?: BoardChoices[] | null;
   /** Bumped by the overview's "show it" action: the refused entry is focused (M9b1). */
   jumpToConflict?: number;
+  /**
+   * The load schedule as the editor holds it now, in the shape Save sends: the preview and
+   * Validate design and compose it with the configuration, as Save does. Null when the
+   * form cannot be sent (incomplete): then the latest saved revision's is used, as before.
+   */
+  currentRequest?: ProjectDesignRequest | null;
+  /** References the user keeps for the load now at their position (sent, never stored). */
+  confirmed?: ConfirmedReference[];
+  onConfirm?: ((entry: ConfirmedReference) => void) | undefined;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -163,7 +184,55 @@ export function ConfigurationPanel({
   const parsed = parseConfiguration(text);
   const working = outcome.kind === 'working';
   const doc = normalized(value);
-  const serialized = JSON.stringify(doc);
+  // What a preview or validation answers: the configuration and the load schedule (and the
+  // confirmations) as they are now; any change makes an earlier answer outdated.
+  const inputsKey = JSON.stringify({ request: currentRequest, confirmed });
+  const serialized = `${JSON.stringify(doc)}|${inputsKey}`;
+  const sent = {
+    ...(currentRequest !== null ? { request: currentRequest } : {}),
+    ...(confirmed.length > 0 ? { referencesConfirmed: confirmed } : {}),
+  };
+  // M10: circuit and cable choices from the server's design of the current inputs.
+  const [previewChoices, setPreviewChoices] = useState<{
+    key: string;
+    boards: BoardChoices[];
+  } | null>(null);
+  // References the server found moved (from a preview, a validation or a save refusal).
+  const [moved, setMoved] = useState<{ key: string; refs: MovedReference[] } | null>(null);
+  const requestKey = JSON.stringify(currentRequest);
+  const choices: BoardChoices[] | null =
+    boardChoices ??
+    (previewChoices !== null && previewChoices.key === requestKey ? previewChoices.boards : null);
+  const movedNow = moved !== null && moved.key === serialized ? moved.refs : [];
+
+  /** What a preview or validation answer says for the choices and moved references. */
+  function took(result: ConfigurationOutcome, forKey: string, forRequest: string) {
+    if (result.kind === 'reviewed') {
+      if (result.review.from_current_request) {
+        setPreviewChoices({ key: forRequest, boards: choicesOf(result.review.boards ?? []) });
+      }
+      setMoved(null);
+    } else if (result.kind === 'refused' && result.params?.refusal === 'reference_moved') {
+      setMoved({ key: forKey, refs: movedOf(result.params) });
+    }
+  }
+
+  async function refreshChoices() {
+    if (currentRequest === null) return;
+    const forRequest = requestKey;
+    // An empty configuration composes the design alone: choices do not wait on the bindings.
+    const result = await validateImpl({
+      token,
+      id: projectId,
+      configuration: normalized(emptyConfiguration()),
+      request: currentRequest,
+    });
+    if (result.kind === 'reviewed' && result.review.from_current_request) {
+      setPreviewChoices({ key: forRequest, boards: choicesOf(result.review.boards ?? []) });
+    } else if (result.kind === 'unauthorized') {
+      onUnauthorized();
+    }
+  }
   const focusResult = useRef(false);
   useEffect(() => {
     if (!focusResult.current || outcome.kind === 'working' || outcome.kind === 'idle') return;
@@ -270,6 +339,10 @@ export function ConfigurationPanel({
   if (externalRefusal !== seenExternal) {
     setSeenExternal(externalRefusal);
     if (externalRefusal !== null) setOutcome(refusalText(externalRefusal));
+    // A save refused for a moved reference: say it beside the binding, as a preview does.
+    if (externalRefusal?.params?.refusal === 'reference_moved') {
+      setMoved({ key: serialized, refs: movedOf(externalRefusal.params) });
+    }
   }
 
   function failed(result: { kind: 'unauthorized' } | { kind: 'failed' } | Refusal) {
@@ -291,7 +364,9 @@ export function ConfigurationPanel({
     if (working || isEmptyConfiguration(doc)) return;
     focusResult.current = true;
     setOutcome({ kind: 'working' });
-    const result = await validateImpl({ token, id: projectId, configuration: doc });
+    const forKey = serialized;
+    const result = await validateImpl({ token, id: projectId, configuration: doc, ...sent });
+    took(result, forKey, requestKey);
     if (result.kind === 'reviewed') {
       setDisabledHere(result.review.saveable ? null : result.review.written_schema);
       setOutcome({ kind: 'reviewed', review: result.review, text: serialized });
@@ -421,7 +496,7 @@ export function ConfigurationPanel({
         conflict={conflict}
         idBase={id}
         linkUses={linkUses}
-        boardChoices={boardChoices}
+        boardChoices={choices}
         onUnauthorized={onUnauthorized}
         savedRevision={latestRevision}
         validation={
@@ -433,8 +508,28 @@ export function ConfigurationPanel({
                 revision: reviewed.review.based_on_revision,
               }
         }
-        preview={(configuration) =>
-          validateImpl({ token, id: projectId, configuration: normalized(configuration) })
+        preview={async (configuration) => {
+          const forKey = `${JSON.stringify(normalized(configuration))}|${inputsKey}`;
+          const forRequest = requestKey;
+          const result = await validateImpl({
+            token,
+            id: projectId,
+            configuration: normalized(configuration),
+            ...sent,
+          });
+          took(result, forKey, forRequest);
+          return result;
+        }}
+        previewInputsKey={inputsKey}
+        previewCurrent={currentRequest !== null}
+        moved={movedNow}
+        onConfirm={onConfirm}
+        onRefreshChoices={
+          currentRequest !== null && choices === null
+            ? () => {
+                void refreshChoices();
+              }
+            : undefined
         }
       />
       <Notice tone="info" live={false} action={saveAction} testId="configuration-save-where">

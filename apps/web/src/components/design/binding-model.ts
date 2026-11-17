@@ -516,3 +516,73 @@ export function reuseSummary(config: Configuration, binding: ConfigBinding): Reu
     },
   };
 }
+
+/* ------------------------------------------------ current-input choices --- */
+
+/** A board's choices as the server's preview designed them (``ReviewBoardChoices``). */
+type ServerBoardChoices = {
+  id: string;
+  circuits: { id: string; description: string }[];
+  cables: { id: string; cores: number; designation?: string | null }[];
+};
+
+/** The server's per-board choices, labelled as the editor labels the opened design's. */
+export function choicesOf(boards: ServerBoardChoices[]): BoardChoices[] {
+  return boards.map((board) => ({
+    id: board.id,
+    circuits: board.circuits.map((circuit) => ({
+      id: circuit.id,
+      label: circuit.description ? `${circuit.id} · ${circuit.description}` : circuit.id,
+    })),
+    cables: board.cables.map((cable) => ({
+      id: cable.id,
+      label: cable.designation ? `${cable.designation} (${cable.id})` : cable.id,
+      cores: cable.cores,
+    })),
+  }));
+}
+
+/** A binding reference whose id now names another load (``reference_moved``). */
+export type MovedReference = {
+  binding: string;
+  field: 'circuit' | 'cable' | 'slot';
+  key: string | null;
+  id: string;
+  /** The loads before and after, where the server named them (the first moved one). */
+  before: string | null;
+  after: string | null;
+};
+
+/** The moved references a ``reference_moved`` refusal names (``moved``: ``b|field|key|id;…``). */
+export function movedOf(params: Record<string, string> | undefined): MovedReference[] {
+  if (params === undefined) return [];
+  const out: MovedReference[] = [];
+  for (const entry of (params.moved ?? '').split(';')) {
+    const [binding, field, key, id] = entry.split('|');
+    if (!binding || !id || (field !== 'circuit' && field !== 'cable' && field !== 'slot')) continue;
+    const first = binding === params.binding && field === params.field && id === params.ref;
+    out.push({
+      binding,
+      field,
+      key: key ? key : null,
+      id,
+      before: first ? (params.before ?? null) : null,
+      after: first ? (params.after ?? null) : null,
+    });
+  }
+  // The list can be cut short by the server's parameter bound: the first is always named.
+  if (out.length === 0 && params.binding && params.ref) {
+    const field = params.field;
+    if (field === 'circuit' || field === 'cable' || field === 'slot') {
+      out.push({
+        binding: params.binding,
+        field,
+        key: params.key ? params.key : null,
+        id: params.ref,
+        before: params.before ?? null,
+        after: params.after ?? null,
+      });
+    }
+  }
+  return out;
+}

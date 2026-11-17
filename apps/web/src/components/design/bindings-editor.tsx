@@ -13,6 +13,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import { Notice } from '@/components/ui';
 import {
   addBinding,
   bindablePatterns,
@@ -23,6 +24,7 @@ import {
   componentChoices,
   removeBinding,
   removeExtra,
+  type MovedReference,
   reuseBinding,
   reuseSummary,
   setRole,
@@ -43,6 +45,7 @@ import {
   setMarking,
 } from '@/components/design/configuration-model';
 import { BindingOverview, type OverviewValidation } from '@/components/design/binding-overview';
+import type { ConfirmedReference } from '@/components/design/draft';
 import { WireDetails } from '@/components/design/wire-details';
 import {
   hasWireDetails,
@@ -103,6 +106,8 @@ function BindingPreview({
   base,
   onUnauthorized,
   savedRevision,
+  inputsKey,
+  current,
 }: {
   value: Configuration;
   binding: ConfigBinding;
@@ -110,6 +115,10 @@ function BindingPreview({
   base: string;
   savedRevision: number;
   onUnauthorized?: (() => void) | undefined;
+  /** What the preview answers besides the configuration (the load schedule, confirmations). */
+  inputsKey: string;
+  /** Whether it designs the current load schedule (else the latest saved one). */
+  current: boolean;
 }) {
   const t = useIsolatingTranslations('configuration');
   const previewValue = (
@@ -135,7 +144,7 @@ function BindingPreview({
   const latest = useRef(0);
   // A preview answers this configuration against the latest saved revision (its load
   // schedule): a newer saved revision makes it outdated as much as an edit does.
-  const text = `${String(savedRevision)}|${JSON.stringify(value)}`;
+  const text = `${String(savedRevision)}|${JSON.stringify(value)}|${inputsKey}`;
   const outdated = state.kind !== 'idle' && state.kind !== 'loading' && state.forText !== text;
 
   async function run() {
@@ -184,7 +193,7 @@ function BindingPreview({
         {t('bindings.previewTitle')}
       </h4>
       <p className="text-xs text-text-muted" data-testid="binding-preview-label">
-        {t('bindings.previewLabel')}
+        {t(current ? 'bindings.previewLabelCurrent' : 'bindings.previewLabel')}
       </p>
       <button
         type="button"
@@ -298,7 +307,16 @@ function BindingRow({
   reusedFrom,
   onReused,
   rowIdOf,
+  previewInputsKey,
+  previewCurrent,
+  moved,
+  onConfirm,
 }: {
+  previewInputsKey: string;
+  previewCurrent: boolean;
+  /** This binding's references the server found moved with the load schedule. */
+  moved: MovedReference[];
+  onConfirm?: ((entry: ConfirmedReference) => void) | undefined;
   /** M9d: the binding this one was made from in this session, if any. */
   reusedFrom?: string | undefined;
   onReused: (newId: string, sourceId: string) => void;
@@ -473,6 +491,73 @@ function BindingRow({
             })}
           </p>
           <p dir="auto">{t('reuse.notCopied')}</p>
+        </div>
+      )}
+      {moved.length > 0 && (
+        <div
+          className="flex min-w-0 flex-col gap-1 rounded-md border border-status-critical p-2"
+          role="group"
+          aria-labelledby={`${rowId}-moved-title`}
+          data-testid="binding-moved"
+        >
+          <p id={`${rowId}-moved-title`} className="text-xs font-semibold" tabIndex={-1}>
+            {t('moved.title', { count: String(moved.length) })}
+          </p>
+          <ul className="flex min-w-0 flex-col gap-2">
+            {moved.map((ref) => {
+              const target =
+                ref.field === 'slot' ? `${rowId}-slot-${ref.key ?? ''}` : `${rowId}-${ref.field}`;
+              const label = t(`moved.field.${ref.field}`, { key: ref.key ?? '' });
+              return (
+                <li
+                  key={`${ref.field}|${ref.key ?? ''}|${ref.id}`}
+                  className="flex min-w-0 flex-col gap-1"
+                  data-testid="binding-moved-ref"
+                >
+                  <button
+                    type="button"
+                    className="max-w-full whitespace-normal text-start text-xs underline"
+                    dir="auto"
+                    onClick={() => {
+                      document.getElementById(target)?.focus();
+                    }}
+                    data-testid="binding-moved-link"
+                  >
+                    {ref.before !== null && ref.after !== null
+                      ? t('moved.named', {
+                          field: label,
+                          id: ref.id,
+                          before: ref.before,
+                          after: ref.after,
+                        })
+                      : t('moved.unnamed', { field: label, id: ref.id })}
+                  </button>
+                  {onConfirm && (
+                    <button
+                      type="button"
+                      className={wrapButton('secondary') + ' self-start'}
+                      onClick={() => {
+                        onConfirm({
+                          binding: binding.id,
+                          field: ref.field,
+                          key: ref.key,
+                          id: ref.id,
+                        });
+                        announce(t('moved.kept', { id: ref.id, field: label }));
+                        focusLater(target);
+                      }}
+                      data-testid="binding-moved-keep"
+                    >
+                      {ref.after !== null
+                        ? t('moved.keepNamed', { id: ref.id, after: ref.after })
+                        : t('moved.keep', { id: ref.id })}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-xs text-text-muted">{t('moved.help')}</p>
         </div>
       )}
       {problems.length + wireCount > 0 && (
@@ -700,6 +785,8 @@ function BindingRow({
               base={rowId}
               onUnauthorized={onUnauthorized}
               savedRevision={savedRevision}
+              inputsKey={previewInputsKey}
+              current={previewCurrent}
             />
           )}
         </>
@@ -907,7 +994,17 @@ export function BindingsEditor({
   onUnauthorized,
   savedRevision = 0,
   validation = null,
+  previewInputsKey = '',
+  previewCurrent = false,
+  moved = [],
+  onConfirm,
+  onRefreshChoices,
 }: {
+  previewInputsKey?: string;
+  previewCurrent?: boolean;
+  moved?: MovedReference[];
+  onConfirm?: ((entry: ConfirmedReference) => void) | undefined;
+  onRefreshChoices?: (() => void) | undefined;
   /** M9d: the last server validation, for the overview (null when none was run). */
   validation?: OverviewValidation | null;
   value: Configuration;
@@ -967,6 +1064,21 @@ export function BindingsEditor({
       <p className="sr-only" role="status" aria-live="polite" data-testid="bindings-status">
         {status}
       </p>
+      {onRefreshChoices && (
+        <Notice tone="info" live={false} testId="bindings-choices-unchecked">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span>{t('bindings.choicesUnchecked')}</span>
+            <button
+              type="button"
+              className={wrapButton('secondary')}
+              onClick={onRefreshChoices}
+              data-testid="bindings-refresh-choices"
+            >
+              {t('bindings.refreshChoices')}
+            </button>
+          </span>
+        </Notice>
+      )}
       <BindingOverview
         value={value}
         boards={boards}
@@ -987,6 +1099,10 @@ export function BindingsEditor({
                 setReused((prev) => ({ ...prev, [newId]: sourceId }));
               }}
               rowIdOf={rowIdOf}
+              previewInputsKey={previewInputsKey}
+              previewCurrent={previewCurrent}
+              moved={moved.filter((ref) => ref.binding === binding.id)}
+              onConfirm={onConfirm}
               value={value}
               onChange={onChange}
               binding={binding}

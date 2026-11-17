@@ -2353,7 +2353,10 @@
         "data": "imported data",
         "assumption": "assumed"
       },
-      "previewAssumed": "assumed: {statement}"
+      "previewAssumed": "assumed: {statement}",
+      "previewLabelCurrent": "Unsaved preview of the current load schedule and configuration: composed by the server from both as they are in the editor now, exactly as Save would compose them. It is for review only, not electrical validation, and saves nothing.",
+      "choicesUnchecked": "The circuit and cable choices are not checked for the load schedule as it is now (it changed since the last design). Refresh them from the server before choosing.",
+      "refreshChoices": "Refresh circuit and cable choices"
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration",
@@ -2462,6 +2465,20 @@
         "marking": "Point marking",
         "extra": "Stored key"
       }
+    },
+    "moved": {
+      "title": "{count} reference(s) of this binding now name another load",
+      "field": {
+        "circuit": "Circuit",
+        "cable": "Cable",
+        "slot": "Slot {key}"
+      },
+      "named": "{field} {id} is now “{after}” (it was “{before}”). Choose again, or keep {id} for the load now there.",
+      "unnamed": "{field} {id} now names another load than when this binding was saved. Choose again, or keep it for the load now there.",
+      "keepNamed": "Keep {id} for “{after}”",
+      "keep": "Keep {id} for the load now there",
+      "kept": "{field} {id} kept for the load now there.",
+      "help": "Circuit, cable and device ids follow the order of the loads, so inserting, removing or moving a load changes what an id names. Nothing is changed for you: choose again, or keep the id explicitly."
     }
   },
   "feederLink": {

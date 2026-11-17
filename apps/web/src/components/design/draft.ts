@@ -85,13 +85,42 @@ export type DesignDraft = {
   configuration?: ConfigurationDraft;
 };
 
-export type ConfigurationDraft = { doc: Configuration; dropUnrecoverable: boolean };
+/** A binding reference kept for the load now at its position (see ReferenceConfirmation). */
+export type ConfirmedReference = {
+  binding: string;
+  field: 'circuit' | 'cable' | 'slot';
+  key: string | null;
+  id: string;
+};
 
-function parseConfiguration(value: unknown): ConfigurationDraft | undefined {
+export type ConfigurationDraft = {
+  doc: Configuration;
+  dropUnrecoverable: boolean;
+  /** Kept through a reload with the edits they belong to; absent in older drafts. */
+  confirmed?: ConfirmedReference[];
+};
+
+function confirmedOf(value: unknown): ConfirmedReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item: unknown) => {
+    if (!isFields(item)) return [];
+    const { binding, field, key, id } = item;
+    if (typeof binding !== 'string' || typeof id !== 'string') return [];
+    if (field !== 'circuit' && field !== 'cable' && field !== 'slot') return [];
+    return [{ binding, field, key: typeof key === 'string' ? key : null, id }];
+  });
+}
+
+export function parseConfiguration(value: unknown): ConfigurationDraft | undefined {
   if (!isFields(value) || !isFields(value.doc) || typeof value.dropUnrecoverable !== 'boolean') {
     return undefined;
   }
-  return { doc: normalized(value.doc), dropUnrecoverable: value.dropUnrecoverable };
+  const confirmed = confirmedOf(value.confirmed);
+  return {
+    doc: normalized(value.doc),
+    dropUnrecoverable: value.dropUnrecoverable,
+    ...(confirmed.length > 0 ? { confirmed } : {}),
+  };
 }
 
 export type AiDraft = {
