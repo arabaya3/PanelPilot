@@ -18,7 +18,7 @@ const approved = () => ({
   ...structuredClone(RECORD),
   owner_approval: { approved: true, approved_by: 'synthetic-owner', approved_on: '2026-11-18' },
 });
-const stillAffected = () => ({ latest: '4.0.7', affected: true });
+const stillAffected = () => ({ latest: '4.0.7', affected: true, newer: [] });
 
 function run(overrides = {}) {
   const audit = overrides.audit ?? structuredClone(AUDIT);
@@ -180,4 +180,28 @@ test('a clean audit passes and asks for the record to be removed', () => {
   const result = run({ audit: clean, exitCode: 0 });
   assert.equal(result.ok, true);
   assert.ok(result.notes.some((n) => /remove the exception/.test(n)));
+});
+
+test('an impossible, missing or extended expiry fails', () => {
+  for (const expires of ['2026-12-99', '2026-02-30', '15/12/2026', undefined]) {
+    failsWith(run({ records: [{ ...approved(), expires }] }), /no valid expiry date/);
+  }
+  failsWith(
+    run({ records: [{ ...approved(), expires: '2099-01-01' }] }),
+    /after the maximum 2026-12-15/,
+  );
+  failsWith(run({ records: [{ ...approved(), id: 'GHSA-zzzz-zzzz-zzzz' }] }), /no maximum expiry/);
+});
+
+test('an approval without a valid date fails', () => {
+  const record = approved();
+  record.owner_approval.approved_on = 'yesterday';
+  failsWith(run({ records: [record] }), /approved_on/);
+});
+
+test('any release after the recorded version fails, latest or not', () => {
+  failsWith(
+    run({ patchStatus: () => ({ latest: '4.0.7', affected: true, newer: ['4.0.8-rc.0'] }) }),
+    /releases after 4\.0\.7/,
+  );
 });

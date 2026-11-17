@@ -19,6 +19,17 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const EXCEPTIONS = join(ROOT, 'security', 'exceptions');
 
+// The latest expiry each exception may have, set here and not only in its record, so a
+// record edit alone cannot extend it; a longer one fails.
+const MAX_EXPIRY = { 'GHSA-fc5q-39xc-vjpf': '2026-12-15' };
+
+/** Whether ``value`` is a real calendar date written YYYY-MM-DD. */
+function isDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function same(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -121,10 +132,18 @@ function checkRecord(record, { vulns, lock, today, patchStatus }) {
   if (record.owner_approval?.approved !== true || !record.owner_approval?.approved_by) {
     errors.push('not approved by the owner (owner_approval.approved / approved_by)');
   }
-  if (typeof record.expires !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(record.expires)) {
+  const cap = MAX_EXPIRY[record.id];
+  if (!isDate(record.expires)) {
     errors.push('no valid expiry date');
+  } else if (cap === undefined) {
+    errors.push('no maximum expiry is set for it in the gate');
+  } else if (record.expires > cap) {
+    errors.push(`expiry ${record.expires} is after the maximum ${cap}`);
   } else if (today > record.expires) {
     errors.push(`expired on ${record.expires}`);
+  }
+  if (record.owner_approval?.approved === true && !isDate(record.owner_approval.approved_on)) {
+    errors.push('approval has no valid approved_on date');
   }
   const scope = record.scope ?? {};
   const entries = scope.audit_entries ?? {};
@@ -219,6 +238,10 @@ function checkRecord(record, { vulns, lock, today, patchStatus }) {
     errors.push(
       `${String(scope.package)}@${status.latest} is not affected: a patched release exists, remove this exception`,
     );
+  } else if (status.newer.length > 0) {
+    errors.push(
+      `${String(scope.package)} has releases after ${String(scope.version)} (${status.newer.join(', ')}): check whether one fixes the advisory and update or remove this exception`,
+    );
   }
   return errors;
 }
@@ -240,14 +263,27 @@ function npm(args) {
 /** The latest release and whether the npm advisory API still lists it as affected. */
 function livePatchStatus(record) {
   const name = record.scope.package;
-  const view = npm(['view', name, 'version', '--json']);
-  let latest;
+  const view = npm(['view', name, 'dist-tags.latest', 'versions', 'time', '--json']);
+  let info;
   try {
-    latest = JSON.parse(view.stdout);
+    info = JSON.parse(view.stdout);
   } catch {
     return { error: `npm view ${name} failed` };
   }
-  if (view.code !== 0 || typeof latest !== 'string') return { error: `npm view ${name} failed` };
+  const latest = info?.['dist-tags.latest'];
+  const versions = info?.versions;
+  if (view.code !== 0 || typeof latest !== 'string' || !Array.isArray(versions)) {
+    return { error: `npm view ${name} failed` };
+  }
+  // Any release published after the recorded version (a backport or a prerelease that is
+  // not `latest` included) is reported, so it is looked at rather than missed.
+  const recordedAt = info.time?.[record.scope.version];
+  if (typeof recordedAt !== 'string') {
+    return { error: `no publish time for ${name}@${record.scope.version}` };
+  }
+  const newer = versions.filter(
+    (v) => typeof info.time?.[v] === 'string' && info.time[v] > recordedAt,
+  );
   const body = JSON.stringify({ [name]: [latest] });
   const out = execFileSync(
     'curl',
@@ -273,7 +309,7 @@ function livePatchStatus(record) {
     return { error: 'the npm advisory API did not return JSON' };
   }
   const listed = Array.isArray(found?.[name]) ? found[name] : [];
-  return { latest, affected: listed.some((a) => a.url === record.advisory.url) };
+  return { latest, affected: listed.some((a) => a.url === record.advisory.url), newer };
 }
 
 function main() {

@@ -12,7 +12,9 @@
     "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
     "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
     "severity": "high",
-    "cwe": ["CWE-1333"],
+    "cwe": [
+      "CWE-1333"
+    ],
     "vulnerable_range": "<=4.0.7",
     "patched_versions": null,
     "checked_on": "2026-11-17"
@@ -40,12 +42,20 @@
     ],
     "audit_entries": {
       "picomatch": {
-        "nodes": ["node_modules/@parcel/watcher/node_modules/picomatch"],
-        "effects": ["@parcel/watcher"]
+        "nodes": [
+          "node_modules/@parcel/watcher/node_modules/picomatch"
+        ],
+        "effects": [
+          "@parcel/watcher"
+        ]
       },
       "@parcel/watcher": {
-        "nodes": ["node_modules/@parcel/watcher"],
-        "via": ["picomatch"],
+        "nodes": [
+          "node_modules/@parcel/watcher"
+        ],
+        "via": [
+          "picomatch"
+        ],
         "effects": []
       }
     }
@@ -69,12 +79,15 @@
     "Automated: the audit gate passes only for exactly this advisory on exactly this path and chain, with no other audit finding, before the expiry date, and while no patched picomatch release exists.",
     "Automated: the runner image check fails if @parcel/watcher or a picomatch package from the app's dependency tree is present in the shipped image.",
     "Manual: do not enable next-intl's plugin or message extractor, or pass any user-supplied pattern to @parcel/watcher, while this exception exists.",
-    "Manual: re-review this record on any next-intl, @parcel/watcher or Next upgrade."
+    "Manual: re-review this record on any next-intl, @parcel/watcher or Next upgrade.",
+    "Automated: the expiry cannot exceed 2026-12-15, which is also set in the gate (MAX_EXPIRY), so editing this record alone cannot extend it; dates must be real calendar dates.",
+    "Not automated: approval is a field in this record. Its authenticity rests on owner review of the change that sets it; protect security/exceptions/** and scripts/security/** with required owner review (CODEOWNERS plus branch protection), which this change does not configure.",
+    "Behaviour: the gate fails on any audit finding at any severity in the production tree, not only high and above, which is stricter than plain `npm audit --audit-level=high`."
   ],
   "tracked_separately": [
     {
-      "item": "Next's vendored picomatch (node_modules/next/dist/compiled/picomatch)",
-      "why": "Bundled inside the next package, so npm audit does not see it and its version is not published in its package.json. Next uses it for image remote/local pattern matching from next.config and at build time, not for request input. This exception does not cover or resolve it.",
+      "item": "Next's vendored picomatch: node_modules/next/dist/compiled/picomatch, and the copy bundled into Next's file tracer node_modules/next/dist/compiled/@vercel/nft/index.js",
+      "why": "Bundled inside the next package, so npm audit does not see them and their version is not published. Next uses the first for image remote/local pattern matching from next.config and at build time, the second for build-time output tracing; neither is given request input. This exception does not cover or resolve them.",
       "tracking": "Check on each Next upgrade whether the vendored copy includes the upstream fix; follow the Next.js security advisories."
     },
     {
@@ -83,7 +96,7 @@
       "tracking": "scripts/security/check-runner-image.sh lists every picomatch copy in the image; review the list on each base image update."
     }
   ],
-  "patched_release_check": "Automated in scripts/security/npm-audit-gate.mjs: it asks the npm registry for the latest picomatch version and the npm advisory API whether that version is still affected by this advisory. If it is not (a patched release exists), or either lookup fails, the gate fails. Limitation: a patched release on an older major line that is not `latest` is not detected automatically; see removal.tracking.",
+  "patched_release_check": "Automated in scripts/security/npm-audit-gate.mjs: it asks the npm registry for every picomatch release and the npm advisory API whether `latest` is still affected. It fails if `latest` is not affected (a patched release exists), if any release was published after 4.0.7 (latest or not, prereleases and backports included: it must then be reviewed), or if either lookup fails. Limitation: it relies on the npm registry and advisory API being accurate and current.",
   "removal": {
     "when": "On the expiry date, or as soon as a patched picomatch release exists, whichever comes first (the gate then fails and blocks CI until this is done).",
     "steps": [

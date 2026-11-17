@@ -17,16 +17,38 @@ set -eu
 
 image="${1:?usage: check-runner-image.sh IMAGE}"
 
+# The only picomatch copies the runner may hold, exactly, both tracked separately in the
+# record (not resolved by it): Next's vendored copy and the base image's npm copy, pinned
+# to the version recorded. Any change (another copy, a moved copy, a new npm version)
+# fails, so it is looked at again rather than passed silently.
+ALLOWED_COPIES='/app/node_modules/next/dist/compiled/picomatch
+/usr/local/lib/node_modules/npm/node_modules/picomatch'
+# The files holding picomatch code, exactly: the two copies above and the copy Next
+# bundles into its file tracer (@vercel/nft), also tracked separately.
+ALLOWED_CODE='/app/node_modules/next/dist/compiled/@vercel/nft/index.js
+/app/node_modules/next/dist/compiled/picomatch/index.js
+/usr/local/lib/node_modules/npm/node_modules/picomatch/lib/constants.js
+/usr/local/lib/node_modules/npm/node_modules/picomatch/lib/parse.js'
+NPM_PICOMATCH_VERSION='4.0.3'
+
 # Run as root inside a throwaway container; no network, nothing written back.
 listing=$(docker run --rm --network none --user 0 --entrypoint /bin/sh "$image" -c '
   set -eu
   test -f /app/apps/web/server.js || { echo "MISSING /app/apps/web/server.js"; exit 3; }
   echo "## watcher"
-  find / -xdev -path "*/node_modules/@parcel/watcher*" -prune -print 2>/dev/null || true
+  find / -xdev -path "*@parcel/watcher*" -prune -print 2>/dev/null || true
   echo "## picomatch"
-  find / -xdev -type d -name picomatch -path "*node_modules*" 2>/dev/null || true
+  # Any file, directory or symlink named picomatch, wherever it is.
+  find / -xdev -name "picomatch*" ! -name "*.d.ts" -prune -print 2>/dev/null | sort || true
+  echo "## code"
+  # picomatch code wherever it is, bundled or copied: its constants and parser.
+  find /app /usr/local -xdev -type f \( -name "*.js" -o -name "*.cjs" -o -name "*.mjs" \) \
+    -exec grep -lE "POSIX_REGEX_SOURCE|analyzeRepeatedExtglob" {} + 2>/dev/null | sort || true
   echo "## bundle"
-  grep -rl --include=*.js -e "@parcel/watcher" -e "SourceFileWatcher" /app/apps/web/.next/server 2>/dev/null || true
+  grep -rlE "@parcel/watcher|SourceFileWatcher" /app/apps/web 2>/dev/null || true
+  echo "## npm"
+  sed -n "s/^ *\"version\": *\"\\([^\"]*\\)\".*/\\1/p" \
+    /usr/local/lib/node_modules/npm/node_modules/picomatch/package.json 2>/dev/null | head -1
   echo "## end"
 ') || { echo "error: could not inspect $image (exit $?)" >&2; exit 1; }
 
@@ -36,35 +58,27 @@ section() { printf '%s\n' "$listing" | awk -v s="## $1" '$0==s{on=1;next} /^## /
 
 watcher=$(section watcher)
 picomatch=$(section picomatch)
+code=$(section code)
 bundle=$(section bundle)
+npm_version=$(section npm)
 
-echo "picomatch copies in $image:"
-printf '%s\n' "${picomatch:-  (none)}" | sed 's/^/  /'
+echo "picomatch in $image:"
+printf '%s\n' "${picomatch:-(none)}" | sed 's/^/  /'
+echo "picomatch code in $image:"
+printf '%s\n' "${code:-(none)}" | sed 's/^/  /'
 
 status=0
-if [ -n "$watcher" ]; then
-  echo "error: @parcel/watcher is in the runner image:" >&2
-  printf '%s\n' "$watcher" | sed 's/^/  /' >&2
-  status=1
-fi
-if [ -n "$bundle" ]; then
-  echo "error: the server bundle references @parcel/watcher / SourceFileWatcher:" >&2
-  printf '%s\n' "$bundle" | sed 's/^/  /' >&2
-  status=1
-fi
-# Allowed, and tracked separately: Next's vendored copy and the base image's npm.
-app_copies=$(printf '%s\n' "$picomatch" | grep '^/app/' | grep -v '^/app/node_modules/next/dist/compiled/picomatch$' || true)
-if [ -n "$app_copies" ]; then
-  echo "error: a picomatch package from the app's dependency tree is in the runner image:" >&2
-  printf '%s\n' "$app_copies" | sed 's/^/  /' >&2
-  status=1
-fi
-other=$(printf '%s\n' "$picomatch" | grep -v '^/app/' | grep -v '^/usr/local/lib/node_modules/npm/' | grep . || true)
-if [ -n "$other" ]; then
-  echo "error: picomatch outside the app and the base image's npm (not recorded):" >&2
-  printf '%s\n' "$other" | sed 's/^/  /' >&2
-  status=1
-fi
+fail() { echo "error: $1" >&2; [ -z "${2:-}" ] || printf '%s\n' "$2" | sed 's/^/  /' >&2; status=1; }
+
+[ -z "$watcher" ] || fail "@parcel/watcher is in the runner image:" "$watcher"
+[ -z "$bundle" ] || fail "the app references @parcel/watcher / SourceFileWatcher:" "$bundle"
+[ "$picomatch" = "$ALLOWED_COPIES" ] ||
+  fail "picomatch copies differ from the recorded ones (expected exactly the two tracked copies):" "$picomatch"
+[ "$code" = "$ALLOWED_CODE" ] ||
+  fail "picomatch code differs from the recorded files (another copy, bundled or moved):" "$code"
+[ "$npm_version" = "$NPM_PICOMATCH_VERSION" ] ||
+  fail "the base image's npm picomatch is '${npm_version:-unknown}', recorded $NPM_PICOMATCH_VERSION: review the record"
+
 if [ "$status" -eq 0 ]; then
   echo "runner image check: passed (the excluded @parcel/watcher / picomatch path is not shipped)"
 else
