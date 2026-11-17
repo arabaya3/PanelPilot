@@ -498,7 +498,9 @@ def _board_positions(project: Any) -> dict[str, int]:
     return {board.id: at for at, board in enumerate(getattr(project, "boards", None) or [])}
 
 
-def _owners(project: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
+def _owners(
+    project: Any, saved_name: Mapping[str, str] | None = None
+) -> dict[tuple[str, str, str], tuple[str, str, str]]:
     """Each circuit, cable and device of a v1 design, with the load it belongs to.
 
     Circuit ids are positional (``c2``), and so are their cables (``c2-cable``)
@@ -507,14 +509,14 @@ def _owners(project: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
     entered for it: its description, its kind and the board it feeds.
     """
     owners: dict[tuple[str, str, str], tuple[str, str, str]] = {}
-    positions = _board_positions(project)
     for board in getattr(project, "boards", None) or []:
         for circuit in board.circuits or []:
             load = getattr(circuit.load, "value", str(circuit.load))
             if circuit.feeds:
                 # A feeder is the server's, named after the board it feeds: it is the same
-                # feeder while it feeds the board at the same position, whatever its name.
-                mark = ("", "feeder", str(positions.get(circuit.feeds, circuit.feeds)))
+                # feeder while it feeds the same board, followed through a rename.
+                fed = (saved_name or {}).get(circuit.feeds, circuit.feeds)
+                mark = ("", "feeder", fed)
             else:
                 mark = (circuit.description, load, "")
             owners[(board.id, "circuit", circuit.id)] = mark
@@ -575,15 +577,18 @@ def moved_references(
         if isinstance(old, Mapping) and isinstance(old.get("id"), str):
             for field, key, _kind, ref in _refs(old):
                 saved[(old["id"], field, key)] = (old.get("board"), ref)
-    before, after = _owners(baseline), _owners(current)
-    # A board renamed since the last save: its saved name maps to its name now, by position.
+    # A board renamed since the last save: its saved name is gone and, at its position, a
+    # name that was not saved before. Anything else (a swap, a chain, a deletion) is not
+    # followed: a binding on such a board counts as changed by the user.
     was_at = _board_positions(baseline)
     now_named = {at: name for name, at in _board_positions(current).items()}
     renamed = {
         name: now_named[at]
         for name, at in was_at.items()
-        if at in now_named and name not in now_named.values()
+        if at in now_named and name not in now_named.values() and now_named[at] not in was_at
     }
+    before = _owners(baseline)
+    after = _owners(current, {now: was for was, now in renamed.items()})
     kept = {
         (str(c.get("binding")), str(c.get("field")), str(c.get("key") or ""), str(c.get("id")))
         for c in confirmed
@@ -620,7 +625,7 @@ def moved_references(
 
 
 def _feeder_label(mark: tuple[str, str, str]) -> str:
-    return f"feeder to board {int(mark[2]) + 1}" if mark[2].isdigit() else "feeder"
+    return f"feeder to {mark[2]}" if mark[2] else "feeder"
 
 
 def check_references(

@@ -2704,6 +2704,10 @@ def validate_configuration(
     project = _load(session, project_id)
     revisions = _revisions(session, project)
     latest = revisions[-1]
+    if request.request is not None:
+        # The editor's request replaces the stored one, as a save would: a stored request
+        # that no longer validates does not refuse it (a save would accept it).
+        return _validate_current(session, project, latest, request)
     try:
         entered = ProjectDesignRequest.model_validate(latest.request)
     except PydanticValidationError as exc:
@@ -2713,8 +2717,6 @@ def validate_configuration(
             code="revision_not_validated",
             params={"revision": latest.number, "reason": "request_not_valid"},
         ) from exc
-    if request.request is not None:
-        return _validate_current(session, project, latest, request)
     design_configuration.check_configuration(request.configuration)
     project_design.refuse_client_feeders(entered.boards)
     as_entered = entered.model_copy(

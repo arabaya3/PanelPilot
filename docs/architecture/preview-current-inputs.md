@@ -45,10 +45,11 @@ one would change stored ids, hashes and renderers. Instead such a change is
 detected and refused, on preview and save alike:
 
 - A load is told apart by what the user entered for it: its description and its
-  kind. A server feeder circuit is told apart by the position of the board it
-  feeds, so renaming the fed board does not make its feeder another load.
-- A board is followed by position: a board renamed since the last save (its
-  saved name gone, another name at its position) is the same board, so a
+  kind. A server feeder circuit is told apart by the board it feeds, followed
+  through a rename, so renaming the fed board does not make its feeder another
+  load, while reordering fed boards does.
+- A board renamed since the last save (its saved name gone, a new name at its
+  position) is the same board, so a
   binding that follows the rename is still compared against what its ids named
   before.
 - For each binding reference (its circuit, its cable, and each slot filled by a
@@ -90,12 +91,13 @@ detected and refused, on preview and save alike:
 
 ## 5. Limitations
 
-- The preview covers the load schedule and configuration; its staleness key
-  does not cover the project's requirements answers, which a preview does not
-  send.
-- Boards are followed by position: reordering boards and renaming them in the
-  same edit cannot be told apart from two other boards.
-
+- The preview does not run the requirements-answer checks of a save (it sends
+  no requirements input), so a save can still be refused there after a clean
+  preview.
+- A board is followed through a rename only when its saved name is gone and the
+  name at its position is new. Swapped names, rename chains (A→B while B→C) and a
+  deleted board are not followed: a binding on such a board counts as changed
+  by the user and is not checked, so a move on it is not detected.
 - Two loads entered identically (same description, kind and fed board) that
   swap places cannot be told apart; such a move is not detected.
 - Renaming a load's description counts as another load: its references are

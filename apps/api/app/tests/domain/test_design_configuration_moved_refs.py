@@ -141,7 +141,7 @@ def test_a_board_renamed_with_a_moved_load_is_still_moved() -> None:
     )
 
 
-def test_a_feeder_is_the_same_while_it_feeds_the_board_at_the_same_position() -> None:
+def test_a_feeder_is_the_same_while_it_feeds_the_same_board_followed_through_a_rename() -> None:
     feeder = ("Feeder to SB-1", "feeder", "SB-1")
     renamed = ("Feeder to SB-2", "feeder", "SB-2")
     before = _boards(("MB-1", [feeder]), ("SB-1", []))
@@ -150,4 +150,20 @@ def test_a_feeder_is_the_same_while_it_feeds_the_board_at_the_same_position() ->
     # A load inserted before the feeder: c1 is no longer the feeder.
     shifted = _boards(("MB-1", [HEAT, renamed]), ("SB-2", []))
     moved = dc.moved_references(before, shifted, _on("MB-1"), (), _on("MB-1"))
-    assert [(m["before"], m["after"]) for m in moved] == [("feeder to board 2", "Heater")]
+    assert [(m["before"], m["after"]) for m in moved] == [("feeder to SB-1", "Heater")]
+
+
+def test_reordered_fed_boards_move_their_feeders() -> None:
+    to2, to3 = ("Feeder to SB-2", "feeder", "SB-2"), ("Feeder to SB-3", "feeder", "SB-3")
+    before = _boards(("MB-1", [to2, to3]), ("SB-2", []), ("SB-3", []))
+    after = _boards(("MB-1", [to3, to2]), ("SB-3", []), ("SB-2", []))
+    moved = dc.moved_references(before, after, _on("MB-1"), (), _on("MB-1"))
+    assert [(m["before"], m["after"]) for m in moved] == [("feeder to SB-2", "feeder to SB-3")]
+
+
+def test_a_deleted_board_is_not_taken_for_a_rename() -> None:
+    # A deleted: B moves to A's position, but B was saved before, so it is not A renamed.
+    before = _boards(("A", [LIGHT]), ("B", [HEAT]))
+    after = _boards(("B", [HEAT]))
+    # The user re-pointed the binding from A to B with the same id: their choice, not a move.
+    assert dc.moved_references(before, after, _on("B"), (), _on("A")) == []
