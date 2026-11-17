@@ -102,7 +102,8 @@ The gate does not make older readers compatible afterwards.
    database), run the read-only audit:
    `python -m app.design.cable_core_audit` (same `DATABASE_URL` as the API). It
    prints project ids, revision numbers and the cable/core found on two boards,
-   and exits 1 if any exist, 0 if none. If none: rollback is safe. If some:
+   and exits 1 if any exist (or if any revision could not be checked, which it
+   lists as UNREADABLE rather than counting as clean), 0 if none. If none: rollback is safe. If some:
    rolling back makes exactly those revisions unreadable to the older code;
    there is no automatic downgrade and historical records are not rewritten.
 4. Turning the gate off again stops new such revisions (a resave of one is

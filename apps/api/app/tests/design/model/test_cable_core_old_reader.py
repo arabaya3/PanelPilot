@@ -9,8 +9,11 @@ is refused by it, never misread. SYNTHETIC fixtures; no database.
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
+from app.design import cable_core_audit
 from app.design.model import codec_v2, versions
 from app.design.model.compose import CompositionRefusedError
 from app.design.model.write import snapshot_v2_from_v1
@@ -31,22 +34,44 @@ def test_every_configured_fixture_reads_the_same_in_the_old_and_new_reader(case:
 
 
 def test_both_readers_refuse_a_core_twice_on_one_boards_cable() -> None:
-    """Same-board reuse stays refused in the new reader, as it was in the old."""
+    """Same-board reuse stays refused by the core rule in the new reader, as in the old."""
+    checked = 0
     for case in sorted(CONFIGS):
         v1, configuration = config_case(case)
         try:
             stored = snapshot_v2_from_v1(v1, configuration)
         except CompositionRefusedError:
             continue
-        cored = [c for c in stored["model"]["connections"] if c["core"] is not None]
-        if not cored:
+        model = stored["model"]
+        cored = [c for c in model["connections"] if c["core"] is not None]
+        if len(cored) < 2:
             continue
-        twin = dict(cored[0], id=cored[0]["id"] + "-twin")
-        model = dict(stored["model"])
-        model["connections"] = sorted([*model["connections"], twin], key=lambda c: c["id"])
-        with pytest.raises(versions.SnapshotUnreadableError):
-            codec_v2.parse_model(model)
-        with pytest.raises(versions.SnapshotUnreadableError):
-            old_codec.parse_model(model)
-        return
-    pytest.skip("no fixture has a cable core; covered by the database tests")
+        # Two cable-core connections of one board: give the second the first one's core. Only the
+        # core is changed, so the refusal can only be the core rule.
+        board_of = {n["id"]: n["board_id"] for n in model["nets"]}
+        first = cored[0]
+        second = next(
+            (c for c in cored[1:] if board_of[c["net_id"]] == board_of[first["net_id"]]), None
+        )
+        if second is None:
+            continue
+        edited = copy.deepcopy(model)
+        twin = next(c for c in edited["connections"] if c["id"] == second["id"])
+        twin["core"] = dict(
+            twin["core"], cable_id=first["core"]["cable_id"], index=first["core"]["index"]
+        )
+        with pytest.raises(versions.SnapshotUnreadableError, match="core of one board's cable"):
+            codec_v2.parse_model(edited)
+        with pytest.raises(versions.SnapshotUnreadableError, match="a core makes two connections"):
+            old_codec.parse_model(edited)
+        checked += 1
+    assert checked > 0, "no fixture has two cable cores on one board"
+
+
+def test_the_audit_never_reports_an_unreadable_row_as_clean() -> None:
+    rows = [("p", 1, None), ("p", 2, '{"schema": "pp-design/2", "model": {"nets": null}}')]
+    found = cable_core_audit.audit(rows)
+    assert [line.split(":")[0] for line in found] == ["p r1", "p r2"]
+    assert all("UNREADABLE" in line for line in found)
+    v1_text = '{"schema": "pp-design/1", "model": {}}'
+    assert cable_core_audit.audit([("p", 3, v1_text)]) == []
