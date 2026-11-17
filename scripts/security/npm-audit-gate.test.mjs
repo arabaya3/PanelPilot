@@ -205,3 +205,41 @@ test('any release after the recorded version fails, latest or not', () => {
     /releases after 4\.0\.7/,
   );
 });
+
+test('another package cannot be excepted by listing it in the record', () => {
+  const record = approved();
+  record.scope.audit_entries.lodash = {
+    nodes: ['node_modules/lodash'],
+    via: ['lodash'],
+    effects: [],
+  };
+  const audit = structuredClone(AUDIT);
+  audit.vulnerabilities.lodash = {
+    name: 'lodash',
+    severity: 'critical',
+    via: [
+      { source: 9, name: 'lodash', url: 'https://github.com/advisories/GHSA-other', range: '*' },
+    ],
+    effects: [],
+    nodes: ['node_modules/lodash'],
+  };
+  audit.metadata.vulnerabilities.total = 3;
+  failsWith(run({ audit, records: [record] }), /must be exactly the chain/);
+
+  const own = approved();
+  own.scope.audit_entries['@parcel/watcher'].via = [
+    { url: 'https://github.com/advisories/GHSA-other' },
+  ];
+  const viaAudit = structuredClone(AUDIT);
+  viaAudit.vulnerabilities['@parcel/watcher'].via = [
+    { url: 'https://github.com/advisories/GHSA-other' },
+  ];
+  failsWith(run({ audit: viaAudit, records: [own] }), /not only the chain/);
+});
+
+test('a release check without its list of newer releases fails', () => {
+  failsWith(
+    run({ patchStatus: () => ({ latest: '4.0.7', affected: true }) }),
+    /releases after the recorded/,
+  );
+});

@@ -41,9 +41,19 @@ listing=$(docker run --rm --network none --user 0 --entrypoint /bin/sh "$image" 
   # Any file, directory or symlink named picomatch, wherever it is.
   find / -xdev -name "picomatch*" ! -name "*.d.ts" -prune -print 2>/dev/null | sort || true
   echo "## code"
-  # picomatch code wherever it is, bundled or copied: its constants and parser.
-  find /app /usr/local -xdev -type f \( -name "*.js" -o -name "*.cjs" -o -name "*.mjs" \) \
-    -exec grep -lE "POSIX_REGEX_SOURCE|analyzeRepeatedExtglob" {} + 2>/dev/null | sort || true
+  # picomatch code wherever it is, bundled, copied or renamed, in any file under the app
+  # and in JS under /usr/local: its constants and parser.
+  { grep -rlE "POSIX_REGEX_SOURCE|analyzeRepeatedExtglob" /app 2>/dev/null || true
+    find /usr/local -xdev -type f \( -name "*.js" -o -name "*.cjs" -o -name "*.mjs" \) \
+      -exec grep -lE "POSIX_REGEX_SOURCE|analyzeRepeatedExtglob" {} + 2>/dev/null || true
+  } | sort
+  echo "## links"
+  # Symbolic links in the app that lead to picomatch or the watcher (a link to an allowed
+  # copy would let the app load it under another name).
+  find /app -xdev -type l 2>/dev/null | while read -r link; do
+    target=$(readlink -f "$link" 2>/dev/null || true)
+    case "$target" in *picomatch*|*@parcel*) echo "$link -> $target" ;; esac
+  done
   echo "## bundle"
   grep -rlE "@parcel/watcher|SourceFileWatcher" /app/apps/web 2>/dev/null || true
   echo "## npm"
@@ -60,6 +70,7 @@ watcher=$(section watcher)
 picomatch=$(section picomatch)
 code=$(section code)
 bundle=$(section bundle)
+links=$(section links)
 npm_version=$(section npm)
 
 echo "picomatch in $image:"
@@ -71,6 +82,7 @@ status=0
 fail() { echo "error: $1" >&2; [ -z "${2:-}" ] || printf '%s\n' "$2" | sed 's/^/  /' >&2; status=1; }
 
 [ -z "$watcher" ] || fail "@parcel/watcher is in the runner image:" "$watcher"
+[ -z "$links" ] || fail "symbolic links in the app lead to picomatch or the watcher:" "$links"
 [ -z "$bundle" ] || fail "the app references @parcel/watcher / SourceFileWatcher:" "$bundle"
 [ "$picomatch" = "$ALLOWED_COPIES" ] ||
   fail "picomatch copies differ from the recorded ones (expected exactly the two tracked copies):" "$picomatch"

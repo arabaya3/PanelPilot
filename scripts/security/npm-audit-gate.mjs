@@ -151,6 +151,15 @@ function checkRecord(record, { vulns, lock, today, patchStatus }) {
   if (record.advisory?.url !== advisoryUrl) errors.push('advisory url does not match the id');
 
   // The audit entries: exactly the recorded nodes, effects and via, and only this advisory.
+  // The record may cover exactly its package and the chain's links below the top-level
+  // dependency, nothing else: another package cannot be excepted by listing it.
+  const chainNames = (scope.chain ?? []).map((link) => link.name);
+  const coverable = chainNames.slice(1);
+  if (!same(Object.keys(entries).sort(), [...coverable].sort())) {
+    errors.push(
+      `audit_entries ${JSON.stringify(Object.keys(entries))} must be exactly the chain below its top: ${JSON.stringify(coverable)}`,
+    );
+  }
   for (const [name, expected] of Object.entries(entries)) {
     const found = vulns[name];
     if (found === undefined) continue; // not reported (any more): nothing to except here
@@ -186,6 +195,9 @@ function checkRecord(record, { vulns, lock, today, patchStatus }) {
       errors.push(
         `${name}: via ${JSON.stringify(found.via)}, recorded ${JSON.stringify(expected.via)}`,
       );
+    } else if (!found.via.every((v) => typeof v === 'string' && coverable.includes(v))) {
+      // A link is excepted only as vulnerable through the chain, never by its own advisory.
+      errors.push(`${name}: via ${JSON.stringify(found.via)} is not only the chain's packages`);
     }
   }
   if (vulns[scope.package] === undefined) {
@@ -238,6 +250,8 @@ function checkRecord(record, { vulns, lock, today, patchStatus }) {
     errors.push(
       `${String(scope.package)}@${status.latest} is not affected: a patched release exists, remove this exception`,
     );
+  } else if (!Array.isArray(status.newer)) {
+    errors.push('cannot check for releases after the recorded version');
   } else if (status.newer.length > 0) {
     errors.push(
       `${String(scope.package)} has releases after ${String(scope.version)} (${status.newer.join(', ')}): check whether one fixes the advisory and update or remove this exception`,
