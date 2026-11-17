@@ -28,7 +28,7 @@ including a template with a ``restricted_scope``.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
@@ -483,3 +483,184 @@ def _labeller(model: entities.DesignModelV2) -> Any:
         return f"{name}:{point.marking} ({ref.side})"
 
     return label
+
+
+# --------------------------------------------------------------------------- #
+# References that moved with the load schedule
+# --------------------------------------------------------------------------- #
+
+#: What a binding may name that the design numbers by position: a circuit, a cable, a device.
+_REF_KINDS = ("circuit", "cable", "device")
+
+
+def _owners(project: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
+    """Each circuit, cable and device of a v1 design, with the load it belongs to.
+
+    Circuit ids are positional (``c2``), and so are their cables (``c2-cable``)
+    and devices (``c2-breaker``): the same id after a load is inserted, removed
+    or moved can name another load. A load is told apart by what the user
+    entered for it: its description, its kind and the board it feeds.
+    """
+    owners: dict[tuple[str, str, str], tuple[str, str, str]] = {}
+    for board in getattr(project, "boards", None) or []:
+        for circuit in board.circuits or []:
+            load = getattr(circuit.load, "value", str(circuit.load))
+            mark = (circuit.description, load, circuit.feeds or "")
+            owners[(board.id, "circuit", circuit.id)] = mark
+            if circuit.cable_id:
+                owners[(board.id, "cable", circuit.cable_id)] = mark
+            for device in circuit.device_ids or []:
+                owners[(board.id, "device", device)] = mark
+    return owners
+
+
+def _refs(binding: Mapping[str, Any]) -> list[tuple[str, str, str, Any]]:
+    """A binding's positional references: ``(field, key, kind, id)``."""
+    refs: list[tuple[str, str, str, Any]] = [
+        ("circuit", "", "circuit", binding.get("circuit")),
+        ("cable", "", "cable", binding.get("cable")),
+    ]
+    slots = binding.get("slots")
+    for key, slot in slots.items() if isinstance(slots, Mapping) else []:
+        if isinstance(slot, Mapping):
+            refs.append(("slot", str(key), "device", slot.get("device")))
+    return refs
+
+
+def moved_references(
+    baseline: Any,
+    current: Any,
+    configuration: Mapping[str, Any],
+    confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Binding references whose id now names another load than when last saved.
+
+    Only a reference the user did not change can move silently: one whose binding
+    names the same id on the same board as in ``baseline_configuration`` (the
+    configuration saved with ``baseline``). A reference the user changed, or a
+    binding new since, was chosen against the current choices; the composer
+    checks it as before.
+
+    Args:
+        baseline: The v1 design the configuration was last saved with.
+        current: The v1 design of the request being previewed or saved.
+        configuration: The configuration (its ``bindings``).
+        confirmed: ``{binding, field, key, id}`` the user keeps for the load now there.
+        baseline_configuration: The configuration saved with ``baseline``; ``None``
+            when none was saved (then nothing has moved).
+
+    Returns:
+        One entry per moved reference not confirmed: ``binding``, ``field``
+        (``circuit``, ``cable`` or ``slot``), ``key`` (the slot, or ``""``),
+        ``id``, ``before`` and ``after`` (the loads' descriptions). An id that
+        is new, gone (the composer refuses it) or names the same load is not one.
+    """
+    if baseline_configuration is None:
+        return []
+    saved: dict[tuple[str, str, str], tuple[Any, Any]] = {}
+    saved_bindings = baseline_configuration.get("bindings")
+    for old in saved_bindings if isinstance(saved_bindings, list) else []:
+        if isinstance(old, Mapping) and isinstance(old.get("id"), str):
+            for field, key, _kind, ref in _refs(old):
+                saved[(old["id"], field, key)] = (old.get("board"), ref)
+    before, after = _owners(baseline), _owners(current)
+    kept = {
+        (str(c.get("binding")), str(c.get("field")), str(c.get("key") or ""), str(c.get("id")))
+        for c in confirmed
+    }
+    moved: list[dict[str, str]] = []
+    bindings = configuration.get("bindings")
+    for binding in bindings if isinstance(bindings, list) else []:
+        if not isinstance(binding, Mapping) or not isinstance(binding.get("id"), str):
+            continue
+        bid, board = binding["id"], binding.get("board")
+        for field, key, kind, ref in _refs(binding):
+            if not isinstance(ref, str) or not isinstance(board, str):
+                continue
+            if saved.get((bid, field, key)) != (board, ref):
+                continue  # changed by the user, or new: chosen against the current choices
+            was, now = before.get((board, kind, ref)), after.get((board, kind, ref))
+            if was is None or now is None or was == now:
+                continue
+            if (bid, field, key, ref) in kept:
+                continue
+            moved.append(
+                {
+                    "binding": bid,
+                    "field": field,
+                    "key": key,
+                    "id": ref,
+                    "before": was[0],
+                    "after": now[0],
+                }
+            )
+    return moved
+
+
+def check_references(
+    baseline: Any,
+    current: Any,
+    configuration: Mapping[str, Any],
+    confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
+) -> None:
+    """Refuse a configuration a load-schedule change would silently re-attach.
+
+    Raises:
+        ValidationError: ``configuration_refused``, refusal ``reference_moved``,
+            naming the first moved reference (``binding``, ``field``, ``key``,
+            ``ref``, ``before``, ``after``) and all of them in ``moved``
+            (``binding|field|key|id`` joined by ``;``).
+    """
+    moved = moved_references(baseline, current, configuration, confirmed, baseline_configuration)
+    if not moved:
+        return
+    first = moved[0]
+    raise _refused(
+        "reference_moved",
+        f"binding {first['binding']} names {first['id']}, which is now "
+        f"{first['after']!r} (it was {first['before']!r}); choose again or confirm it",
+        binding=first["binding"],
+        field=first["field"],
+        key=first["key"],
+        ref=first["id"],
+        before=first["before"],
+        after=first["after"],
+        moved=";".join(f"{m['binding']}|{m['field']}|{m['key']}|{m['id']}" for m in moved),
+    )
+
+
+def board_choices(project: Any) -> list[dict[str, Any]]:
+    """Each board's circuits and cables in a v1 design, for the editor's choices."""
+    out: list[dict[str, Any]] = []
+    for board in getattr(project, "boards", None) or []:
+        out.append(
+            {
+                "id": board.id,
+                "circuits": [
+                    {"id": c.id, "description": c.description} for c in board.circuits or []
+                ],
+                "cables": [
+                    {
+                        "id": c.id,
+                        "cores": c.cores,
+                        "designation": (
+                            " ".join(
+                                p
+                                for p in (
+                                    c.designation.function,
+                                    c.designation.location,
+                                    c.designation.product,
+                                )
+                                if p
+                            )
+                            if c.designation is not None
+                            else None
+                        ),
+                    }
+                    for c in board.cables or []
+                ],
+            }
+        )
+    return out

@@ -1258,6 +1258,9 @@ def _validate(
     configuration: Mapping[str, Any] | None = None,
     anchor: anchoring.ReviewAnchor = anchoring.EMPTY,
     link_entry: _LinkEntry | None = None,
+    reference_baseline: Any | None = None,
+    references_confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
@@ -1294,6 +1297,15 @@ def _validate(
             ) from exc
         return {"findings": [_design_refused(exc).model_dump(mode="json")]}
     conditions = {board.name: board.conditions for board in request.boards}
+    if configuration is not None and reference_baseline is not None:
+        # Circuit, cable and device ids are positional: never re-attach a binding silently.
+        design_configuration.check_references(
+            reference_baseline,
+            designed,
+            configuration,
+            references_confirmed,
+            baseline_configuration,
+        )
     stored = designed.model_dump(mode="json")
     v2: entities.DesignModelV2 | None = None
     if configuration is not None:
@@ -1470,6 +1482,28 @@ def _carried_configuration(
     return configuration
 
 
+def _baseline_configuration(row: DesignRevisionRow | None) -> dict[str, Any] | None:
+    """The configuration a revision stored (``None`` if none, or none can be recovered)."""
+    if row is None:
+        return None
+    configuration, status = _configuration_of(row, _stored_record(row))
+    return configuration if status != "not_recoverable" else None
+
+
+def _reference_baseline(row: DesignRevisionRow | None) -> Any | None:
+    """The v1 design a revision stored, against which moved binding references are found.
+
+    ``None`` when the revision holds no design (a refused one) or none can be read: then
+    nothing is compared, as before.
+    """
+    if row is None or row.design_snapshot is None:
+        return None
+    try:
+        return read_snapshot(row.design_snapshot).project
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return None
+
+
 def _add_revision(
     session: Session,
     project: DesignProjectRow,
@@ -1483,6 +1517,9 @@ def _add_revision(
     answered: Sequence[Mapping[str, Any]] = (),
     resaved_from: int | None = None,
     carried: bool = False,
+    reference_baseline: Any | None = None,
+    references_confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
 ) -> None:
     """Add the project's next revision.
 
@@ -1511,9 +1548,14 @@ def _add_revision(
                 prior_links=_stored_links(previous),
                 prior_model=_read_v2(previous.design_snapshot) if previous is not None else None,
             ),
+            reference_baseline,
+            references_confirmed,
+            baseline_configuration,
         )
     except ValidationError as exc:
-        if carried and configuration is not None:
+        # A moved reference is actionable as it is (confirm or choose again), carried or not.
+        moved = (exc.params or {}).get("refusal") == "reference_moved"
+        if carried and configuration is not None and not moved:
             raise _configuration_conflict(exc) from exc
         raise
     stored_read = (
@@ -1815,6 +1857,9 @@ def revise_project(
             requirements_input=request.requirements_input,
             prior=prior,
             carried=carried,
+            reference_baseline=_reference_baseline(latest_row),
+            references_confirmed=[c.model_dump() for c in request.references_confirmed],
+            baseline_configuration=_baseline_configuration(latest_row),
         )
         # The number this save took: by the time it is opened, a concurrent
         # save may have added a later one.
@@ -2668,6 +2713,12 @@ def validate_configuration(
             code="revision_not_validated",
             params={"revision": latest.number, "reason": "request_not_valid"},
         ) from exc
+    baseline = entered
+    if request.request is not None:
+        # The load schedule as the editor holds it now, checked as a save checks it.
+        design_domain.resolve_profile(request.request.profile)
+        check_requirements_input(request.request, None)
+        entered = request.request
     design_configuration.check_configuration(request.configuration)
     project_design.refuse_client_feeders(entered.boards)
     as_entered = entered.model_copy(
@@ -2681,6 +2732,15 @@ def validate_configuration(
             code="configuration_refused",
             params={"refusal": "design_refused", **exc.params},
         ) from exc
+    if request.request is not None and baseline is not None:
+        # The same check a save makes: a reference that now names another load is refused.
+        design_configuration.check_references(
+            _reference_baseline(latest),
+            designed,
+            request.configuration,
+            [c.model_dump() for c in request.references_confirmed],
+            _baseline_configuration(latest),
+        )
     stored = design_configuration.compose_snapshot(
         designed.model_dump(mode="json"), request.configuration
     )
@@ -2701,6 +2761,8 @@ def validate_configuration(
         snapshot_sha256=snapshot.sha256_of(stored),
         findings=_design_findings(read.project, conditions, model),
         model=design_configuration.summary(model, _V2_CONFIRM),
+        from_current_request=request.request is not None,
+        boards=design_configuration.board_choices(designed),
     )
 
 
@@ -3150,6 +3212,8 @@ def answer_question(
                 answered,
                 f"Answered: {question['field']}",
                 configuration,
+                reference_baseline=_reference_baseline(row),
+                baseline_configuration=configuration,
                 prior=record if not record.get("derived") else {**record, "acknowledgements": []},
                 answered=[
                     {
@@ -3549,7 +3613,9 @@ def resolve_safety_concern(
     kind = (
         "mention"
         if request.mention_id is not None
-        else "item" if request.item_id is not None else "request"
+        else "item"
+        if request.item_id is not None
+        else "request"
     )
     target_id = str(request.mention_id or request.item_id or request.request_id)
     try:
