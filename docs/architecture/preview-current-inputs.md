@@ -82,12 +82,17 @@ the binding named then). The fingerprint is:
   power, phases, power factor, control, starter and length;
 - for a server feeder, the name of the board it feeds and that board's position;
 - and the binding context the design gives it: its devices' roles and whether
-  it has a cable.
+  it has a cable;
+- for a board's own device named by a slot: an incomer by the board as entered
+  (all but its name and loads) and its position; any other board device (a
+  residual current group `g{n}-rcd`, positional too) by its kind and the
+  fingerprints of the circuits it feeds.
 
 Description and kind alone are **not** treated as identity. Anything else is
 unproven and refused: another load at that position, a reordered, swapped,
-renamed or deleted board, a rename chain, a changed binding context, or a latest
-revision whose design or request cannot be read. A positional id that still
+renamed or deleted board, a rename chain, a changed binding context, a
+renumbered residual current group, or a latest revision whose design or request
+cannot be read (on either side: unreadable data never proves anything). A positional id that still
 exists is never accepted on that ground alone.
 
 **Identical loads.** Two loads equal in every entered field and binding context
@@ -97,10 +102,12 @@ model records about the load (power, phases, control, kind, devices, …) is
 refused.
 
 **Refusal.** `configuration_refused`, refusal `reference_moved`, naming the
-first unproven reference in full (`binding`, `field`, `key`, `ref`, `before`,
-`after`, `before_board`, `after_board`, `before_circuit`, `after_circuit`,
-`token`) and all of them in `moved` (`binding|field|key|id|token;…`, within the
-200-character parameter bound; the editor re-checks after each confirmation).
+first unproven reference (`binding`, `field`, `key`, `ref`, `before`, `after`,
+`before_board`, `after_board`, `before_circuit`, `after_circuit`, `token`), each
+of the first 20 in full (`r{i}_binding`, `r{i}_field`, … `r{i}_token`), their
+number (`moved_count`), and a compact list (`moved`, within the 200-character
+parameter bound). The editor says what keeping means for each one named in full
+and how many more there are; those are named once the first are settled.
 
 **Keep.** The editor says each one beside its binding, links to its field, and
 says what keeping means: _“Keeping c1 means this binding connects to “Heater”

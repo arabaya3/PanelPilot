@@ -267,3 +267,72 @@ def test_check_references_refuses_naming_every_unproven_reference() -> None:
         ["b1", "cable", "", "c1-cable"],
     ]
     assert entries[0].split("|")[4] == params["token"]
+
+
+# --------------------------------------------------------------------------- #
+# A board's own devices
+# --------------------------------------------------------------------------- #
+
+
+def _with_devices(side: tuple[Any, Any], groups: dict[str, list[str]]) -> tuple[Any, Any]:
+    """Give each board an incomer and residual current groups feeding the named circuits."""
+    for board in side[0].boards:
+        board.incomer_ids = ["incomer"]
+        board.devices = [SimpleNamespace(id="incomer", kind="switch", description="Incomer")]
+        for group, members in groups.items():
+            board.devices.append(SimpleNamespace(id=group, kind="rcd", description=None))
+            for circuit in board.circuits:
+                if circuit.id in members:
+                    circuit.upstream_id = group
+    return side
+
+
+def _slot(board: str, device: str) -> Any:
+    return _config(board, circuit=None, device=device)
+
+
+def test_a_renumbered_residual_current_group_is_refused() -> None:
+    # g1-rcd fed Lighting; after the edit g1-rcd feeds Heater.
+    before = _with_devices(_side(("MB-1", [LIGHT, HEAT], [])), {"g1-rcd": ["c1"]})
+    after = _with_devices(_side(("MB-1", [LIGHT, HEAT], [])), {"g1-rcd": ["c2"]})
+    config = _slot("MB-1", "g1-rcd")
+    moved = _moved(before, after, config, config)
+    assert [(m["field"], m["id"]) for m in moved] == [("slot", "g1-rcd")]
+    # The same group feeding the same loads is proven.
+    same = _with_devices(_side(("MB-1", [LIGHT, HEAT], [])), {"g1-rcd": ["c1"]})
+    assert _moved(before, same, config, config) == []
+
+
+def test_an_incomer_follows_its_board_not_its_name() -> None:
+    before = _with_devices(_side(("MB-1", [LIGHT], []), ("MB-2", [HEAT], [])), {})
+    swapped = _with_devices(_side(("MB-2", [HEAT], []), ("MB-1", [LIGHT], [])), {})
+    swapped[1]["boards"][0]["feeder_length_m"] = "9"  # what is entered for the board differs
+    config = _slot("MB-1", "incomer")
+    assert len(_moved(before, swapped, config, config)) == 1
+    same = _with_devices(_side(("MB-1", [LIGHT], []), ("MB-2", [HEAT], [])), {})
+    assert _moved(before, same, config, config) == []
+
+
+def test_unreadable_on_both_sides_still_proves_nothing() -> None:
+    before, after = _side(("MB-1", [LIGHT], [])), _side(("MB-1", [LIGHT], []))
+    assert len(_moved((before[0], {"x": 1}), (after[0], {"x": 1}), _config())) == 1
+
+
+def test_a_refusal_names_each_reference_in_full() -> None:
+    config = _config(cable="c1-cable", device="c1-breaker")
+    before, after = _side(("MB-1", [LIGHT], [])), _side(("MB-1", [HEAT], []))
+    with pytest.raises(ValidationError) as refused:
+        dc.check_references(
+            before[0],
+            after[0],
+            config,
+            (),
+            config,
+            baseline_request=before[1],
+            current_request=after[1],
+        )
+    params = refused.value.params
+    assert params["moved_count"] == "3"
+    assert [params[f"r{i}_field"] for i in range(3)] == ["circuit", "cable", "slot"]
+    assert all(params[f"r{i}_before"] == "Lighting" for i in range(3))
+    assert all(params[f"r{i}_after_board"] == "MB-1" for i in range(3))

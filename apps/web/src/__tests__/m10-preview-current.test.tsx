@@ -276,25 +276,36 @@ function Panel({
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function moved(): ConfigurationOutcome {
+function entry(i: number, values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).map(([k, v]) => [`r${String(i)}_${k}`, v]));
+}
+
+const C1 = {
+  binding: 'bind-1',
+  field: 'circuit',
+  key: '',
+  id: 'c1',
+  before: 'Lighting',
+  after: 'Heater',
+  before_board: 'MB-1',
+  after_board: 'MB-1',
+  before_circuit: 'c1',
+  after_circuit: 'c1',
+  token: 'tttttttttttttttttttttttt',
+};
+
+function moved(extra: Record<string, string>[] = []): ConfigurationOutcome {
+  const all = [C1, ...extra];
   return {
     kind: 'refused',
     detail: 'the configuration cannot be applied',
     code: 'configuration_refused',
     params: {
       refusal: 'reference_moved',
-      binding: 'bind-1',
-      field: 'circuit',
-      key: '',
+      ...C1,
       ref: 'c1',
-      before: 'Lighting',
-      after: 'Heater',
-      before_board: 'MB-1',
-      after_board: 'MB-1',
-      before_circuit: 'c1',
-      after_circuit: 'c1',
-      token: 'tttttttttttttttttttttttt',
-      moved: 'bind-1|circuit||c1|tttttttttttttttttttttttt',
+      moved_count: String(all.length),
+      ...(Object.assign({}, ...all.map((values, i) => entry(i, values))) as Record<string, string>),
     },
   };
 }
@@ -444,8 +455,7 @@ describe('M10 preview of the current inputs', () => {
   });
   it('a device slot that moved links to its field, kept or chosen', async () => {
     const slotMoved = moved() as { params: Record<string, string> };
-    Object.assign(slotMoved.params, { field: 'slot', key: 'src', ref: 'comp-ka' });
-    slotMoved.params.moved = 'bind-1|slot|src|comp-ka|tttttttttttttttttttttttt';
+    Object.assign(slotMoved.params, { r0_field: 'slot', r0_key: 'src', r0_id: 'comp-ka' });
     const validate = vi.fn<Validate>(() => Promise.resolve(slotMoved as ConfigurationOutcome));
     renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
     fireEvent.click(screen.getByTestId('binding-preview-run'));
@@ -523,5 +533,30 @@ describe('M10 preview of the current inputs', () => {
     expect(
       (at(validate.mock.calls, 0)[0] as { requirementsInput?: unknown }).requirementsInput,
     ).toBe(given);
+  });
+
+  it('says what keeping means for every reference, and how many more there are', async () => {
+    const cable = {
+      ...C1,
+      field: 'cable',
+      id: 'c2-cable',
+      before: 'Pump',
+      before_board: 'SB-1',
+      before_circuit: 'c2',
+      after: 'Fan',
+      after_circuit: 'c2',
+      token: 'uuuuuuuuuuuuuuuuuuuuuuuu',
+    };
+    const refused = moved([cable]) as { params: Record<string, string> };
+    refused.params.moved_count = '5';
+    const validate = vi.fn<Validate>(() => Promise.resolve(refused as ConfigurationOutcome));
+    renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    await act(async () => {
+      await tick();
+    });
+    const means = screen.getAllByTestId('binding-moved-means').map((n) => n.textContent);
+    expect(means[1]).toContain('“Fan” (c2 on MB-1) instead of “Pump” (c2 on SB-1)');
+    expect(screen.getByTestId('configuration-moved-more').textContent).toContain('3 more');
   });
 });

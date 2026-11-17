@@ -559,43 +559,34 @@ function side(load?: string, board?: string, circuit?: string) {
   return load !== undefined && board !== undefined ? { load, board, circuit: circuit ?? '' } : null;
 }
 
-/** The references a ``reference_moved`` refusal names (``moved``: ``b|field|key|id|token;…``). */
+/** The references a ``reference_moved`` refusal names, each in full (``r{i}_*``). */
 export function movedOf(params: Record<string, string> | undefined): MovedReference[] {
   if (params === undefined) return [];
   const out: MovedReference[] = [];
-  const isFirst = (binding: string, field: string, id: string) =>
-    binding === params.binding && field === params.field && id === params.ref;
-  // The list can be cut short by the server's parameter bound: an entry without its
-  // token is dropped (it cannot be confirmed); the first is always named in full.
-  for (const entry of (params.moved ?? '').split(';')) {
-    const [binding, field, key, id, token] = entry.split('|');
-    if (!binding || !id || !token || token.length < 24) continue;
+  for (let i = 0; params[`r${String(i)}_binding`] !== undefined; i += 1) {
+    const at = (name: string) => params[`r${String(i)}_${name}`];
+    const binding = at('binding');
+    const field = at('field');
+    const id = at('id');
+    const token = at('token');
+    if (!binding || !id || !token) continue;
     if (field !== 'circuit' && field !== 'cable' && field !== 'slot') continue;
-    const first = isFirst(binding, field, id);
+    const key = at('key');
     out.push({
       binding,
       field,
       key: key ? key : null,
       id,
-      token: first && params.token ? params.token : token,
-      before: first ? side(params.before, params.before_board, params.before_circuit) : null,
-      after: first ? side(params.after, params.after_board, params.after_circuit) : null,
+      token,
+      before: side(at('before'), at('before_board'), at('before_circuit')),
+      after: side(at('after'), at('after_board'), at('after_circuit')),
     });
   }
-  const field = params.field;
-  const named = out.some((m) => isFirst(m.binding, m.field, m.id));
-  if (!named && params.binding && params.ref && params.token) {
-    if (field === 'circuit' || field === 'cable' || field === 'slot') {
-      out.unshift({
-        binding: params.binding,
-        field,
-        key: params.key ? params.key : null,
-        id: params.ref,
-        token: params.token,
-        before: side(params.before, params.before_board, params.before_circuit),
-        after: side(params.after, params.after_board, params.after_circuit),
-      });
-    }
-  }
   return out;
+}
+
+/** How many unproven references the refusal found (more than it names in full, at times). */
+export function movedCountOf(params: Record<string, string> | undefined): number {
+  const count = Number(params?.moved_count ?? '0');
+  return Number.isFinite(count) ? count : 0;
 }

@@ -18,6 +18,7 @@ import {
 } from '@/components/design/configuration-model';
 import {
   choicesOf,
+  movedCountOf,
   movedOf,
   type BoardChoices,
   type MovedReference,
@@ -209,7 +210,11 @@ export function ConfigurationPanel({
     boards: BoardChoices[];
   } | null>(null);
   // References the server found moved (from a preview, a validation or a save refusal).
-  const [moved, setMoved] = useState<{ key: string; refs: MovedReference[] } | null>(null);
+  const [moved, setMoved] = useState<{
+    key: string;
+    refs: MovedReference[];
+    count: number;
+  } | null>(null);
   const requestKey = JSON.stringify(currentRequest);
   const currentKey = useRef(serialized);
   currentKey.current = serialized;
@@ -227,7 +232,11 @@ export function ConfigurationPanel({
       // Only an answer for the configuration as it is now clears what was found moved.
       if (forKey === currentKey.current) setMoved(null);
     } else if (result.kind === 'refused' && result.params?.refusal === 'reference_moved') {
-      setMoved({ key: forKey, refs: movedOf(result.params) });
+      setMoved({
+        key: forKey,
+        refs: movedOf(result.params),
+        count: movedCountOf(result.params),
+      });
     }
   }
 
@@ -355,7 +364,11 @@ export function ConfigurationPanel({
     if (externalRefusal !== null) setOutcome(refusalText(externalRefusal));
     // A save refused for a moved reference: say it beside the binding, as a preview does.
     if (externalRefusal?.params?.refusal === 'reference_moved') {
-      setMoved({ key: serialized, refs: movedOf(externalRefusal.params) });
+      setMoved({
+        key: serialized,
+        refs: movedOf(externalRefusal.params),
+        count: movedCountOf(externalRefusal.params),
+      });
     }
   }
 
@@ -501,6 +514,11 @@ export function ConfigurationPanel({
             </ul>
           </span>
         </Notice>
+      )}
+      {moved !== null && moved.key === serialized && moved.count > moved.refs.length && (
+        <p className="text-xs" role="status" data-testid="configuration-moved-more">
+          {t('moved.more', { count: String(moved.count - moved.refs.length) })}
+        </p>
       )}
       <ConfigurationEditor
         value={doc}

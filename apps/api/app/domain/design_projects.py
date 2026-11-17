@@ -1518,6 +1518,18 @@ def _reference_baseline(row: DesignRevisionRow | None) -> _ReferenceBaseline | N
     return _ReferenceBaseline(design=design, request=row.request)
 
 
+def _linked_boards(stored_read: Any | None) -> frozenset[str]:
+    """M7a: the boards whose feeder a v3 revision records by a link (not an open item)."""
+    if stored_read is None:
+        return frozenset()
+    return frozenset(
+        board.name
+        for link in stored_read.links
+        for board in stored_read.project.boards
+        if board.id == link.feeder.fed_board
+    )
+
+
 def _check_save_input(
     request: ProjectDesignRequest, requirements_input: RequirementsInput | None
 ) -> None:
@@ -1594,16 +1606,7 @@ def _add_revision(
     designed = stored_read.project if stored_read is not None else None
     # M7a: in a v3 revision, a feeder with a link is recorded by the link and
     # its findings, not by the open item ``inter_board_wiring_not_modelled``.
-    linked = (
-        frozenset(
-            board.name
-            for link in stored_read.links
-            for board in stored_read.project.boards
-            if board.id == link.feeder.fed_board
-        )
-        if stored_read is not None
-        else frozenset()
-    )
+    linked = _linked_boards(stored_read)
     proposal = None
     ai_block = None
     if requirements_input is not None and requirements_input.ai is not None:
@@ -2836,7 +2839,13 @@ def _validate_current(
         )
     # The record a save builds, built and discarded: its refusals are a save's refusals.
     requirements.build(
-        current, read.project, findings, given, prior=prior, ai=ai_block, linked=frozenset()
+        current,
+        read.project,
+        findings,
+        given,
+        prior=prior,
+        ai=ai_block,
+        linked=_linked_boards(read),
     )
     written = _written_schema()
     return ConfigurationReview(

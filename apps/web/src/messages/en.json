@@ -2482,7 +2482,8 @@
       "help": "Circuit, cable and device ids follow the order of loads and boards, so inserting, removing, moving or renaming changes what an id names. A reference is accepted only when the load it names now is the same in every entered detail as when it was saved. Nothing is changed for you: choose again, or keep the id explicitly.",
       "meansNamed": "Keeping {id} means this binding connects to “{after}” ({afterCircuit} on {afterBoard}) instead of “{before}” ({beforeCircuit} on {beforeBoard}). Its wire details stay exactly as entered; they are not checked for the new load. Any later change to either load asks again.",
       "means": "Keeping {id} means this binding uses it for the load it names now. Its wire details stay exactly as entered; they are not checked for that load. Any later change asks again.",
-      "unknownLoad": "a load not in the saved design"
+      "unknownLoad": "a load not in the saved design",
+      "more": "{count} more reference(s) are not proven either; they are named once these are settled."
     }
   },
   "feederLink": {

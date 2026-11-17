@@ -497,14 +497,28 @@ def _labeller(model: entities.DesignModelV2) -> Any:
 _REF_KINDS = ("circuit", "cable", "device")
 
 
-def _entered_loads(request: Any) -> dict[str, list[Any]]:
-    """Each board's loads as entered (JSON values), by board name; ``{}`` if unreadable."""
+def _entered_boards(request: Any) -> dict[str, dict[str, Any]]:
+    """Each board as entered (JSON values), by name; ``{}`` if the request cannot be read.
+
+    ``loads`` are its loads; ``board`` is the rest of it, without its name and loads.
+    """
     try:
         if isinstance(request, Mapping):
             request = ProjectDesignRequest.model_validate(request)
-        return {b.name: [load.model_dump(mode="json") for load in b.loads] for b in request.boards}
+        return {
+            b.name: {
+                "loads": [load.model_dump(mode="json") for load in b.loads],
+                "board": b.model_dump(mode="json", exclude={"name", "loads"}),
+            }
+            for b in request.boards
+        }
     except (PydanticValidationError, AttributeError, TypeError):
         return {}
+
+
+def _entered_loads(request: Any) -> dict[str, list[Any]]:
+    """Each board's loads as entered (JSON values), by board name; ``{}`` if unreadable."""
+    return {name: board["loads"] for name, board in _entered_boards(request).items()}
 
 
 def _device_role(device_id: str, circuit_id: str) -> str:
@@ -512,7 +526,9 @@ def _device_role(device_id: str, circuit_id: str) -> str:
     return device_id[len(circuit_id) + 1 :] if device_id.startswith(circuit_id + "-") else device_id
 
 
-def _owners(project: Any, request: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
+def _owners(
+    project: Any, request: Any, side: str = ""
+) -> dict[tuple[str, str, str], tuple[str, str, str]]:
     """Each circuit, cable and device of a v1 design: ``(label, fingerprint, circuit)``.
 
     Circuit ids are positional (``c2`` is the second load, the server's feeders
@@ -524,8 +540,15 @@ def _owners(project: Any, request: Any) -> dict[tuple[str, str, str], tuple[str,
     board's position; and the binding context the design gives it (its devices'
     roles and whether it has a cable). Two loads with equal fingerprints are
     indistinguishable in the model.
+
+    A board's own devices are owners too: an incomer by the board as entered
+    (all but its name and loads) and its position, and any other device (a
+    residual current group, ``g1-rcd``, positional as well) by its kind and the
+    fingerprints of the circuits it feeds. What cannot be read gets a
+    fingerprint tagged with ``side``, so it never proves anything.
     """
-    entered = _entered_loads(request)
+    entered_boards = _entered_boards(request)
+    entered = {name: board["loads"] for name, board in entered_boards.items()}
     position = {b.id: at for at, b in enumerate(getattr(project, "boards", None) or [])}
     owners: dict[tuple[str, str, str], tuple[str, str, str]] = {}
     for board in getattr(project, "boards", None) or []:
@@ -538,7 +561,7 @@ def _owners(project: Any, request: Any) -> dict[tuple[str, str, str], tuple[str,
             elif loads is not None and 0 <= index < len(loads):
                 what = ["load", loads[index]]
             else:
-                what = ["unknown", circuit.id]  # never equal to anything proven
+                what = ["unknown", side, circuit.id]  # never equal across sides
             context = [
                 sorted(_device_role(d, circuit.id) for d in circuit.device_ids or []),
                 circuit.cable_id is not None,
@@ -550,6 +573,28 @@ def _owners(project: Any, request: Any) -> dict[tuple[str, str, str], tuple[str,
                 owners[(board.id, "cable", circuit.cable_id)] = mark
             for device in circuit.device_ids or []:
                 owners[(board.id, "device", device)] = mark
+        circuit_marks = {c.id: owners[(board.id, "circuit", c.id)][1] for c in board.circuits or []}
+        meta = entered_boards.get(board.id, {}).get("board")
+        board_mark: Any = (
+            ["board", meta, position.get(board.id)] if meta is not None else ["unknown", side]
+        )
+        incomers = list(getattr(board, "incomer_ids", None) or [])
+        for device in getattr(board, "devices", None) or []:
+            if (board.id, "device", device.id) in owners:
+                continue
+            kind = getattr(getattr(device, "kind", None), "value", str(getattr(device, "kind", "")))
+            if device.id in incomers:
+                what = ["incomer", kind, incomers.index(device.id), board_mark]
+            else:
+                fed = sorted(
+                    circuit_marks[c.id]
+                    for c in board.circuits or []
+                    if getattr(c, "upstream_id", None) == device.id
+                )
+                what = ["board_device", kind, fed, board_mark]
+            label = getattr(device, "description", None) or device.id
+            fingerprint = json.dumps(what, sort_keys=True, default=str)
+            owners[(board.id, "device", device.id)] = (label, fingerprint, device.id)
     return owners
 
 
@@ -615,8 +660,8 @@ def moved_references(
         if isinstance(old, Mapping) and isinstance(old.get("id"), str):
             for field, key, _kind, ref in _refs(old):
                 saved[(old["id"], field, key)] = (old.get("board"), ref)
-    before = _owners(baseline, baseline_request)
-    after = _owners(current, current_request)
+    before = _owners(baseline, baseline_request, "before")
+    after = _owners(current, current_request, "after")
     kept = {
         (
             str(c.get("binding")),
@@ -665,6 +710,10 @@ def moved_references(
                 }
             )
     return moved
+
+
+#: How many unproven references a refusal names in full.
+MOVED_IN_FULL = 20
 
 
 def check_references(
@@ -718,6 +767,14 @@ def check_references(
         moved=";".join(
             f"{m['binding']}|{m['field']}|{m['key']}|{m['id']}|{m['token']}" for m in moved
         ),
+        moved_count=str(len(moved)),
+        # Each reference in full (to the first MOVED_IN_FULL), so the editor can say what
+        # keeping each one means; the rest are named again once these are settled.
+        **{
+            f"r{i}_{name}": value
+            for i, entry in enumerate(moved[:MOVED_IN_FULL])
+            for name, value in entry.items()
+        },
     )
 
 
