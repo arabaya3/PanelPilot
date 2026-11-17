@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
+from app.design import cable_core_audit
 from app.design.model import read, versions
 from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixtures)
     _app,
@@ -36,6 +37,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     revision_row,
 )
 from app.tests.design.model import m7a_support
+from app.tests.design.model.pinned import codec_v2_2122d17 as old_codec
 from app.tests.domain import review_support
 from app.tests.domain.test_m7b_configuration_db import (  # noqa: F401  (fixtures)
     V3,
@@ -53,6 +55,18 @@ from app.tests.domain.test_m9d_binding_reuse_db import _completed, _reused, _two
 @pytest.fixture(autouse=True)
 def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
     review_support.author_revisions_as_another_member(monkeypatch)
+
+
+@pytest.fixture
+def cross_board(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The write gate on (DESIGN_CABLE_CORE_CROSS_BOARD=true), as once every reader is upgraded."""
+    monkeypatch.setenv("DESIGN_CABLE_CORE_CROSS_BOARD", "true")
+
+
+@pytest.fixture
+def gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default: the write gate off, whatever the environment of the test run says."""
+    monkeypatch.setenv("DESIGN_CABLE_CORE_CROSS_BOARD", "false")
 
 
 def _cabled(cable_mb: str | None, cable_sb: str | None) -> dict[str, Any]:
@@ -81,7 +95,7 @@ def _cores(model: dict[str, Any]) -> list[tuple[str, str, int]]:
 
 
 def test_core_1_of_c1_cable_on_two_boards_is_two_cores(
-    client: TestClient, switch: Switch, engine: Engine
+    client: TestClient, switch: Switch, engine: Engine, cross_board: None
 ) -> None:
     project_id = _project(client, switch)
     config = _cabled("c1-cable", "c1-cable")
@@ -150,7 +164,7 @@ def test_a_cable_the_bindings_board_does_not_have_is_refused(
 
 
 def test_the_stored_reader_refuses_a_core_twice_on_one_boards_cable(
-    client: TestClient, switch: Switch, engine: Engine
+    client: TestClient, switch: Switch, engine: Engine, cross_board: None
 ) -> None:
     """The reader's own rule: a stored model repeating a core on the same board's cable."""
     project_id = _project(client, switch)
@@ -176,7 +190,7 @@ def test_the_stored_reader_refuses_a_core_twice_on_one_boards_cable(
 
 
 def test_the_stored_reader_refuses_a_core_on_a_cable_its_board_lacks(
-    client: TestClient, switch: Switch, engine: Engine
+    client: TestClient, switch: Switch, engine: Engine, cross_board: None
 ) -> None:
     """A stored SB-1 core pointed at MB-1's c2-cable (which SB-1 has none of) is refused."""
     project_id = _project(client, switch)
@@ -197,7 +211,7 @@ def test_the_stored_reader_refuses_a_core_on_a_cable_its_board_lacks(
 
 
 def test_reuse_with_the_same_cable_id_is_approved_by_another_member_in_its_tenant(
-    client: TestClient, switch: Switch, caller: _Caller, tenants: tuple[str, str]
+    client: TestClient, switch: Switch, caller: _Caller, tenants: tuple[str, str], cross_board: None
 ) -> None:
     project_id = _project(client, switch)
     saved = _revise(
@@ -211,3 +225,90 @@ def test_reuse_with_the_same_cable_id_is_approved_by_another_member_in_its_tenan
     assert client.get(f"/design/projects/{project_id}", params={"revision": 3}).status_code == 404
     assert revision_export(client, project_id, 3, "connection_drawing_pdf").status_code == 404
     caller.user = owner
+
+
+# --------------------------------------------------------------------------- #
+# The write gate (DESIGN_CABLE_CORE_CROSS_BOARD), off by default
+# --------------------------------------------------------------------------- #
+
+
+def test_by_default_the_cross_board_case_is_refused_on_preview_and_save_alike(
+    client: TestClient, switch: Switch, gate_off: None
+) -> None:
+    project_id = _project(client, switch)
+    config = _cabled("c1-cable", "c1-cable")
+    for response in (
+        _validate(client, project_id, config),
+        _revise(client, project_id, m7a_support.request(), configuration=config),
+    ):
+        assert response.status_code == 422, response.text[:400]
+        body = response.json()
+        assert body["code"] == "configuration_refused", body
+        params = body["params"]
+        assert params["refusal"] == "core_shared_cable_id", params
+        assert (params["binding"], params["cable"], params["core"], params["other_board"]) == (
+            "bind-1-SB-1",
+            "c1-cable",
+            "1",
+            "MB-1",
+        )
+    assert _count(client, project_id) == 2
+
+
+def test_by_default_different_cables_and_same_board_rules_are_unchanged(
+    client: TestClient, switch: Switch, gate_off: None
+) -> None:
+    project_id = _project(client, switch)
+    # Different cable ids on the two boards: saved, gate or not (this is what main allowed).
+    config = _cabled("c2-cable", "c1-cable")
+    saved = _revise(client, project_id, m7a_support.request(), configuration=config)
+    assert saved.status_code == 201, saved.text[:600]
+
+
+def test_turning_the_gate_off_again_refuses_new_writes_and_keeps_written_revisions_readable(
+    client: TestClient, switch: Switch, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_id = _project(client, switch)
+    config = _cabled("c1-cable", "c1-cable")
+    monkeypatch.setenv("DESIGN_CABLE_CORE_CROSS_BOARD", "true")
+    assert (
+        _revise(client, project_id, m7a_support.request(), configuration=config).status_code == 201
+    )
+    stored = revision_row(engine, project_id, 3)
+    monkeypatch.setenv("DESIGN_CABLE_CORE_CROSS_BOARD", "false")
+    # A resave of the same configuration is refused, and nothing is saved.
+    refused = _revise(client, project_id, m7a_support.request(), configuration=config)
+    assert refused.status_code == 422, refused.text[:400]
+    assert refused.json()["params"]["refusal"] == "core_shared_cable_id"
+    assert _count(client, project_id) == 3
+    # The revision written while it was on still reads, exports and keeps its hash.
+    assert _opened(client, project_id, 3)["model_v2"] is not None
+    assert revision_export(client, project_id, 3, "connection_drawing_pdf").status_code == 200
+    assert revision_row(engine, project_id, 3)["snapshot_sha256"] == stored["snapshot_sha256"]
+    # A reader from before the board-qualified rule refuses it (never misreads it).
+    with pytest.raises(versions.SnapshotUnreadableError, match="a core makes two connections"):
+        old_codec.parse_model(
+            {k: v for k, v in stored["design_snapshot"]["model"].items() if k != "links"}
+        )
+    # The audit names it.
+    found = cable_core_audit.audit([(project_id, 3, stored["design_snapshot"])])
+    assert found == [f"{project_id} r3: c1-cable#1 on MB-1, SB-1"]
+
+
+def test_the_audit_finds_nothing_in_revisions_written_with_the_gate_off(
+    client: TestClient, switch: Switch, engine: Engine, gate_off: None
+) -> None:
+    project_id = _project(client, switch)
+    saved = _revise(
+        client, project_id, m7a_support.request(), configuration=_cabled("c2-cable", "c1-cable")
+    )
+    assert saved.status_code == 201, saved.text[:600]
+    rows = [
+        (project_id, n, revision_row(engine, project_id, n)["design_snapshot"]) for n in (1, 2, 3)
+    ]
+    assert cable_core_audit.audit(rows) == []
+    # And a reader from before the board-qualified rule reads what was written with the gate off.
+    for _, _, snapshot in rows:
+        if snapshot.get("schema") in ("pp-design/2", "pp-design/3"):
+            model = {k: v for k, v in snapshot["model"].items() if k != "links"}
+            assert old_codec.parse_model(model) is not None

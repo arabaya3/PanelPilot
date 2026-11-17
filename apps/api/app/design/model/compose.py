@@ -243,7 +243,16 @@ def _ordered_pattern(raw: Any) -> Any:
 
 
 class _Composer:
-    def __init__(self, design_v1: dict[str, Any], configuration: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        design_v1: dict[str, Any],
+        configuration: Mapping[str, Any],
+        *,
+        cross_board_cores: bool = False,
+    ) -> None:
+        self.cross_board_cores = cross_board_cores
+        # (cable id, index) -> the first board that used it, for the write gate.
+        self.core_boards: dict[tuple[str, int], str] = {}
         self.design_json = copy.deepcopy(design_v1)
         self.design = codec_v2.parse_design(self.design_json)
         self.boards = {b.id: b for b in self.design.boards}
@@ -849,6 +858,19 @@ class _Composer:
                     cable=cable.id,
                 )
             self.cores.add((board.id, cable.id, index_))
+            # The write gate: the same cable id and core on another board is two cores (readers
+            # from now on accept it), but older readers refuse such a revision. Refused until the
+            # deployment turns it on; never renamed or moved to another cable.
+            first = self.core_boards.setdefault((cable.id, index_), board.id)
+            if first != board.id and not self.cross_board_cores:
+                _refuse(
+                    "core_shared_cable_id",
+                    "the same cable id and core on two boards is not saved by this deployment yet",
+                    binding=bid,
+                    cable=cable.id,
+                    core=str(index_),
+                    other_board=first,
+                )
             core = {"cable_id": cable.id, "index": index_, "label": raw.get("label")}
         elif raw.get("core") is not None or raw.get("label") is not None:
             _refuse("pattern_invalid", "only a cable core connection names a core", role=role)
@@ -957,13 +979,21 @@ class _Composer:
         return payload
 
 
-def compose(design_v1: dict[str, Any], configuration: Mapping[str, Any]) -> dict[str, Any]:
+def compose(
+    design_v1: dict[str, Any],
+    configuration: Mapping[str, Any],
+    *,
+    cross_board_cores: bool = False,
+) -> dict[str, Any]:
     """The v2 payload of a designed v1 snapshot under a configuration.
 
     Args:
         design_v1: The bare v1 snapshot (``DesignProject`` JSON as stored). Not changed.
         configuration: Templates, patterns, strips, components and bindings,
             as data (see the module docstring).
+        cross_board_cores: Whether the same cable id and core may be used on
+            two boards (``DESIGN_CABLE_CORE_CROSS_BOARD``); refused
+            (``core_shared_cable_id``) when not.
 
     Returns:
         The canonical v2 ``model`` payload; :func:`codec_v2.parse_model` accepts it.
@@ -973,4 +1003,4 @@ def compose(design_v1: dict[str, Any], configuration: Mapping[str, Any]) -> dict
             contradictory or not supported (see its ``code``).
         SnapshotUnreadableError: If ``design_v1`` is not a stored v1 design.
     """
-    return _Composer(design_v1, configuration).run()
+    return _Composer(design_v1, configuration, cross_board_cores=cross_board_cores).run()

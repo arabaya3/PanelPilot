@@ -746,6 +746,30 @@ describe('M9b2: cable cores in a binding', () => {
     );
   });
 
+  it('a save the server does not allow yet (same cable id and core on two boards) says so', () => {
+    const refusal: Refusal = {
+      kind: 'refused',
+      detail: 'the configuration cannot be applied',
+      code: 'configuration_refused',
+      params: {
+        refusal: 'core_shared_cable_id',
+        binding: 'bind-1',
+        cable: 'c1-cable',
+        core: '1',
+        other_board: 'SB-1',
+      },
+    };
+    renderApp(
+      <Harness validateImpl={vi.fn()} initial={bound('c1-cable')} externalRefusal={refusal} />,
+      { locale: 'en', theme: 'light' },
+    );
+    const entry = screen.getByTestId('binding-entry');
+    expect(entry.getAttribute('data-conflict')).toBe('true');
+    expect(within(entry).getByTestId('binding-refused-core').textContent).toBe(
+      B.refusedCore.core_shared_cable_id,
+    );
+  });
+
   it('a cable the open design cannot check yet is not called gone', () => {
     function Undesigned() {
       const [value, setValue] = useState<Record<string, unknown>>(bound('cab-1'));

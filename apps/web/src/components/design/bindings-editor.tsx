@@ -429,7 +429,9 @@ function BindingRow({
         </p>
       )}
       {conflicted &&
-        (conflict.reason === 'core_out_of_range' || conflict.reason === 'core_reused') && (
+        (conflict.reason === 'core_out_of_range' ||
+          conflict.reason === 'core_reused' ||
+          conflict.reason === 'core_shared_cable_id') && (
           <p className="text-xs" data-testid="binding-refused-core">
             {t(`bindings.refusedCore.${conflict.reason}`)}
           </p>

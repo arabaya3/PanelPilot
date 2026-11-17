@@ -52,19 +52,64 @@ board, and a connection exactly one net.
   readable only by this reader or later. Reader and writer are deployed
   together; an older reader refuses such a snapshot as unreadable (it never
   misreads it). This is the one forward-compatibility effect.
-- **Deployment and rollback.** Deploy the reader with (or before) the writer;
-  they ship in one artifact. Once a revision uses the same cable id and core on
-  two boards, rolling back past this change makes that revision unreadable to
-  the older code (refused, never misread), including its exports and approval
-  view. If rollback or a mixed-version fleet must stay possible, the
-  alternative is an explicit version marker or a writer flag; this change does
-  not add one.
 - **Renderers unchanged** (no renderer version change): the connection drawing
   prints each core as held (`cable c1-cable core 1, core label …`) beside its
   own board's terminals, as before. The wire schedule does not print cores.
   The API's review row keeps its `cable#index` form; the board is its net's.
 
-## 4. Unchanged
+## 4. Write gate, deployment and rollback
+
+The reader above accepts a cable id and core on two boards, but a reader from
+before this change refuses such a revision. Rather than accept that as a
+deployment limitation, writing such a revision is **gated**:
+
+- `DESIGN_CABLE_CORE_CROSS_BOARD` (server setting, **false by default**), read on
+  each call like `DESIGN_SNAPSHOT_SCHEMA`. It gates **writing** only; such
+  revisions are always read.
+- Enforced in `design_configuration.compose_snapshot`, the one place every
+  revision (save, revise, resave, answer-generated revisions through
+  `_add_revision`) and every server preview (`configuration/validate`) is
+  composed. With it off, the composer refuses the second board's use of the
+  same cable id and core: `configuration_refused`, refusal
+  `core_shared_cable_id`, naming the `binding`, `cable`, `core` and
+  `other_board`; nothing is saved, and the preview refuses exactly as the save
+  would. The editor says so beside the binding (it is a server setting, not an
+  input error); the draft keeps the edit through a reload. Nothing is renamed,
+  moved to another cable or repaired.
+- With it off, every revision written is readable by the older reader
+  (`app/tests/design/model/pinned/codec_v2_2122d17.py`, the pre-change reader,
+  checks this in the tests).
+
+Why a gate and not a version marker: a marker (a new snapshot schema or a
+capability field) would not make older readers able to read the new revisions
+either: they would refuse them by marker instead of by rule. It would also
+need a new envelope, reader, writer and renderer-version work. The gate keeps
+the existing schema and makes the incompatible case impossible to write until
+an operator decides every reader can read it.
+
+**Limit of the gate.** It preserves rollback only while no such revision has
+been written. Once it is on and such a revision exists, older readers refuse
+that revision (its view, exports and approval page); they never misread it.
+The gate does not make older readers compatible afterwards.
+
+**Procedure.**
+
+1. Deploy this version everywhere with the gate off (the default). Mixed old and
+   new readers are fine: nothing they cannot read is written.
+2. When no older reader remains in service and rollback past this version is
+   no longer planned, set `DESIGN_CABLE_CORE_CROSS_BOARD=true`.
+3. Before any rollback past this version (or running older readers against the
+   database), run the read-only audit:
+   `python -m app.design.cable_core_audit` (same `DATABASE_URL` as the API). It
+   prints project ids, revision numbers and the cable/core found on two boards,
+   and exits 1 if any exist, 0 if none. If none: rollback is safe. If some:
+   rolling back makes exactly those revisions unreadable to the older code;
+   there is no automatic downgrade and historical records are not rewritten.
+4. Turning the gate off again stops new such revisions (a resave of one is
+   refused) but leaves those already written as they are, readable by this
+   version.
+
+## 5. Unchanged
 
 Wire details, electrical values and connections (nothing is invented), tenant
 isolation, review anchoring, execution export blocked, restricted formats
