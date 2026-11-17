@@ -149,10 +149,17 @@ jobs:
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
           # Proving the production-shaped image still builds is the whole point;
-          # nothing is pushed or loaded.
+          # nothing is pushed. The web runner is loaded so its contents can be checked.
           push: false
+          load: ${{ matrix.image == 'web' }}
+          tags: panelpilot-${{ matrix.image }}:ci
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Check the shipped runner image (exception GHSA-fc5q-39xc-vjpf)
+        if: matrix.image == 'web'
+        # Fails if @parcel/watcher or its picomatch reaches the runner image the
+        # exception relies on it not shipping in; lists every picomatch copy.
+        run: scripts/security/check-runner-image.sh panelpilot-web:ci
 
   api-integration:
     name: api (integration)
@@ -663,9 +670,15 @@ jobs:
         # in the image; an advisory with no patched release there (braces,
         # GHSA-vfj7-8cjw-p6xm) must not block every merge. Runtime
         # dependencies are still audited at high.
+        #
+        # The gate runs exactly that audit and passes only when it is clean or when every
+        # finding is the one an owner-approved, unexpired record in security/exceptions/
+        # describes (advisory, package, version, path and chain); anything else, an audit
+        # service failure or a patched release becoming available fails. Its tests run first.
         run: |
           npm ci
-          npm audit --omit=dev --audit-level=high
+          node --test scripts/security/npm-audit-gate.test.mjs
+          node scripts/security/npm-audit-gate.mjs
 
   # Single required status check to protect main with — it turns green only
   # when every job above succeeded, so adding a check needs no branch
