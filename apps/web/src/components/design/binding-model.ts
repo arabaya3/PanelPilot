@@ -548,39 +548,52 @@ export type MovedReference = {
   field: 'circuit' | 'cable' | 'slot';
   key: string | null;
   id: string;
-  /** The loads before and after, where the server named them (the first moved one). */
-  before: string | null;
-  after: string | null;
+  /** What a confirmation is bound to: this reference with its exact before and after. */
+  token: string;
+  /** What it named when saved and names now, where the server named them (the first one). */
+  before: { load: string; board: string; circuit: string } | null;
+  after: { load: string; board: string; circuit: string } | null;
 };
 
-/** The moved references a ``reference_moved`` refusal names (``moved``: ``b|field|key|id;…``). */
+function side(load?: string, board?: string, circuit?: string) {
+  return load !== undefined && board !== undefined ? { load, board, circuit: circuit ?? '' } : null;
+}
+
+/** The references a ``reference_moved`` refusal names (``moved``: ``b|field|key|id|token;…``). */
 export function movedOf(params: Record<string, string> | undefined): MovedReference[] {
   if (params === undefined) return [];
   const out: MovedReference[] = [];
+  const isFirst = (binding: string, field: string, id: string) =>
+    binding === params.binding && field === params.field && id === params.ref;
+  // The list can be cut short by the server's parameter bound: an entry without its
+  // token is dropped (it cannot be confirmed); the first is always named in full.
   for (const entry of (params.moved ?? '').split(';')) {
-    const [binding, field, key, id] = entry.split('|');
-    if (!binding || !id || (field !== 'circuit' && field !== 'cable' && field !== 'slot')) continue;
-    const first = binding === params.binding && field === params.field && id === params.ref;
+    const [binding, field, key, id, token] = entry.split('|');
+    if (!binding || !id || !token || token.length < 24) continue;
+    if (field !== 'circuit' && field !== 'cable' && field !== 'slot') continue;
+    const first = isFirst(binding, field, id);
     out.push({
       binding,
       field,
       key: key ? key : null,
       id,
-      before: first ? (params.before ?? null) : null,
-      after: first ? (params.after ?? null) : null,
+      token: first && params.token ? params.token : token,
+      before: first ? side(params.before, params.before_board, params.before_circuit) : null,
+      after: first ? side(params.after, params.after_board, params.after_circuit) : null,
     });
   }
-  // The list can be cut short by the server's parameter bound: the first is always named.
-  if (out.length === 0 && params.binding && params.ref) {
-    const field = params.field;
+  const field = params.field;
+  const named = out.some((m) => isFirst(m.binding, m.field, m.id));
+  if (!named && params.binding && params.ref && params.token) {
     if (field === 'circuit' || field === 'cable' || field === 'slot') {
-      out.push({
+      out.unshift({
         binding: params.binding,
         field,
         key: params.key ? params.key : null,
         id: params.ref,
-        before: params.before ?? null,
-        after: params.after ?? null,
+        token: params.token,
+        before: side(params.before, params.before_board, params.before_circuit),
+        after: side(params.after, params.after_board, params.after_circuit),
       });
     }
   }

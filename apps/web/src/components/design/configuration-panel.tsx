@@ -37,6 +37,7 @@ import {
   type ConfigurationOutcome,
   type ConfigurationReview,
   type ProjectDesignRequest,
+  type RequirementsInput,
   type ConfigurationStatus,
   type DesignFinding,
   type Refusal,
@@ -132,6 +133,7 @@ export function ConfigurationPanel({
   linkUses = [],
   boardChoices = null,
   currentRequest = null,
+  currentRequirementsInput = null,
   confirmed = [],
   onConfirm,
   jumpToConflict = 0,
@@ -172,6 +174,8 @@ export function ConfigurationPanel({
    * form cannot be sent (incomplete): then the latest saved revision's is used, as before.
    */
   currentRequest?: ProjectDesignRequest | null;
+  /** The guided input a save would send with ``currentRequest``; checked as a save checks it. */
+  currentRequirementsInput?: RequirementsInput | null;
   /** References the user keeps for the load now at their position (sent, never stored). */
   confirmed?: ConfirmedReference[];
   onConfirm?: ((entry: ConfirmedReference) => void) | undefined;
@@ -186,10 +190,17 @@ export function ConfigurationPanel({
   const doc = normalized(value);
   // What a preview or validation answers: the configuration and the load schedule (and the
   // confirmations) as they are now; any change makes an earlier answer outdated.
-  const inputsKey = JSON.stringify({ request: currentRequest, confirmed });
+  const inputsKey = JSON.stringify({
+    request: currentRequest,
+    requirements: currentRequirementsInput,
+    confirmed,
+  });
   const serialized = `${JSON.stringify(doc)}|${inputsKey}`;
   const sent = {
     ...(currentRequest !== null ? { request: currentRequest } : {}),
+    ...(currentRequest !== null && currentRequirementsInput !== null
+      ? { requirementsInput: currentRequirementsInput }
+      : {}),
     ...(confirmed.length > 0 ? { referencesConfirmed: confirmed } : {}),
   };
   // M10: circuit and cable choices from the server's design of the current inputs.

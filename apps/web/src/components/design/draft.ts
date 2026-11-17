@@ -91,6 +91,8 @@ export type ConfirmedReference = {
   field: 'circuit' | 'cable' | 'slot';
   key: string | null;
   id: string;
+  /** The refusal's token: binds the confirmation to the exact before and after. */
+  token: string;
 };
 
 export type ConfigurationDraft = {
@@ -104,10 +106,12 @@ function confirmedOf(value: unknown): ConfirmedReference[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item: unknown) => {
     if (!isFields(item)) return [];
-    const { binding, field, key, id } = item;
+    const { binding, field, key, id, token } = item;
     if (typeof binding !== 'string' || typeof id !== 'string') return [];
+    // An older draft's confirmation has no token: it is bound to nothing, so it is dropped.
+    if (typeof token !== 'string' || token === '') return [];
     if (field !== 'circuit' && field !== 'cable' && field !== 'slot') return [];
-    return [{ binding, field, key: typeof key === 'string' ? key : null, id }];
+    return [{ binding, field, key: typeof key === 'string' ? key : null, id, token }];
   });
 }
 

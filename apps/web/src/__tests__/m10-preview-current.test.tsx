@@ -289,7 +289,12 @@ function moved(): ConfigurationOutcome {
       ref: 'c1',
       before: 'Lighting',
       after: 'Heater',
-      moved: 'bind-1|circuit||c1',
+      before_board: 'MB-1',
+      after_board: 'MB-1',
+      before_circuit: 'c1',
+      after_circuit: 'c1',
+      token: 'tttttttttttttttttttttttt',
+      moved: 'bind-1|circuit||c1|tttttttttttttttttttttttt',
     },
   };
 }
@@ -372,6 +377,7 @@ describe('M10 preview of the current inputs', () => {
       field: 'circuit',
       key: null,
       id: 'c1',
+      token: 'tttttttttttttttttttttttt',
     });
     await act(async () => {
       await tick();
@@ -415,7 +421,13 @@ describe('M10 preview of the current inputs', () => {
   });
 
   it('confirmations travel with the draft through a reload', () => {
-    const kept = { binding: 'bind-1', field: 'circuit', key: null, id: 'c1' };
+    const kept = {
+      binding: 'bind-1',
+      field: 'circuit',
+      key: null,
+      id: 'c1',
+      token: 'tttttttttttttttttttttttt',
+    };
     const parsed = parseConfiguration({ doc: BOUND, dropUnrecoverable: false, confirmed: [kept] });
     expect(parsed?.confirmed).toEqual([kept]);
     expect(parseConfiguration({ doc: BOUND, dropUnrecoverable: false })?.confirmed).toBeUndefined();
@@ -423,11 +435,17 @@ describe('M10 preview of the current inputs', () => {
       parseConfiguration({ doc: BOUND, dropUnrecoverable: false, confirmed: [{ id: 'x' }] })
         ?.confirmed,
     ).toBeUndefined();
+    // A confirmation from before tokens is bound to nothing: dropped, so it is asked again.
+    const { token: _token, ...untokened } = kept;
+    expect(
+      parseConfiguration({ doc: BOUND, dropUnrecoverable: false, confirmed: [untokened] })
+        ?.confirmed,
+    ).toBeUndefined();
   });
   it('a device slot that moved links to its field, kept or chosen', async () => {
     const slotMoved = moved() as { params: Record<string, string> };
     Object.assign(slotMoved.params, { field: 'slot', key: 'src', ref: 'comp-ka' });
-    slotMoved.params.moved = 'bind-1|slot|src|comp-ka';
+    slotMoved.params.moved = 'bind-1|slot|src|comp-ka|tttttttttttttttttttttttt';
     const validate = vi.fn<Validate>(() => Promise.resolve(slotMoved as ConfigurationOutcome));
     renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
     fireEvent.click(screen.getByTestId('binding-preview-run'));
@@ -456,5 +474,54 @@ describe('M10 preview of the current inputs', () => {
       await tick();
     });
     expect(screen.getByTestId('binding-moved')).toBeTruthy();
+  });
+
+  it('says what keeping means: the old and the new target, wire details not checked', async () => {
+    const validate = vi.fn<Validate>(() => Promise.resolve(moved()));
+    renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    await act(async () => {
+      await tick();
+    });
+    const means = screen.getByTestId('binding-moved-means').textContent;
+    expect(means).toContain('“Heater” (c1 on MB-1)');
+    expect(means).toContain('instead of “Lighting” (c1 on MB-1)');
+    expect(means).toContain('not checked for the new load');
+  });
+
+  it('sends the guided input a save would send, and says a preview is not a save', async () => {
+    const given = { entry_method: 'manual', control: [] } as never;
+    const validate = vi.fn<Validate>(() => Promise.resolve(reviewed('7')));
+    function WithInput() {
+      const [value, setValue] = useState<Record<string, unknown>>(BOUND);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1', 'SB-1']}
+          model={null}
+          boardChoices={BOARDS}
+          currentRequest={REQUEST}
+          currentRequirementsInput={given}
+          confirmed={[]}
+          onConfirm={vi.fn()}
+          onUnauthorized={vi.fn()}
+          validateImpl={validate as never}
+        />
+      );
+    }
+    renderApp(<WithInput />, { locale: 'en', theme: 'light' });
+    expect(screen.getByTestId('binding-preview-not-save').textContent).toBe(B.previewNotSave);
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    await act(async () => {
+      await tick();
+    });
+    expect(
+      (at(validate.mock.calls, 0)[0] as { requirementsInput?: unknown }).requirementsInput,
+    ).toBe(given);
   });
 });

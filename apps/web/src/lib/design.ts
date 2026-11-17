@@ -867,16 +867,18 @@ export function validateConfiguration(
     configuration: Record<string, unknown>;
     /** The load schedule as the editor holds it now; omitted, the latest revision's. */
     request?: ProjectDesignRequest | null;
+    requirementsInput?: RequirementsInput | null;
     referencesConfirmed?: ReferenceConfirmation[];
   },
 ): Promise<ConfigurationOutcome> {
-  const { id, configuration, request, referencesConfirmed } = options;
+  const { id, configuration, request, requirementsInput, referencesConfirmed } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/configuration/validate`,
     {
       configuration,
       ...(request ? { request } : {}),
+      ...(request && requirementsInput ? { requirements_input: requirementsInput } : {}),
       ...(referencesConfirmed && referencesConfirmed.length > 0
         ? { references_confirmed: referencesConfirmed }
         : {}),

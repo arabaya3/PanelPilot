@@ -27,11 +27,14 @@ including a template with a ``restricted_scope``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
+
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core import config
 from app.core.errors import ValidationError
@@ -39,6 +42,7 @@ from app.design.model import entities, findings_v2, schedules, versions
 from app.design.model.compose import CompositionRefusedError
 from app.design.model.write import snapshot_v2_from_v1
 from app.models.schemas.design import (
+    ProjectDesignRequest,
     V2Component,
     V2Connection,
     V2Definition,
@@ -493,32 +497,54 @@ def _labeller(model: entities.DesignModelV2) -> Any:
 _REF_KINDS = ("circuit", "cable", "device")
 
 
-def _board_positions(project: Any) -> dict[str, int]:
-    """Each board's position in a v1 design (a board's id is its name, which can be renamed)."""
-    return {board.id: at for at, board in enumerate(getattr(project, "boards", None) or [])}
+def _entered_loads(request: Any) -> dict[str, list[Any]]:
+    """Each board's loads as entered (JSON values), by board name; ``{}`` if unreadable."""
+    try:
+        if isinstance(request, Mapping):
+            request = ProjectDesignRequest.model_validate(request)
+        return {b.name: [load.model_dump(mode="json") for load in b.loads] for b in request.boards}
+    except (PydanticValidationError, AttributeError, TypeError):
+        return {}
 
 
-def _owners(
-    project: Any, saved_name: Mapping[str, str] | None = None
-) -> dict[tuple[str, str, str], tuple[str, str, str]]:
-    """Each circuit, cable and device of a v1 design, with the load it belongs to.
+def _device_role(device_id: str, circuit_id: str) -> str:
+    """``c2-breaker`` -> ``breaker``: what the device is to its circuit."""
+    return device_id[len(circuit_id) + 1 :] if device_id.startswith(circuit_id + "-") else device_id
 
-    Circuit ids are positional (``c2``), and so are their cables (``c2-cable``)
-    and devices (``c2-breaker``): the same id after a load is inserted, removed
-    or moved can name another load. A load is told apart by what the user
-    entered for it: its description, its kind and the board it feeds.
+
+def _owners(project: Any, request: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
+    """Each circuit, cable and device of a v1 design: ``(label, fingerprint, circuit)``.
+
+    Circuit ids are positional (``c2`` is the second load, the server's feeders
+    after the entered loads), and so are their cables and devices: after a load
+    is inserted, removed or moved, the same id can name another load. The
+    fingerprint is everything that tells the load apart in the model: every
+    field entered for it (description, kind, power, phases, power factor,
+    control, starter, length) or, for a feeder, the board it feeds and that
+    board's position; and the binding context the design gives it (its devices'
+    roles and whether it has a cable). Two loads with equal fingerprints are
+    indistinguishable in the model.
     """
+    entered = _entered_loads(request)
+    position = {b.id: at for at, b in enumerate(getattr(project, "boards", None) or [])}
     owners: dict[tuple[str, str, str], tuple[str, str, str]] = {}
     for board in getattr(project, "boards", None) or []:
+        loads = entered.get(board.id)
         for circuit in board.circuits or []:
-            load = getattr(circuit.load, "value", str(circuit.load))
+            number = circuit.id[1:]
+            index = int(number) - 1 if number.isdigit() else -1
             if circuit.feeds:
-                # A feeder is the server's, named after the board it feeds: it is the same
-                # feeder while it feeds the same board, followed through a rename.
-                fed = (saved_name or {}).get(circuit.feeds, circuit.feeds)
-                mark = ("", "feeder", fed)
+                what: Any = ["feeder", circuit.feeds, position.get(circuit.feeds)]
+            elif loads is not None and 0 <= index < len(loads):
+                what = ["load", loads[index]]
             else:
-                mark = (circuit.description, load, "")
+                what = ["unknown", circuit.id]  # never equal to anything proven
+            context = [
+                sorted(_device_role(d, circuit.id) for d in circuit.device_ids or []),
+                circuit.cable_id is not None,
+            ]
+            fingerprint = json.dumps([what, context], sort_keys=True, default=str)
+            mark = (circuit.description, fingerprint, circuit.id)
             owners[(board.id, "circuit", circuit.id)] = mark
             if circuit.cable_id:
                 owners[(board.id, "cable", circuit.cable_id)] = mark
@@ -540,34 +566,46 @@ def _refs(binding: Mapping[str, Any]) -> list[tuple[str, str, str, Any]]:
     return refs
 
 
+def reference_token(
+    binding: str, field: str, key: str, ref: str, before: tuple[str, str], after: tuple[str, str]
+) -> str:
+    """What a confirmation is bound to: the reference and its exact before and after.
+
+    ``before`` and ``after`` are ``(board, fingerprint)``. Any later change to
+    either load, the board or the reference gives another token, so an earlier
+    confirmation no longer applies.
+    """
+    body = json.dumps([binding, field, key, ref, list(before), list(after)], sort_keys=True)
+    return hashlib.sha256(body.encode()).hexdigest()[:24]
+
+
 def moved_references(
     baseline: Any,
     current: Any,
     configuration: Mapping[str, Any],
     confirmed: Sequence[Mapping[str, Any]] = (),
     baseline_configuration: Mapping[str, Any] | None = None,
+    *,
+    baseline_request: Any = None,
+    current_request: Any = None,
 ) -> list[dict[str, str]]:
-    """Binding references whose id now names another load than when last saved.
+    """Binding references whose id is not proven to name what it named when last saved.
 
-    Only a reference the user did not change can move silently: one whose binding
-    names the same id on the same board as in ``baseline_configuration`` (the
-    configuration saved with ``baseline``). A reference the user changed, or a
-    binding new since, was chosen against the current choices; the composer
-    checks it as before.
-
-    Args:
-        baseline: The v1 design the configuration was last saved with.
-        current: The v1 design of the request being previewed or saved.
-        configuration: The configuration (its ``bindings``).
-        confirmed: ``{binding, field, key, id}`` the user keeps for the load now there.
-        baseline_configuration: The configuration saved with ``baseline``; ``None``
-            when none was saved (then nothing has moved).
+    Checked: each reference whose id is the same as in ``baseline_configuration``
+    (the configuration saved with ``baseline``), whether or not its binding's
+    board changed. It is proven only when the load the id names now has the same
+    fingerprint (:func:`_owners`) as the load it named then, on the board the
+    binding named then. Otherwise (another load, a reordered, swapped, renamed
+    or deleted board, a stored request that cannot be read) it is refused until
+    the user chooses again or confirms it with its token. A reference whose id
+    the user changed, a binding new since, or one with nothing saved is chosen
+    against the current choices; the composer checks it as before.
 
     Returns:
-        One entry per moved reference not confirmed: ``binding``, ``field``
+        One entry per unproven reference not confirmed: ``binding``, ``field``
         (``circuit``, ``cable`` or ``slot``), ``key`` (the slot, or ``""``),
-        ``id``, ``before`` and ``after`` (the loads' descriptions). An id that
-        is new, gone (the composer refuses it) or names the same load is not one.
+        ``id``, ``before`` and ``after`` (descriptions), ``before_board``,
+        ``after_board``, ``before_circuit``, ``after_circuit`` and ``token``.
     """
     if baseline_configuration is None:
         return []
@@ -577,20 +615,16 @@ def moved_references(
         if isinstance(old, Mapping) and isinstance(old.get("id"), str):
             for field, key, _kind, ref in _refs(old):
                 saved[(old["id"], field, key)] = (old.get("board"), ref)
-    # A board renamed since the last save: its saved name is gone and, at its position, a
-    # name that was not saved before. Anything else (a swap, a chain, a deletion) is not
-    # followed: a binding on such a board counts as changed by the user.
-    was_at = _board_positions(baseline)
-    now_named = {at: name for name, at in _board_positions(current).items()}
-    renamed = {
-        name: now_named[at]
-        for name, at in was_at.items()
-        if at in now_named and name not in now_named.values() and now_named[at] not in was_at
-    }
-    before = _owners(baseline)
-    after = _owners(current, {now: was for was, now in renamed.items()})
+    before = _owners(baseline, baseline_request)
+    after = _owners(current, current_request)
     kept = {
-        (str(c.get("binding")), str(c.get("field")), str(c.get("key") or ""), str(c.get("id")))
+        (
+            str(c.get("binding")),
+            str(c.get("field")),
+            str(c.get("key") or ""),
+            str(c.get("id")),
+            str(c.get("token")),
+        )
         for c in confirmed
     }
     moved: list[dict[str, str]] = []
@@ -603,13 +637,17 @@ def moved_references(
             if not isinstance(ref, str) or not isinstance(board, str):
                 continue
             was_board, was_ref = saved.get((bid, field, key), (None, None))
-            # Unchanged: the same id on the same board, or on the board it was renamed to.
-            if was_ref != ref or renamed.get(was_board, was_board) != board:
+            if was_ref != ref or not isinstance(was_board, str):
                 continue  # changed by the user, or new: chosen against the current choices
             was, now = before.get((was_board, kind, ref)), after.get((board, kind, ref))
-            if was is None or now is None or was == now:
-                continue
-            if (bid, field, key, ref) in kept:
+            if now is None:
+                continue  # gone: the composer refuses it (unknown reference)
+            if was is not None and was[1] == now[1]:
+                continue  # proven: the same load, indistinguishable in the model
+            token = reference_token(
+                bid, field, key, ref, (was_board, was[1] if was else ""), (board, now[1])
+            )
+            if (bid, field, key, ref, token) in kept:
                 continue
             moved.append(
                 {
@@ -617,15 +655,16 @@ def moved_references(
                     "field": field,
                     "key": key,
                     "id": ref,
-                    "before": was[0] or _feeder_label(was),
-                    "after": now[0] or _feeder_label(now),
+                    "before": was[0] if was else "",
+                    "after": now[0],
+                    "before_board": was_board,
+                    "after_board": board,
+                    "before_circuit": was[2] if was else "",
+                    "after_circuit": now[2],
+                    "token": token,
                 }
             )
     return moved
-
-
-def _feeder_label(mark: tuple[str, str, str]) -> str:
-    return f"feeder to {mark[2]}" if mark[2] else "feeder"
 
 
 def check_references(
@@ -634,30 +673,51 @@ def check_references(
     configuration: Mapping[str, Any],
     confirmed: Sequence[Mapping[str, Any]] = (),
     baseline_configuration: Mapping[str, Any] | None = None,
+    *,
+    baseline_request: Any = None,
+    current_request: Any = None,
 ) -> None:
-    """Refuse a configuration a load-schedule change would silently re-attach.
+    """Refuse a configuration whose unchanged references are not proven to name the same load.
 
     Raises:
         ValidationError: ``configuration_refused``, refusal ``reference_moved``,
-            naming the first moved reference (``binding``, ``field``, ``key``,
-            ``ref``, ``before``, ``after``) and all of them in ``moved``
-            (``binding|field|key|id`` joined by ``;``).
+            naming the first unproven reference in full (``binding``, ``field``,
+            ``key``, ``ref``, ``before``, ``after``, ``before_board``,
+            ``after_board``, ``before_circuit``, ``after_circuit``, ``token``)
+            and all of them in ``moved`` (``binding|field|key|id|token`` joined
+            by ``;``, within the parameter bound).
     """
-    moved = moved_references(baseline, current, configuration, confirmed, baseline_configuration)
+    moved = moved_references(
+        baseline,
+        current,
+        configuration,
+        confirmed,
+        baseline_configuration,
+        baseline_request=baseline_request,
+        current_request=current_request,
+    )
     if not moved:
         return
     first = moved[0]
     raise _refused(
         "reference_moved",
-        f"binding {first['binding']} names {first['id']}, which is now "
-        f"{first['after']!r} (it was {first['before']!r}); choose again or confirm it",
+        f"binding {first['binding']} names {first['id']} on {first['after_board']}, which is "
+        f"not proven to be the load it named when saved ({first['before']!r} on "
+        f"{first['before_board']}; now {first['after']!r}); choose again or confirm it",
         binding=first["binding"],
         field=first["field"],
         key=first["key"],
         ref=first["id"],
         before=first["before"],
         after=first["after"],
-        moved=";".join(f"{m['binding']}|{m['field']}|{m['key']}|{m['id']}" for m in moved),
+        before_board=first["before_board"],
+        after_board=first["after_board"],
+        before_circuit=first["before_circuit"],
+        after_circuit=first["after_circuit"],
+        token=first["token"],
+        moved=";".join(
+            f"{m['binding']}|{m['field']}|{m['key']}|{m['id']}|{m['token']}" for m in moved
+        ),
     )
 
 

@@ -605,6 +605,11 @@ function DesignWorkspace({
   // References the user keeps for the load now at their position after the load schedule
   // changed (sent with the preview and the save; never stored; kept in the draft).
   const [confirmed, setConfirmed] = useState<ConfirmedReference[]>([]);
+  /** The guided input a save sends now; a preview of the same request sends the same. */
+  function currentRequirementsInput() {
+    const plain = requirementsInputOf(boards, controlNeeds);
+    return aiOpen ? aiRequirementsInput(plain, boards, controlNeeds, aiControlTags, aiOpen) : plain;
+  }
   // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
   const [conflictJump, setConflictJump] = useState(0);
   /**
@@ -1940,15 +1945,7 @@ function DesignWorkspace({
                             }
                           : {}),
                         ...(confirmed.length > 0 ? { referencesConfirmed: confirmed } : {}),
-                        requirementsInput: aiOpen
-                          ? aiRequirementsInput(
-                              requirementsInputOf(boards, controlNeeds),
-                              boards,
-                              controlNeeds,
-                              aiControlTags,
-                              aiOpen,
-                            )
-                          : requirementsInputOf(boards, controlNeeds),
+                        requirementsInput: currentRequirementsInput(),
                       }
                     : null
                 }
@@ -2632,6 +2629,9 @@ function DesignWorkspace({
                   boardChoices={boardChoices}
                   currentRequest={
                     complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
+                  }
+                  currentRequirementsInput={
+                    complete && parsed !== 'invalid' ? currentRequirementsInput() : null
                   }
                   confirmed={confirmed}
                   onConfirm={(entry) => {

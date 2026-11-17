@@ -195,6 +195,11 @@ function BindingPreview({
       <p className="text-xs text-text-muted" data-testid="binding-preview-label">
         {t(current ? 'bindings.previewLabelCurrent' : 'bindings.previewLabel')}
       </p>
+      {current && (
+        <p className="text-xs text-text-muted" data-testid="binding-preview-not-save">
+          {t('bindings.previewNotSave')}
+        </p>
+      )}
       <button
         type="button"
         className={wrapButton('secondary') + ' self-start'}
@@ -527,11 +532,24 @@ function BindingRow({
                       ? t('moved.named', {
                           field: label,
                           id: ref.id,
-                          before: ref.before,
-                          after: ref.after,
+                          before: ref.before.load,
+                          after: ref.after.load,
                         })
                       : t('moved.unnamed', { field: label, id: ref.id })}
                   </button>
+                  <p className="text-xs" dir="auto" data-testid="binding-moved-means">
+                    {ref.after !== null
+                      ? t('moved.meansNamed', {
+                          id: ref.id,
+                          after: ref.after.load,
+                          afterCircuit: ref.after.circuit,
+                          afterBoard: ref.after.board,
+                          before: ref.before?.load ?? t('moved.unknownLoad'),
+                          beforeCircuit: ref.before?.circuit ?? ref.id,
+                          beforeBoard: ref.before?.board ?? ref.after.board,
+                        })
+                      : t('moved.means', { id: ref.id })}
+                  </p>
                   {onConfirm && (
                     <button
                       type="button"
@@ -542,6 +560,7 @@ function BindingRow({
                           field: ref.field,
                           key: ref.key,
                           id: ref.id,
+                          token: ref.token,
                         });
                         announce(t('moved.kept', { id: ref.id, field: label }));
                         focusLater(target);
@@ -549,7 +568,7 @@ function BindingRow({
                       data-testid="binding-moved-keep"
                     >
                       {ref.after !== null
-                        ? t('moved.keepNamed', { id: ref.id, after: ref.after })
+                        ? t('moved.keepNamed', { id: ref.id, after: ref.after.load })
                         : t('moved.keep', { id: ref.id })}
                     </button>
                   )}

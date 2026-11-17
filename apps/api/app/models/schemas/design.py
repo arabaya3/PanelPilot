@@ -1622,19 +1622,24 @@ class ReferenceConfirmation(StrictModel):
     ``c2-breaker``): when the load at that position is another load than when
     the configuration was last saved, the reference is refused as
     ``reference_moved`` until the user chooses another or confirms this one for
-    the load now there. Sent with the request it applies to; never stored.
+    the load now there. Sent with the request it applies to; never stored. A
+    confirmation applies only with the ``token`` the refusal gave: it binds the
+    reference to the exact load it named and the exact load it names now, so any
+    later change to either refuses it again.
 
     Attributes:
         binding: The binding's id.
         field: ``circuit``, ``cable`` or ``slot`` (a slot filled by a design device).
         key: The slot id for ``slot``, else ``None``.
         id: The circuit, cable or device id confirmed.
+        token: The refusal's ``token`` for this reference.
     """
 
     binding: str = Field(min_length=1, max_length=100)
     field: Literal["circuit", "cable", "slot"]
     key: str | None = Field(default=None, max_length=100)
     id: str = Field(min_length=1, max_length=100)
+    token: str = Field(min_length=1, max_length=64)
 
 
 class ConfigurationValidateRequest(StrictModel):
@@ -1646,10 +1651,13 @@ class ConfigurationValidateRequest(StrictModel):
             save sends; designed and composed exactly as a save would. ``None``
             (the default, as before) uses the latest revision's request.
         references_confirmed: As for ``ReviseProjectRequest``.
+        requirements_input: The guided input a save would send with
+            ``request`` (checked as a save checks it; nothing is applied).
     """
 
     configuration: dict[str, Any]
     request: ProjectDesignRequest | None = None
+    requirements_input: RequirementsInput | None = None
     references_confirmed: list[ReferenceConfirmation] = Field(default_factory=list, max_length=500)
 
 
@@ -1890,6 +1898,10 @@ class ConfigurationReview(BaseModel):
             revision's.
         boards: Each board's circuits and cables in that design, for the
             editor's choices.
+        checked_at_save_only: What a save checks that a preview cannot settle,
+            because it depends on state at the moment of saving (empty for a
+            preview of the latest revision). A preview is never a guarantee
+            that the save will succeed.
     """
 
     based_on_revision: int
@@ -1901,6 +1913,9 @@ class ConfigurationReview(BaseModel):
     model: V2ModelSummary
     from_current_request: bool = False
     boards: list[ReviewBoardChoices] = Field(default_factory=list)
+    checked_at_save_only: list[
+        Literal["revision_conflict", "revision_limit", "ai_proposal_use", "access"]
+    ] = Field(default_factory=list)
 
 
 class RevisionSummary(BaseModel):

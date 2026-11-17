@@ -1,4 +1,10 @@
-"""Which binding references moved with the load schedule (pure; SYNTHETIC stand-ins)."""
+"""Which binding references are not proven to name what they named (pure; SYNTHETIC stand-ins).
+
+A reference is proven only when the load its id names has the same fingerprint as the
+load it named when saved: every entered field, or the fed board for a feeder, and the
+binding context the design gives it. Anything else is refused until chosen again or
+confirmed with its token.
+"""
 
 from __future__ import annotations
 
@@ -10,160 +16,254 @@ import pytest
 from app.core.errors import ValidationError
 from app.domain import design_configuration as dc
 
+Load = dict[str, Any]
 
-def _design(*circuits: tuple[str, str, str | None]) -> Any:
-    """MB-1 with circuits c1.. in order: (description, load kind, feeds)."""
-    return SimpleNamespace(
-        boards=[
-            SimpleNamespace(
-                id="MB-1",
-                circuits=[
-                    SimpleNamespace(
-                        id=f"c{i}",
-                        description=d,
-                        load=k,
-                        feeds=f,
-                        cable_id=f"c{i}-cable",
-                        device_ids=[f"c{i}-breaker"],
-                    )
-                    for i, (d, k, f) in enumerate(circuits, start=1)
-                ],
-                cables=[],
-            )
+
+def _load(description: str, kind: str = "socket", power: str = "1") -> Load:
+    return {"description": description, "load": kind, "power_kw": power}
+
+
+LIGHT = _load("Lighting", "lighting")
+HEAT = _load("Heater", "socket", "1.5")
+
+
+def _side(*boards: tuple[str, list[Load], list[str]]) -> tuple[Any, dict[str, Any]]:
+    """A v1 design and the request it was designed from.
+
+    Each board is ``(name, entered loads, boards it feeds)``; the feeders come after
+    the entered loads, as the server appends them.
+    """
+    design_boards = []
+    request_boards = []
+    fed_from = {child: name for name, _l, children in boards for child in children}
+    for name, loads, children in boards:
+        rows: list[tuple[str, str, str | None]] = [
+            (load["description"], load["load"], None) for load in loads
         ]
-    )
+        rows += [(f"Feeder to {child}", "sub_board", child) for child in children]
+        circuits = [
+            SimpleNamespace(
+                id=f"c{i}",
+                description=description,
+                load=kind,
+                feeds=feeds,
+                cable_id=f"c{i}-cable",
+                device_ids=[f"c{i}-breaker"],
+            )
+            for i, (description, kind, feeds) in enumerate(rows, start=1)
+        ]
+        design_boards.append(SimpleNamespace(id=name, circuits=circuits))
+        board: dict[str, Any] = {"name": name, "loads": loads}
+        if name in fed_from:
+            board["fed_from"] = fed_from[name]
+        request_boards.append(board)
+    request = {"info": {"name": "SYNTHETIC"}, "boards": request_boards}
+    return SimpleNamespace(boards=design_boards), request
 
 
-LIGHT, HEAT = ("Lighting", "lighting", None), ("Heater", "socket", None)
-
-
-def _config(circuit: str | None = "c1", cable: str | None = None, device: str | None = None) -> Any:
+def _config(
+    board: str = "MB-1",
+    circuit: str | None = "c1",
+    cable: str | None = None,
+    device: str | None = None,
+) -> Any:
     slots = {"q": {"device": device}} if device else {}
     return {
         "bindings": [
-            {"id": "b1", "board": "MB-1", "circuit": circuit, "cable": cable, "slots": slots}
+            {"id": "b1", "board": board, "circuit": circuit, "cable": cable, "slots": slots}
         ]
     }
 
 
-def test_an_unchanged_reference_to_another_load_now_is_moved() -> None:
-    moved = dc.moved_references(_design(LIGHT), _design(HEAT, LIGHT), _config(), (), _config())
-    assert moved == [
-        {
-            "binding": "b1",
-            "field": "circuit",
-            "key": "",
-            "id": "c1",
-            "before": "Lighting",
-            "after": "Heater",
-        }
-    ]
+def _moved(
+    before: tuple[Any, Any],
+    after: tuple[Any, Any],
+    config: Any,
+    saved: Any = None,
+    confirmed: Any = (),
+) -> list[dict[str, str]]:
+    return dc.moved_references(
+        before[0],
+        after[0],
+        config,
+        confirmed,
+        _config() if saved is None else saved,
+        baseline_request=before[1],
+        current_request=after[1],
+    )
+
+
+def _confirm(entry: dict[str, str]) -> dict[str, Any]:
+    return {k: entry[k] for k in ("binding", "field", "key", "id", "token")}
+
+
+def test_the_stand_in_request_reads_as_a_request() -> None:
+    # Otherwise every test below would pass for the wrong reason (nothing proven).
+    assert dc._entered_loads(_side(("MB-1", [LIGHT], []))[1])["MB-1"][0]["description"] == (
+        "Lighting"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Loads
+# --------------------------------------------------------------------------- #
+
+
+def test_an_unchanged_reference_to_another_load_now_is_refused() -> None:
+    moved = _moved(_side(("MB-1", [LIGHT], [])), _side(("MB-1", [HEAT, LIGHT], [])), _config())
+    assert [(m["id"], m["before"], m["after"]) for m in moved] == [("c1", "Lighting", "Heater")]
+    assert (moved[0]["before_board"], moved[0]["after_board"]) == ("MB-1", "MB-1")
+    assert moved[0]["token"]
 
 
 def test_cables_and_design_devices_move_with_their_circuit() -> None:
     config = _config(circuit=None, cable="c1-cable", device="c1-breaker")
-    moved = dc.moved_references(_design(LIGHT), _design(HEAT, LIGHT), config, (), config)
+    moved = _moved(_side(("MB-1", [LIGHT], [])), _side(("MB-1", [HEAT, LIGHT], [])), config, config)
     assert [(m["field"], m["key"], m["id"]) for m in moved] == [
         ("cable", "", "c1-cable"),
         ("slot", "q", "c1-breaker"),
     ]
 
 
-def test_appended_unchanged_changed_by_the_user_or_new_are_not_moves() -> None:
-    assert dc.moved_references(_design(LIGHT), _design(LIGHT, HEAT), _config(), (), _config()) == []
-    # The user chose c2 against the current choices: not silent.
-    assert (
-        dc.moved_references(_design(LIGHT), _design(HEAT, LIGHT), _config("c2"), (), _config())
-        == []
-    )
-    # Nothing saved before: nothing has moved.
-    assert dc.moved_references(_design(LIGHT), _design(HEAT), _config(), (), None) == []
-    # The binding is new since the last save.
-    assert dc.moved_references(_design(LIGHT), _design(HEAT), _config(), (), {"bindings": []}) == []
+def test_appended_changed_by_the_user_or_new_are_not_checked() -> None:
+    light = _side(("MB-1", [LIGHT], []))
+    assert _moved(light, _side(("MB-1", [LIGHT, HEAT], [])), _config()) == []
+    swapped = _side(("MB-1", [HEAT, LIGHT], []))
+    # The user chose c2 against the current choices.
+    assert _moved(light, swapped, _config(circuit="c2")) == []
+    # Nothing saved before; or the binding is new since.
+    assert dc.moved_references(light[0], swapped[0], _config(), (), None) == []
+    assert _moved(light, swapped, _config(), {"bindings": []}) == []
     # Gone: the composer refuses it (unknown reference), not this check.
-    assert dc.moved_references(_design(LIGHT), _design(), _config(), (), _config()) == []
+    assert _moved(light, _side(("MB-1", [], [])), _config()) == []
 
 
-def test_a_confirmation_keeps_exactly_its_reference() -> None:
-    kept = [{"binding": "b1", "field": "circuit", "key": None, "id": "c1"}]
-    assert dc.moved_references(_design(LIGHT), _design(HEAT), _config(), kept, _config()) == []
-    other = [{"binding": "b1", "field": "cable", "key": None, "id": "c1"}]
-    assert dc.moved_references(_design(LIGHT), _design(HEAT), _config(), other, _config()) != []
-
-
-def test_check_references_refuses_naming_every_moved_reference() -> None:
-    config = _config(cable="c1-cable")
-    with pytest.raises(ValidationError) as refused:
-        dc.check_references(_design(LIGHT), _design(HEAT), config, (), config)
-    params = refused.value.params
-    assert params["refusal"] == "reference_moved"
-    assert (params["binding"], params["field"], params["ref"]) == ("b1", "circuit", "c1")
-    assert params["moved"] == "b1|circuit||c1;b1|cable||c1-cable"
-
-
-def _boards(*boards: tuple[str, list[tuple[str, str, str | None]]]) -> Any:
-    """Boards in order, each with its circuits c1.. (description, load kind, feeds)."""
-    return SimpleNamespace(
-        boards=[
-            SimpleNamespace(
-                id=name,
-                circuits=[
-                    SimpleNamespace(
-                        id=f"c{i}",
-                        description=d,
-                        load=k,
-                        feeds=f,
-                        cable_id=f"c{i}-cable",
-                        device_ids=[f"c{i}-breaker"],
-                    )
-                    for i, (d, k, f) in enumerate(circuits, start=1)
-                ],
-                cables=[],
-            )
-            for name, circuits in boards
-        ]
+def test_same_description_and_kind_is_not_proof_of_the_same_load() -> None:
+    small, large = _load("Sockets", "socket", "1"), _load("Sockets", "socket", "2.5")
+    moved = _moved(
+        _side(("MB-1", [small, large], [])), _side(("MB-1", [large, small], [])), _config()
     )
+    assert [(m["before"], m["after"]) for m in moved] == [("Sockets", "Sockets")]
 
 
-def _on(board: str, circuit: str = "c1") -> Any:
-    return {"bindings": [{"id": "b1", "board": board, "circuit": circuit, "slots": {}}]}
+def test_an_identical_swap_is_indistinguishable_and_accepted() -> None:
+    one = _load("Sockets", "socket", "1")
+    # Every entered field and the binding context are equal: the model cannot tell them apart.
+    before = _side(("MB-1", [one, dict(one)], []))
+    after = _side(("MB-1", [dict(one), one], []))
+    assert _moved(before, after, _config()) == []
 
 
-def test_a_board_renamed_with_a_moved_load_is_still_moved() -> None:
-    before = _boards(("MB-1", [LIGHT]))
-    after = _boards(("MB-9", [HEAT, LIGHT]))
-    # The binding follows the rename (its board changed with it): its c1 is now Heater.
-    moved = dc.moved_references(before, after, _on("MB-9"), (), _on("MB-1"))
-    assert [(m["id"], m["before"], m["after"]) for m in moved] == [("c1", "Lighting", "Heater")]
-    # The rename alone moves nothing.
-    assert (
-        dc.moved_references(before, _boards(("MB-9", [LIGHT])), _on("MB-9"), (), _on("MB-1")) == []
-    )
+def test_a_changed_binding_context_is_refused() -> None:
+    before = _side(("MB-1", [LIGHT], []))
+    after = _side(("MB-1", [LIGHT], []))
+    after[0].boards[0].circuits[0].device_ids = ["c1-breaker", "c1-contactor"]
+    assert len(_moved(before, after, _config())) == 1
 
 
-def test_a_feeder_is_the_same_while_it_feeds_the_same_board_followed_through_a_rename() -> None:
-    feeder = ("Feeder to SB-1", "feeder", "SB-1")
-    renamed = ("Feeder to SB-2", "feeder", "SB-2")
-    before = _boards(("MB-1", [feeder]), ("SB-1", []))
-    after = _boards(("MB-1", [renamed]), ("SB-2", []))
-    assert dc.moved_references(before, after, _on("MB-1"), (), _on("MB-1")) == []
-    # A load inserted before the feeder: c1 is no longer the feeder.
-    shifted = _boards(("MB-1", [HEAT, renamed]), ("SB-2", []))
-    moved = dc.moved_references(before, shifted, _on("MB-1"), (), _on("MB-1"))
-    assert [(m["before"], m["after"]) for m in moved] == [("feeder to SB-1", "Heater")]
+# --------------------------------------------------------------------------- #
+# Boards
+# --------------------------------------------------------------------------- #
+
+
+def test_a_renamed_board_is_proven_only_where_its_loads_are() -> None:
+    before = _side(("MB-1", [LIGHT], []))
+    # The binding is re-pointed to the renamed board: c1 is still the same entered load.
+    assert _moved(before, _side(("MB-9", [LIGHT], [])), _config("MB-9")) == []
+    # Renamed and a load inserted: c1 on MB-9 is Heater, not Lighting.
+    moved = _moved(before, _side(("MB-9", [HEAT, LIGHT], [])), _config("MB-9"))
+    assert [(m["before_board"], m["after_board"], m["after"]) for m in moved] == [
+        ("MB-1", "MB-9", "Heater")
+    ]
+
+
+def test_swapped_board_names_are_refused() -> None:
+    before = _side(("MB-1", [LIGHT], []), ("MB-2", [HEAT], []))
+    after = _side(("MB-1", [HEAT], []), ("MB-2", [LIGHT], []))
+    moved = _moved(before, after, _config("MB-1"), _config("MB-1"))
+    assert [(m["before"], m["after"]) for m in moved] == [("Lighting", "Heater")]
+
+
+def test_a_rename_chain_is_refused_where_the_load_differs() -> None:
+    # A -> B while B -> C: the binding re-pointed to B keeps c1, now another load.
+    before = _side(("A", [LIGHT], []), ("B", [HEAT], []))
+    after = _side(("B", [_load("Pump", "motor")], []), ("C", [HEAT], []))
+    moved = _moved(before, after, _config("B"), _config("A"))
+    assert [(m["before_board"], m["after_board"]) for m in moved] == [("A", "B")]
+
+
+def test_a_deleted_board_leaves_a_re_pointed_reference_unproven() -> None:
+    before = _side(("A", [LIGHT], []), ("B", [HEAT], []))
+    after = _side(("B", [HEAT], []))
+    # Re-pointed from deleted A to B with the same id: c1 on B is not the load c1 on A was.
+    assert len(_moved(before, after, _config("B"), _config("A"))) == 1
 
 
 def test_reordered_fed_boards_move_their_feeders() -> None:
-    to2, to3 = ("Feeder to SB-2", "feeder", "SB-2"), ("Feeder to SB-3", "feeder", "SB-3")
-    before = _boards(("MB-1", [to2, to3]), ("SB-2", []), ("SB-3", []))
-    after = _boards(("MB-1", [to3, to2]), ("SB-3", []), ("SB-2", []))
-    moved = dc.moved_references(before, after, _on("MB-1"), (), _on("MB-1"))
-    assert [(m["before"], m["after"]) for m in moved] == [("feeder to SB-2", "feeder to SB-3")]
+    before = _side(("MB-1", [], ["SB-2", "SB-3"]), ("SB-2", [], []), ("SB-3", [], []))
+    after = _side(("MB-1", [], ["SB-3", "SB-2"]), ("SB-3", [], []), ("SB-2", [], []))
+    moved = _moved(before, after, _config())
+    assert [(m["before"], m["after"]) for m in moved] == [("Feeder to SB-2", "Feeder to SB-3")]
 
 
-def test_a_deleted_board_is_not_taken_for_a_rename() -> None:
-    # A deleted: B moves to A's position, but B was saved before, so it is not A renamed.
-    before = _boards(("A", [LIGHT]), ("B", [HEAT]))
-    after = _boards(("B", [HEAT]))
-    # The user re-pointed the binding from A to B with the same id: their choice, not a move.
-    assert dc.moved_references(before, after, _on("B"), (), _on("A")) == []
+def test_a_renamed_fed_board_needs_confirmation() -> None:
+    before = _side(("MB-1", [], ["SB-1"]), ("SB-1", [], []))
+    after = _side(("MB-1", [], ["SB-2"]), ("SB-2", [], []))
+    assert [m["after"] for m in _moved(before, after, _config())] == ["Feeder to SB-2"]
+
+
+def test_an_unreadable_stored_request_proves_nothing() -> None:
+    before, after = _side(("MB-1", [LIGHT], [])), _side(("MB-1", [LIGHT], []))
+    assert len(_moved((before[0], {"not": "a request"}), after, _config())) == 1
+
+
+def test_no_stored_design_proves_nothing() -> None:
+    before, after = _side(("MB-1", [LIGHT], [])), _side(("MB-1", [LIGHT], []))
+    assert len(_moved((None, before[1]), after, _config())) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Confirmations
+# --------------------------------------------------------------------------- #
+
+
+def test_a_confirmation_is_bound_to_its_exact_before_and_after() -> None:
+    before = _side(("MB-1", [LIGHT], []))
+    after = _side(("MB-1", [HEAT, LIGHT], []))
+    (entry,) = _moved(before, after, _config())
+    assert _moved(before, after, _config(), confirmed=[_confirm(entry)]) == []
+    # Without the right token, or for another field, it does not apply.
+    wrong_token = {**_confirm(entry), "token": "x"}
+    other_field = {**_confirm(entry), "field": "cable"}
+    assert _moved(before, after, _config(), confirmed=[wrong_token]) != []
+    assert _moved(before, after, _config(), confirmed=[other_field]) != []
+    # A later edit of the load now there invalidates it.
+    edited = _side(("MB-1", [_load("Heater", "socket", "2"), LIGHT], []))
+    again = _moved(before, edited, _config(), confirmed=[_confirm(entry)])
+    assert len(again) == 1
+    assert again[0]["token"] != entry["token"]
+
+
+def test_check_references_refuses_naming_every_unproven_reference() -> None:
+    config = _config(cable="c1-cable")
+    before, after = _side(("MB-1", [LIGHT], [])), _side(("MB-1", [HEAT], []))
+    with pytest.raises(ValidationError) as refused:
+        dc.check_references(
+            before[0],
+            after[0],
+            config,
+            (),
+            config,
+            baseline_request=before[1],
+            current_request=after[1],
+        )
+    params = refused.value.params
+    assert params["refusal"] == "reference_moved"
+    assert (params["binding"], params["field"], params["ref"]) == ("b1", "circuit", "c1")
+    assert (params["before_board"], params["after_board"]) == ("MB-1", "MB-1")
+    entries = params["moved"].split(";")
+    assert [e.split("|")[:4] for e in entries] == [
+        ["b1", "circuit", "", "c1"],
+        ["b1", "cable", "", "c1-cable"],
+    ]
+    assert entries[0].split("|")[4] == params["token"]

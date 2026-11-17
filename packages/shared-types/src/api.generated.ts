@@ -2584,6 +2584,10 @@ export interface components {
      *             revision's.
      *         boards: Each board's circuits and cables in that design, for the
      *             editor's choices.
+     *         checked_at_save_only: What a save checks that a preview cannot settle,
+     *             because it depends on state at the moment of saving (empty for a
+     *             preview of the latest revision). A preview is never a guarantee
+     *             that the save will succeed.
      */
     ConfigurationReview: {
       /** Based On Revision */
@@ -2606,6 +2610,10 @@ export interface components {
       from_current_request: boolean;
       /** Boards */
       boards?: components['schemas']['ReviewBoardChoices'][];
+      /** Checked At Save Only */
+      checked_at_save_only?: (
+        'revision_conflict' | 'revision_limit' | 'ai_proposal_use' | 'access'
+      )[];
     };
     /**
      * ConfigurationValidateRequest
@@ -2617,6 +2625,8 @@ export interface components {
      *             save sends; designed and composed exactly as a save would. ``None``
      *             (the default, as before) uses the latest revision's request.
      *         references_confirmed: As for ``ReviseProjectRequest``.
+     *         requirements_input: The guided input a save would send with
+     *             ``request`` (checked as a save checks it; nothing is applied).
      */
     ConfigurationValidateRequest: {
       /** Configuration */
@@ -2624,6 +2634,7 @@ export interface components {
         [key: string]: unknown;
       };
       request?: components['schemas']['ProjectDesignRequest-Input'] | null;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
       /** References Confirmed */
       references_confirmed?: components['schemas']['ReferenceConfirmation'][];
     };
@@ -5327,13 +5338,17 @@ export interface components {
      *     ``c2-breaker``): when the load at that position is another load than when
      *     the configuration was last saved, the reference is refused as
      *     ``reference_moved`` until the user chooses another or confirms this one for
-     *     the load now there. Sent with the request it applies to; never stored.
+     *     the load now there. Sent with the request it applies to; never stored. A
+     *     confirmation applies only with the ``token`` the refusal gave: it binds the
+     *     reference to the exact load it named and the exact load it names now, so any
+     *     later change to either refuses it again.
      *
      *     Attributes:
      *         binding: The binding's id.
      *         field: ``circuit``, ``cable`` or ``slot`` (a slot filled by a design device).
      *         key: The slot id for ``slot``, else ``None``.
      *         id: The circuit, cable or device id confirmed.
+     *         token: The refusal's ``token`` for this reference.
      */
     ReferenceConfirmation: {
       /** Binding */
@@ -5347,6 +5362,8 @@ export interface components {
       key?: string | null;
       /** Id */
       id: string;
+      /** Token */
+      token: string;
     };
     /**
      * RequirementBoard

@@ -206,7 +206,18 @@ def test_the_preview_alters_no_approval_and_another_tenant_gets_404(
 # References that moved with the load schedule
 # --------------------------------------------------------------------------- #
 
-CONFIRM_C1 = [{"binding": "bind-1", "field": "circuit", "key": None, "id": "c1"}]
+
+def _keep(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """The confirmation of the first refused reference, bound by its token."""
+    return [
+        {
+            "binding": params["binding"],
+            "field": params["field"],
+            "key": params["key"] or None,
+            "id": params["ref"],
+            "token": params["token"],
+        }
+    ]
 
 
 def _refusal(response: Any) -> dict[str, Any]:
@@ -231,13 +242,20 @@ def test_inserting_a_load_before_a_bound_circuit_is_refused_until_confirmed(
         assert (params["binding"], params["field"], params["ref"]) == ("bind-1", "circuit", "c1")
         assert (params["before"], params["after"]) == ("Lighting", "Heater")
     assert _count(client, project_id) == 3
+    keep = _keep(params)
+    # Keeping says exactly what changes: the same binding, another load.
+    assert (params["before_board"], params["after_board"]) == ("MB-1", "MB-1")
     # Choosing the circuit the load moved to is not a move.
     rebound = copy.deepcopy(config)
     rebound["bindings"][0]["circuit"] = "c2"
     assert _preview(client, project_id, rebound, request).status_code == 200
     # Or the user keeps c1 for the load now there: explicit, sent with the request.
-    assert _preview(client, project_id, config, request, CONFIRM_C1).status_code == 200
-    saved = _save(client, project_id, request, config, CONFIRM_C1)
+    assert _preview(client, project_id, config, request, keep).status_code == 200
+    # A later edit of the load now there invalidates the confirmation.
+    edited = copy.deepcopy(request)
+    edited["boards"][0]["loads"][0]["power_kw"] = "2"
+    assert _refusal(_preview(client, project_id, config, edited, keep))["ref"] == "c1"
+    saved = _save(client, project_id, request, config, keep)
     assert saved.status_code == 201, saved.text[:600]
     # Wire details are kept as they were, on the same binding.
     stored = _opened(client, project_id, 4)["configuration"]["bindings"][0]
@@ -284,9 +302,10 @@ def test_a_confirmation_is_not_stored_and_applies_only_to_its_reference(
     request = m7a_support.request()
     _with_load(request, "MB-1", HEATER, 0)
     config = _bound_on_c1()
-    wrong = [{"binding": "bind-1", "field": "circuit", "key": None, "id": "c9"}]
+    params = _refusal(_preview(client, project_id, config, request))
+    wrong = [{**_keep(params)[0], "id": "c9"}]
     assert _refusal(_preview(client, project_id, config, request, wrong))["ref"] == "c1"
-    saved = _save(client, project_id, request, config, CONFIRM_C1)
+    saved = _save(client, project_id, request, config, _keep(params))
     assert saved.status_code == 201, saved.text[:600]
     record = revision_row(engine, project_id, 4)["requirements"]
     assert "references_confirmed" not in str(record)
@@ -352,3 +371,59 @@ def test_a_renamed_board_does_not_hide_a_moved_reference(
         "Lighting",
         "Heater",
     )
+
+
+# --------------------------------------------------------------------------- #
+# Parity: what a save checks beyond the design
+# --------------------------------------------------------------------------- #
+
+
+def _control(board_index: int, load_index: int) -> dict[str, Any]:
+    return {
+        "control": [{"board_index": board_index, "load_index": load_index, "needs": ["start_stop"]}]
+    }
+
+
+@pytest.mark.parametrize(
+    ("given", "code"),
+    [
+        (_control(0, 9), "control_load_unknown"),  # no such load
+        (_control(0, 0), "control_need_requires_controlled"),  # the load is not controlled
+    ],
+)
+def test_guided_input_a_save_refuses_is_refused_by_the_preview_too(
+    client: TestClient, switch: Switch, given: dict[str, Any], code: str
+) -> None:
+    project_id = _project(client, switch)
+    request = m7a_support.request()
+    body = {"configuration": _configuration(), "request": request, "requirements_input": given}
+    preview = client.post(f"/design/projects/{project_id}/configuration/validate", json=body)
+    save = _revise(
+        client, project_id, request, configuration=_configuration(), requirements_input=given
+    )
+    assert preview.status_code == save.status_code == 422, (preview.text[:300], save.text[:300])
+    assert preview.json()["code"] == save.json()["code"] == code
+    assert _count(client, project_id) == 2
+
+
+def test_the_preview_says_what_only_a_save_can_settle(client: TestClient, switch: Switch) -> None:
+    project_id = _project(client, switch)
+    body = _preview(client, project_id, _configuration(), m7a_support.request()).json()
+    assert set(body["checked_at_save_only"]) == {"revision_conflict", "revision_limit", "access"}
+    # The preview of the latest revision (no request) is as before.
+    assert _preview(client, project_id, _configuration()).json()["checked_at_save_only"] == []
+
+
+def test_a_full_project_is_refused_by_the_preview_as_by_a_save(
+    client: TestClient, switch: Switch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import design_projects
+
+    project_id = _project(client, switch)
+    monkeypatch.setattr(design_projects, "MAX_REVISIONS", 2)
+    request = m7a_support.request()
+    preview = _preview(client, project_id, _configuration(), request)
+    save = _save(client, project_id, request, _configuration())
+    assert preview.status_code == save.status_code == 422
+    assert preview.json()["code"] == save.json()["code"] == "project_revisions_full"
+    assert _count(client, project_id) == 2
