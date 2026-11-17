@@ -3654,9 +3654,7 @@ def resolve_safety_concern(
     kind = (
         "mention"
         if request.mention_id is not None
-        else "item"
-        if request.item_id is not None
-        else "request"
+        else "item" if request.item_id is not None else "request"
     )
     target_id = str(request.mention_id or request.item_id or request.request_id)
     try:
