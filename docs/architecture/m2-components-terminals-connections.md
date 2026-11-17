@@ -57,7 +57,9 @@ M2 adds no electrical calculation. Wherever a value needs an engineering rule (c
 | `Net`               | `id`, `board_id`, `signal` (string label from data, e.g. `"L1"`, `"24V+"`, `"DI.03"`), `members[]` (`TerminalRef`), `origin: derived\|user`                                                                                                             | `id`                                      |
 | `Connection`        | `id`, `net_id`, `from`, `to` (`TerminalRef`), `via: wire\|cable_core\|jumper\|busbar`                                                                                                                                                                   | `id`                                      |
 | `Wire`              | `id`, `connection_id`, `number` (string or null), `cross_section_mm2` (Decimal or null), `colour` (code from a tenant colour table, or null), `source` per field (`user\|rule\|assumption`) with an `assumption_id` where it applies                    | `id`                                      |
-| `CableCore`         | `cable_id` (a v1 cable), `index`, `label`, `connection_id`                                                                                                                                                                                              | `(cable_id, index)`                       |
+| `CableCore`         | `cable_id` (a v1 cable of the connection's board), `index`, `label`, `connection_id`                                                                                                                                                                    | `(board, cable_id, index)` ¹              |
+
+¹ v1 numbers cables per board, so a cable id is unique on its board only; the board is the connection's net's (clarified in `cable-core-identity.md`; earlier written as `(cable_id, index)`, which every stored revision also satisfies).
 
 All ids are opaque, content-free strings. Designations stay derived and are never identity, as in `designations.py` today.
 

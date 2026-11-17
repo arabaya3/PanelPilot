@@ -48,7 +48,10 @@ def to_stored_v2(model: entities.DesignModelV2) -> dict[str, Any]:
 
 
 def snapshot_v2_from_v1(
-    designed_v1: dict[str, Any], configuration: Mapping[str, Any] | None = None
+    designed_v1: dict[str, Any],
+    configuration: Mapping[str, Any] | None = None,
+    *,
+    cross_board_cores: bool = False,
 ) -> dict[str, Any]:
     """A v2 snapshot of a designed v1 snapshot.
 
@@ -61,6 +64,8 @@ def snapshot_v2_from_v1(
         designed_v1: The bare v1 snapshot the design service built
             (``DesignProject.model_dump(mode="json")``). Not changed.
         configuration: Templates, patterns and bindings, as data, or ``None``.
+        cross_board_cores: Passed to :func:`compose.compose` (the cross-board
+            cable-core write gate).
 
     Returns:
         The stored v2 envelope.
@@ -72,7 +77,7 @@ def snapshot_v2_from_v1(
     """
     if configuration is None:
         return envelope(migrate_1_to_2(designed_v1))
-    return envelope(compose(designed_v1, configuration))
+    return envelope(compose(designed_v1, configuration, cross_board_cores=cross_board_cores))
 
 
 def envelope_v3(payload_v3: dict[str, Any]) -> dict[str, Any]:

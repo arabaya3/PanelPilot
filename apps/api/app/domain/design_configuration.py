@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from app.core import config
 from app.core.errors import ValidationError
 from app.design.model import entities, findings_v2, schedules, versions
 from app.design.model.compose import CompositionRefusedError
@@ -278,7 +279,11 @@ def compose_snapshot(designed_v1: dict[str, Any], configuration: Mapping[str, An
         ValidationError: ``configuration_refused`` with the composer's code.
     """
     try:
-        return snapshot_v2_from_v1(designed_v1, configuration)
+        # The one place every revision and every preview is composed: the cross-board cable-core
+        # write gate (DESIGN_CABLE_CORE_CROSS_BOARD, off by default) applies to all of them alike.
+        return snapshot_v2_from_v1(
+            designed_v1, configuration, cross_board_cores=config.design_cable_core_cross_board()
+        )
     except CompositionRefusedError as exc:
         raise _refused(exc.code, str(exc), **exc.params) from exc
     except versions.SnapshotUnreadableError as exc:

@@ -345,7 +345,14 @@ export function bindingProblems(
   if (state.cable !== null) {
     const taken = new Map<number, number>();
     for (const other of bindingsOf(config)) {
-      if (other.id === binding.id || bindingState(other).cable !== state.cable) continue;
+      // The same physical cable is the same id on the same board (cables are numbered per board).
+      if (
+        other.id === binding.id ||
+        other.board !== binding.board ||
+        bindingState(other).cable !== state.cable
+      ) {
+        continue;
+      }
       const theirs = bindablePatterns(config).find((item) => item.ref === other.pattern);
       for (const c of theirs?.connections ?? []) {
         if (c.via === 'cable_core' && c.core !== null)

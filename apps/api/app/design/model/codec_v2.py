@@ -1011,7 +1011,9 @@ def parse_model(content: Any) -> entities.DesignModelV2:
 
     # Connections.
     connections: list[entities.Connection] = []
-    cores: set[tuple[str, int]] = set()
+    # A core is (board, cable, index): ``cable_id`` names a cable of the net's board (checked
+    # below), and v1 numbers cables per board, so ``c1-cable`` on two boards is two cables.
+    cores: set[tuple[str, str, int]] = set()
     for item in _list(raw["connections"], "connections"):
         x = _obj(
             item, ("id", "net_id", "from", "to", "via", "core", "pattern_ref"), "connections[]"
@@ -1042,9 +1044,9 @@ def parse_model(content: Any) -> entities.DesignModelV2:
             index = _int(k["index"], "connections[].core.index")
             if index > cable.cores:
                 _bad("connections[].core.index", "is past the cable's cores")
-            if (cable_id, index) in cores:
-                _bad("connections[].core", "a core makes two connections")
-            cores.add((cable_id, index))
+            if (net.board_id, cable_id, index) in cores:
+                _bad("connections[].core", "a core of one board's cable makes two connections")
+            cores.add((net.board_id, cable_id, index))
             core = entities.CableCore(
                 cable_id=cable_id,
                 index=index,

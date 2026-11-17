@@ -182,6 +182,12 @@ class Settings(BaseSettings):
     # refused at startup. Both are always *read*; this decides only what a new
     # save or revision writes. Existing revisions are never rewritten.
     design_snapshot_schema: Literal["pp-design/1", "pp-design/2", "pp-design/3"] = "pp-design/1"
+    # Whether a new revision may use the same cable id and core on two boards
+    # (cable ids are numbered per board, so these are two cables). Readers from
+    # before docs/architecture/cable-core-identity.md refuse such a revision, so
+    # it is off by default: turn it on only once every reader is upgraded. It
+    # gates writing only; such revisions are always read.
+    design_cable_core_cross_board: bool = False
 
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
@@ -421,6 +427,30 @@ class _DesignSnapshotSwitch(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     design_snapshot_schema: Literal["pp-design/1", "pp-design/2", "pp-design/3"] = "pp-design/1"
+
+
+class _CableCoreSwitch(BaseSettings):
+    """The cross-board cable-core write gate alone (see :func:`design_cable_core_cross_board`)."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    design_cable_core_cross_board: bool = False
+
+
+def design_cable_core_cross_board() -> bool:
+    """Whether new revisions may use one cable id and core on two boards.
+
+    ``DESIGN_CABLE_CORE_CROSS_BOARD``, read on each call like
+    :func:`design_snapshot_schema`. Off by default: a revision written with it
+    is refused by readers older than the board-qualified core rule.
+
+    Raises:
+        ConfigurationError: If it is not a boolean.
+    """
+    try:
+        return _CableCoreSwitch().design_cable_core_cross_board
+    except PydanticValidationError as exc:
+        raise ConfigurationError(_format_validation_error(exc)) from exc
 
 
 def design_snapshot_schema() -> str:

@@ -2342,7 +2342,8 @@
       "uncheckedOption": "{id} (not checked: design the project to see the board's choices)",
       "refusedCore": {
         "core_out_of_range": "A cable-core connection of this pattern uses a core the chosen cable does not have. Change the core in the pattern's connection, or choose a cable with that core.",
-        "core_reused": "A core of the chosen cable is used by more than one connection. Give each cable-core connection its own core, or choose another cable."
+        "core_reused": "A core of the chosen cable is used by more than one connection. Give each cable-core connection its own core, or choose another cable.",
+        "core_shared_cable_id": "This board's cable has the same id and core as a cable on another board. They are different cables, but this server does not save that yet: older versions of the app could not read such a revision. Nothing was saved and your edits are kept. Ask your administrator to turn on saving the same cable id on two boards, or save without this binding for now."
       },
       "previewWireDetails": "number {number}; cross-section mm² {cross_section}; colour {colour}",
       "previewNotSet": "not set",
