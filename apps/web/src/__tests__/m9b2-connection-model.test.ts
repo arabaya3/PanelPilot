@@ -370,6 +370,13 @@ describe('cable cores, checked as the composer checks them', () => {
     ]);
   });
 
+  it('the same cable id on another board is another cable: its core is not reused', () => {
+    const doc = cabled([1]);
+    const other = { ...(doc.bindings as Raw[])[0], id: 'bind-2', board: 'SB-1' };
+    const two = { ...doc, bindings: [...(doc.bindings as Raw[]), other] };
+    expect(coreProblems(two)).toEqual([]);
+  });
+
   it('cores are not checked against an unknown cable size', () => {
     const doc = cabled([9]);
     const binding = bindingsOf(doc)[0];

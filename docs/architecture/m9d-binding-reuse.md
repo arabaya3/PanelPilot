@@ -57,19 +57,13 @@ overview says a binding is complete, correct or safe: an empty list only means
 nothing was found there. The overview reuses the existing checks and findings;
 it adds no rules.
 
-## 3. Known limitation: cable ids repeat across boards
+## 3. Cable ids repeat across boards
 
-Cable ids are numbered per board (`c1-cable` on MB-1 and `c1-cable` on SB-1 are
-different cables), but the stored v2 model records a cable core as
-`{cable_id, index}` with no board, and its reader refuses two connections on the
-same `(cable_id, index)` anywhere in the model; the composer applies the same
-rule. So when a pattern with a cable-core connection is reused, choosing the
-other board's cable **with the same id** is refused as `core_reused`, although
-it is a different cable. The editor says so beside the binding before saving;
-choosing a cable with another id works. Keying cores by board would change what
-the stored model's reader accepts (a storage-contract change) and is left to a
-separate, explicitly approved change. M9d does not change the composer or the
-codec.
+Cable ids are numbered per board (`c1-cable` on MB-1 and on SB-1 are different
+cables). Until `cable-core-identity.md` (a separate change based on this one), a
+core was keyed by `(cable_id, index)` alone, so reusing a cable-core pattern
+with the other board's cable of the same id was refused as `core_reused`. With
+that change, a core is keyed by `(board, cable_id, index)`.
 
 ## 4. Unchanged
 

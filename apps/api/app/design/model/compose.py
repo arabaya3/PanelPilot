@@ -311,7 +311,9 @@ class _Composer:
         self.member_net: dict[tuple[str, str, str], str] = {}
         self.connections: dict[str, dict[str, Any]] = {}
         self.wires: dict[str, dict[str, Any]] = {}
-        self.cores: set[tuple[str, int]] = set()
+        # (board, cable, core): a binding's cable is one of its board's cables, and v1 numbers
+        # cables per board, so the same cable id on two boards is two cables.
+        self.cores: set[tuple[str, str, int]] = set()
         self.assumptions: dict[str, dict[str, Any]] = {}
         # Provenance: which patterns created or joined each entity.
         self.component_patterns: dict[str, set[str]] = {}
@@ -839,14 +841,14 @@ class _Composer:
                     cable=cable.id,
                     core=str(index_),
                 )
-            if (cable.id, index_) in self.cores:
+            if (board.id, cable.id, index_) in self.cores:
                 _refuse(
                     "core_reused",
                     "one cable core would make two connections",
                     binding=bid,
                     cable=cable.id,
                 )
-            self.cores.add((cable.id, index_))
+            self.cores.add((board.id, cable.id, index_))
             core = {"cable_id": cable.id, "index": index_, "label": raw.get("label")}
         elif raw.get("core") is not None or raw.get("label") is not None:
             _refuse("pattern_invalid", "only a cable core connection names a core", role=role)
