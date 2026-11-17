@@ -52,6 +52,13 @@ board, and a connection exactly one net.
   readable only by this reader or later. Reader and writer are deployed
   together; an older reader refuses such a snapshot as unreadable (it never
   misreads it). This is the one forward-compatibility effect.
+- **Deployment and rollback.** Deploy the reader with (or before) the writer;
+  they ship in one artifact. Once a revision uses the same cable id and core on
+  two boards, rolling back past this change makes that revision unreadable to
+  the older code (refused, never misread), including its exports and approval
+  view. If rollback or a mixed-version fleet must stay possible, the
+  alternative is an explicit version marker or a writer flag; this change does
+  not add one.
 - **Renderers unchanged** (no renderer version change): the connection drawing
   prints each core as held (`cable c1-cable core 1, core label …`) beside its
   own board's terminals, as before. The wire schedule does not print cores.

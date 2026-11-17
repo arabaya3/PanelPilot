@@ -13,6 +13,7 @@ against the disposable Postgres (``TEST_DATABASE_URL``).
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
 
 import pytest
@@ -109,8 +110,9 @@ def test_core_1_of_c1_cable_on_two_boards_is_two_cores(
             revision_export(client, project_id, 3, "connection_drawing_pdf").content
         )
     )
-    assert text.count("cable c1-cable core 1") >= 2
-    assert "SB-1/KC" in text
+    # Each board's core is printed beside that board's own terminal (KA on MB-1, KC on SB-1).
+    for terminal in ("MB-1/KA", "SB-1/KC"):
+        assert re.search(rf"{terminal}\S*.{{0,240}}?cable c1-cable core 1", text), terminal
 
 
 def test_core_1_twice_on_one_boards_cable_is_still_refused(
@@ -136,9 +138,9 @@ def test_core_1_twice_on_one_boards_cable_is_still_refused(
 def test_a_cable_the_bindings_board_does_not_have_is_refused(
     client: TestClient, switch: Switch
 ) -> None:
-    """MB-1's feeder cable is no cable of SB-1: the reference resolves on the binding's board only."""
+    """MB-1's c2-cable exists, but not on SB-1: a reference resolves on the binding's board only."""
     project_id = _project(client, switch)
-    config = _cabled("c1-cable", "c2-cable-not-on-sb1")
+    config = _cabled("c1-cable", "c2-cable")
     response = _revise(client, project_id, m7a_support.request(), configuration=config)
     assert response.status_code == 422, response.text[:400]
     params = response.json()["params"]
@@ -173,6 +175,27 @@ def test_the_stored_reader_refuses_a_core_twice_on_one_boards_cable(
         read.read_snapshot(stored)
 
 
+def test_the_stored_reader_refuses_a_core_on_a_cable_its_board_lacks(
+    client: TestClient, switch: Switch, engine: Engine
+) -> None:
+    """A stored SB-1 core pointed at MB-1's c2-cable (which SB-1 has none of) is refused."""
+    project_id = _project(client, switch)
+    saved = _revise(
+        client, project_id, m7a_support.request(), configuration=_cabled("c1-cable", "c1-cable")
+    )
+    assert saved.status_code == 201, saved.text[:600]
+    stored = copy.deepcopy(revision_row(engine, project_id, 3)["design_snapshot"])
+    board_of = {n["id"]: n["board_id"] for n in stored["model"]["nets"]}
+    sb = next(
+        c
+        for c in stored["model"]["connections"]
+        if c["core"] is not None and board_of[c["net_id"]] == "SB-1"
+    )
+    sb["core"]["cable_id"] = "c2-cable"
+    with pytest.raises(versions.SnapshotUnreadableError, match="no cable of the net's board"):
+        read.read_snapshot(stored)
+
+
 def test_reuse_with_the_same_cable_id_is_approved_by_another_member_in_its_tenant(
     client: TestClient, switch: Switch, caller: _Caller, tenants: tuple[str, str]
 ) -> None:
@@ -186,4 +209,5 @@ def test_reuse_with_the_same_cable_id_is_approved_by_another_member_in_its_tenan
     owner = caller.user
     caller.user = _user(tenants[1], email="intruder-cores@example.com")
     assert client.get(f"/design/projects/{project_id}", params={"revision": 3}).status_code == 404
+    assert revision_export(client, project_id, 3, "connection_drawing_pdf").status_code == 404
     caller.user = owner
