@@ -1,0 +1,96 @@
+{
+  "schema": "panelpilot-audit-exception/1",
+  "id": "GHSA-fc5q-39xc-vjpf",
+  "status": "proposed",
+  "owner_approval": {
+    "approved": false,
+    "approved_by": null,
+    "approved_on": null,
+    "note": "Prepared for review only. Not accepted: merging requires explicit approval by the repository owner or security owner, recorded here."
+  },
+  "advisory": {
+    "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
+    "severity": "high",
+    "cwe": ["CWE-1333"],
+    "vulnerable_range": "<=4.0.7",
+    "patched_versions": null,
+    "checked_on": "2026-11-17"
+  },
+  "scope": {
+    "package": "picomatch",
+    "version": "4.0.7",
+    "path": "node_modules/@parcel/watcher/node_modules/picomatch",
+    "chain": [
+      {
+        "name": "next-intl",
+        "version": "4.13.7",
+        "path": "node_modules/next-intl"
+      },
+      {
+        "name": "@parcel/watcher",
+        "version": "2.6.0",
+        "path": "node_modules/@parcel/watcher"
+      },
+      {
+        "name": "picomatch",
+        "version": "4.0.7",
+        "path": "node_modules/@parcel/watcher/node_modules/picomatch"
+      }
+    ],
+    "audit_entries": {
+      "picomatch": {
+        "nodes": ["node_modules/@parcel/watcher/node_modules/picomatch"],
+        "effects": ["@parcel/watcher"]
+      },
+      "@parcel/watcher": {
+        "nodes": ["node_modules/@parcel/watcher"],
+        "via": ["picomatch"],
+        "effects": []
+      }
+    }
+  },
+  "expires": "2026-12-15",
+  "evidence": [
+    "No patched picomatch release: the GitHub advisory lists none and the npm advisory API marks every release <=4.0.7 vulnerable; 4.0.7 is the latest (checked 2026-11-17). Upstream fixes (micromatch/picomatch#194, #246) are unmerged.",
+    "Trigger: an attacker-supplied glob pattern with a single-branch repeated extglob, e.g. +(*), compiled by picomatch.",
+    "@parcel/watcher uses picomatch only to compile its `ignore` option (wrapper.js, picomatch.makeRe).",
+    "next-intl calls @parcel/watcher only from SourceFileWatcher (message extraction tooling), with constant ignore patterns built from IGNORED_DIRECTORIES = node_modules, .next, .git.",
+    "apps/web imports only the `next-intl` runtime entry; it does not use next-intl/plugin or the extractor, and next.config does not configure them.",
+    "Every next-intl release, including the latest 4.15.1, depends on @parcel/watcher ^2.4.1, which depends on picomatch ^4.0.4; no supported update removes the path. Older @parcel/watcher depends on micromatch / picomatch 2.x, also affected.",
+    "A clean `npm ci` + `next build` of main (8508fcd) produced a standalone output with no @parcel/watcher and no picomatch package; the runner image copies only that output. CI re-verifies this on the built runner image (scripts/security/check-runner-image.sh).",
+    "Built the real runner image (apps/web/Dockerfile, target runner) from main 8508fcd on 2026-11-17: no @parcel/watcher; picomatch only at /app/node_modules/next/dist/compiled/picomatch (Next's vendored copy) and /usr/local/lib/node_modules/npm/node_modules/picomatch (base image npm 10.9.9, picomatch 4.0.3). Images with the watcher or its picomatch added fail the check."
+  ],
+  "residual_risk": [
+    "Not zero: the vulnerable code is installed in the build and dev stages, and would become reachable if next-intl's extractor or plugin were enabled, or if a future next-intl or Next version traced it into the runtime.",
+    "The analysis that no attacker-controlled pattern reaches picomatch is from code inspection of the installed versions, not runtime observation."
+  ],
+  "conditions": [
+    "Automated: the audit gate passes only for exactly this advisory on exactly this path and chain, with no other audit finding, before the expiry date, and while no patched picomatch release exists.",
+    "Automated: the runner image check fails if @parcel/watcher or a picomatch package from the app's dependency tree is present in the shipped image.",
+    "Manual: do not enable next-intl's plugin or message extractor, or pass any user-supplied pattern to @parcel/watcher, while this exception exists.",
+    "Manual: re-review this record on any next-intl, @parcel/watcher or Next upgrade."
+  ],
+  "tracked_separately": [
+    {
+      "item": "Next's vendored picomatch (node_modules/next/dist/compiled/picomatch)",
+      "why": "Bundled inside the next package, so npm audit does not see it and its version is not published in its package.json. Next uses it for image remote/local pattern matching from next.config and at build time, not for request input. This exception does not cover or resolve it.",
+      "tracking": "Check on each Next upgrade whether the vendored copy includes the upstream fix; follow the Next.js security advisories."
+    },
+    {
+      "item": "picomatch 4.0.3 bundled with npm 10.9.9 in the node:22-alpine base image (/usr/local/lib/node_modules/npm/node_modules/picomatch)",
+      "why": "Inside the runner image's base layer, also within this advisory's range (and the older moderate GHSA-3v7f-55p6-f55p range). The runner does not invoke npm at runtime (CMD is node apps/web/server.js). npm audit of the project does not see it. This exception does not cover or resolve it.",
+      "tracking": "scripts/security/check-runner-image.sh lists every picomatch copy in the image; review the list on each base image update."
+    }
+  ],
+  "patched_release_check": "Automated in scripts/security/npm-audit-gate.mjs: it asks the npm registry for the latest picomatch version and the npm advisory API whether that version is still affected by this advisory. If it is not (a patched release exists), or either lookup fails, the gate fails. Limitation: a patched release on an older major line that is not `latest` is not detected automatically; see removal.tracking.",
+  "removal": {
+    "when": "On the expiry date, or as soon as a patched picomatch release exists, whichever comes first (the gate then fails and blocks CI until this is done).",
+    "steps": [
+      "Update the lockfile so node_modules/@parcel/watcher/node_modules/picomatch resolves to the patched release (e.g. `npm update picomatch` within @parcel/watcher's range, or a next-intl / @parcel/watcher release that requires it).",
+      "Run `npm audit --omit=dev --audit-level=high`: it must pass without this exception.",
+      "Delete this file and the exception handling in scripts/security/npm-audit-gate.mjs, restoring the plain `npm audit --omit=dev --audit-level=high` step."
+    ],
+    "tracking": "Owner checks weekly until removal: https://github.com/advisories/GHSA-fc5q-39xc-vjpf (patched versions), `npm view picomatch versions`, and upstream micromatch/picomatch#194 and #246."
+  }
+}
