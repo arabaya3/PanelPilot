@@ -12,9 +12,7 @@
     "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
     "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
     "severity": "high",
-    "cwe": [
-      "CWE-1333"
-    ],
+    "cwe": ["CWE-1333"],
     "vulnerable_range": "<=4.0.7",
     "patched_versions": null,
     "checked_on": "2026-11-17"
@@ -42,20 +40,12 @@
     ],
     "audit_entries": {
       "picomatch": {
-        "nodes": [
-          "node_modules/@parcel/watcher/node_modules/picomatch"
-        ],
-        "effects": [
-          "@parcel/watcher"
-        ]
+        "nodes": ["node_modules/@parcel/watcher/node_modules/picomatch"],
+        "effects": ["@parcel/watcher"]
       },
       "@parcel/watcher": {
-        "nodes": [
-          "node_modules/@parcel/watcher"
-        ],
-        "via": [
-          "picomatch"
-        ],
+        "nodes": ["node_modules/@parcel/watcher"],
+        "via": ["picomatch"],
         "effects": []
       }
     }
