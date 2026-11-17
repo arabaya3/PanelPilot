@@ -6,26 +6,17 @@ that rule. Operators run this before rolling back past that change, or before
 running older readers against the database: if it finds any, rolling back would
 make those revisions unreadable to the older code (refused, never misread).
 
-It reads ``design_project_revisions`` only, changes nothing, and prints only
-project ids, revision numbers and the cable/core it found, never content.
-
-Usage::
-
-    python -m app.design.cable_core_audit        # exit 0: none found; 1: found
-
-Run with the same ``DATABASE_URL`` as the API.
+Pure: it reads snapshot envelopes it is given and returns what it finds (only
+project ids, revision numbers and the cable/core, never content). The command
+that reads the database is :mod:`app.domain.cable_core_audit`.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Any
-
-from sqlalchemy import create_engine, text
 
 #: Snapshot schemas that hold cable cores (a v1 snapshot has none).
 _WITH_CORES = ("pp-design/2", "pp-design/3")
@@ -86,32 +77,3 @@ def audit(rows: Iterable[tuple[Any, int, Any]]) -> list[str]:
         for cable, index, boards in shared:
             found.append(f"{project_id} r{number}: {cable}#{index} on {', '.join(boards)}")
     return found
-
-
-def main() -> int:
-    """Scan every stored revision; print what is found; 1 if any, else 0."""
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        print("cable_core_audit: DATABASE_URL is not set", file=sys.stderr)
-        return 2
-    engine = create_engine(url)
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text(
-                "SELECT project_id, number, design_snapshot FROM design_project_revisions "
-                "ORDER BY project_id, number"
-            )
-        )
-        found = audit((r[0], r[1], r[2]) for r in rows)
-    for line in found:
-        print(line)
-    print(
-        f"cable_core_audit: {len(found)} finding(s) (one cable id and core on two boards, or a"
-        " revision that could not be checked)"
-        + ("; do not roll back past cable-core-identity until each is understood" if found else "")
-    )
-    return 1 if found else 0
-
-
-if __name__ == "__main__":  # pragma: no cover - a command
-    sys.exit(main())

@@ -100,7 +100,7 @@ The gate does not make older readers compatible afterwards.
    no longer planned, set `DESIGN_CABLE_CORE_CROSS_BOARD=true`.
 3. Before any rollback past this version (or running older readers against the
    database), run the read-only audit:
-   `python -m app.design.cable_core_audit` (same `DATABASE_URL` as the API). It
+   `cd apps/api && python scripts/cable_core_audit.py` (same `DATABASE_URL` as the API). It
    prints project ids, revision numbers and the cable/core found on two boards,
    and exits 1 if any exist (or if any revision could not be checked, which it
    lists as UNREADABLE rather than counting as clean), 0 if none. If none: rollback is safe. If some:

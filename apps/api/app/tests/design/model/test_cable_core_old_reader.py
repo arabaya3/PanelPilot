@@ -13,7 +13,6 @@ import copy
 
 import pytest
 
-from app.design import cable_core_audit
 from app.design.model import codec_v2, versions
 from app.design.model.compose import CompositionRefusedError
 from app.design.model.write import snapshot_v2_from_v1
@@ -66,12 +65,3 @@ def test_both_readers_refuse_a_core_twice_on_one_boards_cable() -> None:
             old_codec.parse_model(edited)
         checked += 1
     assert checked > 0, "no fixture has two cable cores on one board"
-
-
-def test_the_audit_never_reports_an_unreadable_row_as_clean() -> None:
-    rows = [("p", 1, None), ("p", 2, '{"schema": "pp-design/2", "model": {"nets": null}}')]
-    found = cable_core_audit.audit(rows)
-    assert [line.split(":")[0] for line in found] == ["p r1", "p r2"]
-    assert all("UNREADABLE" in line for line in found)
-    v1_text = '{"schema": "pp-design/1", "model": {}}'
-    assert cable_core_audit.audit([("p", 3, v1_text)]) == []
