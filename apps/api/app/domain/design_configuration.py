@@ -579,6 +579,12 @@ def _owners(
             ["board", meta, position.get(board.id)] if meta is not None else ["unknown", side]
         )
         incomers = list(getattr(board, "incomer_ids", None) or [])
+        devices = list(getattr(board, "devices", None) or [])
+        upstream_of = {d.id: getattr(d, "upstream_id", None) for d in devices}
+        kind_of = {
+            d.id: str(getattr(getattr(d, "kind", None), "value", getattr(d, "kind", "")))
+            for d in devices
+        }
         for device in getattr(board, "devices", None) or []:
             if (board.id, "device", device.id) in owners:
                 continue
@@ -586,16 +592,38 @@ def _owners(
             if device.id in incomers:
                 what = ["incomer", kind, incomers.index(device.id), board_mark]
             else:
+                # Everything it feeds, through the devices below it (a group breaker
+                # feeds its circuits through the group's residual current device).
                 fed = sorted(
                     circuit_marks[c.id]
                     for c in board.circuits or []
-                    if getattr(c, "upstream_id", None) == device.id
+                    if device.id in _upstream_chain(c, upstream_of)
                 )
-                what = ["board_device", kind, fed, board_mark]
+                below = sorted(
+                    kind_of[d]
+                    for d in upstream_of
+                    if d != device.id and device.id in _upstream_chain_of(d, upstream_of)
+                )
+                # A device that feeds no circuit is told apart by nothing: never proven.
+                what = ["board_device", kind, fed, below, board_mark] if fed else ["unknown", side]
             label = getattr(device, "description", None) or device.id
             fingerprint = json.dumps(what, sort_keys=True, default=str)
             owners[(board.id, "device", device.id)] = (label, fingerprint, device.id)
     return owners
+
+
+def _upstream_chain_of(device_id: str | None, upstream_of: Mapping[str, Any]) -> set[str]:
+    """``device_id`` and every device above it on its board (stops at a cycle)."""
+    chain: set[str] = set()
+    while isinstance(device_id, str) and device_id not in chain:
+        chain.add(device_id)
+        device_id = upstream_of.get(device_id)
+    return chain
+
+
+def _upstream_chain(circuit: Any, upstream_of: Mapping[str, Any]) -> set[str]:
+    """Every board device a circuit is fed through."""
+    return _upstream_chain_of(getattr(circuit, "upstream_id", None), upstream_of)
 
 
 def _refs(binding: Mapping[str, Any]) -> list[tuple[str, str, str, Any]]:
@@ -733,8 +761,10 @@ def check_references(
             naming the first unproven reference in full (``binding``, ``field``,
             ``key``, ``ref``, ``before``, ``after``, ``before_board``,
             ``after_board``, ``before_circuit``, ``after_circuit``, ``token``)
-            and all of them in ``moved`` (``binding|field|key|id|token`` joined
-            by ``;``, within the parameter bound).
+            each of the first ``MOVED_IN_FULL`` in full (``r{i}_*``), their
+            number (``moved_count``), and a compact ``moved`` list
+            (``binding|field|key|id|token`` joined by ``;``, cut at the
+            parameter bound; the editor reads ``r{i}_*``).
     """
     moved = moved_references(
         baseline,

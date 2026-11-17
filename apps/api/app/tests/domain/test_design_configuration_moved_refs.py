@@ -336,3 +336,38 @@ def test_a_refusal_names_each_reference_in_full() -> None:
     assert [params[f"r{i}_field"] for i in range(3)] == ["circuit", "cable", "slot"]
     assert all(params[f"r{i}_before"] == "Lighting" for i in range(3))
     assert all(params[f"r{i}_after_board"] == "MB-1" for i in range(3))
+
+
+def _grouped(order: list[tuple[str, str]]) -> tuple[Any, Any]:
+    """MB-1 with Lighting and Heater, each group ``g{n}-breaker`` -> ``g{n}-rcd`` -> circuit."""
+    side = _side(("MB-1", [LIGHT, HEAT], []))
+    board = side[0].boards[0]
+    board.incomer_ids = ["incomer"]
+    board.devices = [SimpleNamespace(id="incomer", kind="switch", upstream_id=None)]
+    for group, circuit in order:
+        board.devices += [
+            SimpleNamespace(id=f"{group}-breaker", kind="breaker", upstream_id="incomer"),
+            SimpleNamespace(id=f"{group}-rcd", kind="rcd", upstream_id=f"{group}-breaker"),
+        ]
+        next(c for c in board.circuits if c.id == circuit).upstream_id = f"{group}-rcd"
+    return side
+
+
+def test_a_group_breaker_is_told_apart_by_what_it_feeds_below_it() -> None:
+    before = _grouped([("g1", "c1"), ("g2", "c2")])
+    regrouped = _grouped([("g1", "c2"), ("g2", "c1")])
+    for device in ("g1-breaker", "g1-rcd"):
+        config = _slot("MB-1", device)
+        assert len(_moved(before, regrouped, config, config)) == 1, device
+        same = _grouped([("g1", "c1"), ("g2", "c2")])
+        assert _moved(before, same, config, config) == [], device
+
+
+def test_a_board_device_feeding_no_circuit_is_never_proven() -> None:
+    before, after = _grouped([("g1", "c1")]), _grouped([("g1", "c1")])
+    for side in (before, after):
+        side[0].boards[0].devices.append(
+            SimpleNamespace(id="spare", kind="breaker", upstream_id="incomer")
+        )
+    config = _slot("MB-1", "spare")
+    assert len(_moved(before, after, config, config)) == 1

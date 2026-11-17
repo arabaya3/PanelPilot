@@ -85,8 +85,10 @@ the binding named then). The fingerprint is:
   it has a cable;
 - for a board's own device named by a slot: an incomer by the board as entered
   (all but its name and loads) and its position; any other board device (a
-  residual current group `g{n}-rcd`, positional too) by its kind and the
-  fingerprints of the circuits it feeds.
+  residual current group's `g{n}-rcd` or its supply breaker `g{n}-breaker`,
+  positional too) by its kind, the fingerprints of every circuit it feeds
+  through the devices below it, and those devices' kinds. A board device that
+  feeds no circuit is never proven.
 
 Description and kind alone are **not** treated as identity. Anything else is
 unproven and refused: another load at that position, a reordered, swapped,
