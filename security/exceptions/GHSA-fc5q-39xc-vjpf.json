@@ -1,12 +1,14 @@
 {
   "schema": "panelpilot-audit-exception/1",
   "id": "GHSA-fc5q-39xc-vjpf",
-  "status": "proposed",
+  "status": "approved",
   "owner_approval": {
-    "approved": false,
-    "approved_by": null,
-    "approved_on": null,
-    "note": "Prepared for review only. Not accepted: merging requires explicit approval by the repository owner or security owner, recorded here."
+    "approved": true,
+    "approved_by": "repository owner (GitHub: ayedrabaya2000)",
+    "approved_on": "2026-11-17",
+    "scope": "GHSA-fc5q-39xc-vjpf only, on the exact recorded path node_modules/@parcel/watcher/node_modules/picomatch@4.0.7 via next-intl@4.13.7 -> @parcel/watcher@2.6.0, expiring no later than 2026-12-15.",
+    "not_approved": "Not a general audit bypass. Does not cover or resolve the separately tracked copies (Next's vendored picomatch and @vercel/nft copy, the base image's npm picomatch).",
+    "note": "Approval re-verified against the advisory and npm releases on 2026-11-17: no patched release (latest 4.0.7, advisory range <=4.0.7)."
   },
   "advisory": {
     "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",

@@ -51,7 +51,13 @@ test('the recorded finding, exactly as recorded, passes while approved and unexp
 });
 
 test('without owner approval it fails', () => {
-  failsWith(run({ records: [structuredClone(RECORD)] }), /not approved by the owner/);
+  for (const owner_approval of [
+    { approved: false, approved_by: null, approved_on: null },
+    { approved: true, approved_by: '', approved_on: '2026-11-17' },
+    undefined,
+  ]) {
+    failsWith(run({ records: [{ ...approved(), owner_approval }] }), /not approved by the owner/);
+  }
 });
 
 test('without any exception record the finding fails', () => {
