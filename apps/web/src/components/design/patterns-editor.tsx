@@ -12,7 +12,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
-import type { Configuration } from '@/components/design/configuration-model';
+import { bindingsOf, type Configuration } from '@/components/design/configuration-model';
 import { refParts, UNSPECIFIED } from '@/components/design/definition-model';
 import {
   addMember,
@@ -189,7 +189,13 @@ function PatternRow({
         <p className="text-xs" id={`${rowId}-users`} data-testid="pattern-users">
           {t('patterns.bindingsAffected', {
             count: String(users.length),
-            bindings: users.join(', '),
+            // M9d: each with its board, so a shared pattern shows every board an edit reaches.
+            bindings: users
+              .map((user) => {
+                const board = bindingsOf(value).find((b) => b.id === user)?.board;
+                return board ? `${user} (${board})` : user;
+              })
+              .join(', '),
           })}
         </p>
       )}

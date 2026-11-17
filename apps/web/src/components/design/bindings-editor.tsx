@@ -23,7 +23,10 @@ import {
   componentChoices,
   removeBinding,
   removeExtra,
+  reuseBinding,
+  reuseSummary,
   setRole,
+  suggestReuseId,
   setSlot,
   stripChoices,
   updateBinding,
@@ -39,6 +42,7 @@ import {
   designationText,
   setMarking,
 } from '@/components/design/configuration-model';
+import { BindingOverview, type OverviewValidation } from '@/components/design/binding-overview';
 import { WireDetails } from '@/components/design/wire-details';
 import {
   hasWireDetails,
@@ -291,7 +295,14 @@ function BindingRow({
   addFieldId,
   onUnauthorized,
   savedRevision,
+  reusedFrom,
+  onReused,
+  rowIdOf,
 }: {
+  /** M9d: the binding this one was made from in this session, if any. */
+  reusedFrom?: string | undefined;
+  onReused: (newId: string, sourceId: string) => void;
+  rowIdOf: (id: string) => string;
   value: Configuration;
   onChange: (next: Configuration) => void;
   binding: ConfigBinding;
@@ -313,6 +324,14 @@ function BindingRow({
   const wireCount = wireProblemCount(wireProblems(value, binding));
   const withWires = hasWireDetails(binding);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // M9d: "Use on another board": the board is chosen by the user (no default), the id suggested.
+  const [reuse, setReuse] = useState<{ board: string; id: string } | null>(null);
+  const reuseBoards = boards.filter((name) => name !== binding.board);
+  // A chosen board the form no longer has (removed or renamed) counts as not chosen.
+  const reuseBoard = reuse !== null && reuseBoards.includes(reuse.board) ? reuse.board : '';
+  const reuseIdProblem =
+    reuse === null || reuse.id === '' ? null : bindingIdProblem(value, reuse.id);
+  const summary = reusedFrom !== undefined ? reuseSummary(value, binding) : null;
   useEffect(() => {
     if (!withWires) setConfirmRemove(false);
   }, [withWires]);
@@ -415,6 +434,45 @@ function BindingRow({
             {t(`bindings.refusedCore.${conflict.reason}`)}
           </p>
         )}
+      {summary !== null && reusedFrom !== undefined && (
+        <div
+          className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2 text-xs"
+          data-testid="binding-reuse-summary"
+        >
+          <p className="font-semibold" dir="auto">
+            {t('reuse.summaryTitle', { source: reusedFrom })}
+          </p>
+          <p dir="auto" data-testid="binding-reuse-shared">
+            {t('reuse.reused', {
+              pattern: summary.pattern,
+              count: String(summary.connections),
+              shared: summary.sharedWith.join(', ') || '—',
+            })}
+          </p>
+          {summary.patternCores.length > 0 && (
+            <p dir="auto" data-testid="binding-reuse-cores">
+              {t('reuse.cores', {
+                cores: summary.patternCores
+                  .map(
+                    (c) =>
+                      `${c.role}/${String(c.index)}: ${c.core === null ? '—' : String(c.core)}`,
+                  )
+                  .join('; '),
+              })}
+            </p>
+          )}
+          <p dir="auto" data-testid="binding-reuse-enter">
+            {t('reuse.toEnter', {
+              slots: summary.toEnter.slots.join(', ') || '—',
+              roles: summary.toEnter.roles.join(', ') || '—',
+              points: summary.toEnter.points.join(', ') || '—',
+              cable: summary.toEnter.cable ? t('reuse.cableYes') : t('reuse.cableNo'),
+              wires: String(summary.toEnter.wires),
+            })}
+          </p>
+          <p dir="auto">{t('reuse.notCopied')}</p>
+        </div>
+      )}
       {problems.length + wireCount > 0 && (
         <p className="text-xs font-semibold" data-testid="binding-problems">
           {t('bindings.problems', { count: String(problems.length + wireCount) })}
@@ -644,6 +702,130 @@ function BindingRow({
           )}
         </>
       )}
+      {pattern !== undefined &&
+        (reuse === null ? (
+          <button
+            id={`${rowId}-reuse`}
+            type="button"
+            className={wrapButton('secondary') + ' self-start'}
+            aria-label={t('reuse.openNamed', { id: binding.id })}
+            onClick={() => {
+              setReuse({ board: '', id: '' });
+              focusLater(`${rowId}-reuse-board`);
+            }}
+            data-testid="binding-reuse"
+          >
+            {t('reuse.open')}
+          </button>
+        ) : (
+          <fieldset
+            className="flex min-w-0 flex-col gap-2 rounded-md border border-border-subtle p-2"
+            data-testid="binding-reuse-form"
+          >
+            <legend className="text-xs font-semibold">
+              {t('reuse.legend', { id: binding.id, pattern: binding.pattern })}
+            </legend>
+            <p className="text-xs text-text-muted" dir="auto">
+              {t('reuse.explain')}
+            </p>
+            <div className="flex min-w-0 flex-wrap items-end gap-2">
+              <div className="field min-w-0 flex-1">
+                <label htmlFor={`${rowId}-reuse-board`} className="field-label">
+                  {t('reuse.board')}
+                </label>
+                <select
+                  id={`${rowId}-reuse-board`}
+                  className="input w-full"
+                  dir="auto"
+                  value={reuseBoard}
+                  onChange={(event) => {
+                    const board = event.target.value;
+                    setReuse({
+                      board,
+                      id: board === '' ? '' : suggestReuseId(value, binding.id, board),
+                    });
+                  }}
+                  data-testid="binding-reuse-board"
+                >
+                  <option value="">{t('reuse.chooseBoard')}</option>
+                  {reuseBoards.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field min-w-0 flex-1">
+                <label htmlFor={`${rowId}-reuse-id`} className="field-label">
+                  {t('reuse.id')}
+                </label>
+                <input
+                  id={`${rowId}-reuse-id`}
+                  className="input w-full"
+                  dir="ltr"
+                  maxLength={100}
+                  value={reuse.id}
+                  aria-invalid={reuseIdProblem !== null || undefined}
+                  aria-describedby={
+                    reuseIdProblem !== null ? `${rowId}-reuse-id-problem` : undefined
+                  }
+                  onChange={(event) => {
+                    setReuse({ ...reuse, id: event.target.value });
+                  }}
+                  data-testid="binding-reuse-id"
+                />
+              </div>
+            </div>
+            {reuseIdProblem !== null && (
+              <Problem
+                id={`${rowId}-reuse-id-problem`}
+                text={t(`bindings.idProblem.${reuseIdProblem}`)}
+              />
+            )}
+            {reuseBoards.length === 0 && (
+              <p className="text-xs" data-testid="binding-reuse-no-board">
+                {t('reuse.noOtherBoard')}
+              </p>
+            )}
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <button
+                type="button"
+                className={wrapButton('secondary')}
+                disabled={reuseBoard === '' || reuse.id === '' || reuseIdProblem !== null}
+                onClick={() => {
+                  if (reuseBoard === '') return;
+                  const next = reuseBinding(value, binding.id, {
+                    id: reuse.id,
+                    board: reuseBoard,
+                  });
+                  if (next === value) return;
+                  const newId = reuse.id.trim();
+                  onChange(next);
+                  onReused(newId, binding.id);
+                  setReuse(null);
+                  announce(
+                    t('reuse.created', { id: newId, board: reuseBoard, source: binding.id }),
+                  );
+                  focusLater(rowIdOf(newId));
+                }}
+                data-testid="binding-reuse-submit"
+              >
+                {t('reuse.submit')}
+              </button>
+              <button
+                type="button"
+                className={wrapButton('secondary')}
+                onClick={() => {
+                  setReuse(null);
+                  focusLater(`${rowId}-reuse`);
+                }}
+                data-testid="binding-reuse-cancel"
+              >
+                {t('wires.cancel')}
+              </button>
+            </div>
+          </fieldset>
+        ))}
       {confirmRemove && withWires ? (
         <div
           className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2"
@@ -722,7 +904,10 @@ export function BindingsEditor({
   headingId,
   onUnauthorized,
   savedRevision = 0,
+  validation = null,
 }: {
+  /** M9d: the last server validation, for the overview (null when none was run). */
+  validation?: OverviewValidation | null;
   value: Configuration;
   onChange: (next: Configuration) => void;
   /** The board names of the form as it stands. */
@@ -745,6 +930,17 @@ export function BindingsEditor({
   const patterns = bindablePatterns(value);
   const [draft, setDraft] = useState({ id: '', pattern: '', board: '', circuit: '' });
   const [status, setStatus] = useState('');
+  // M9d: bindings made with "Use on another board" in this session (new id → source id).
+  const [reused, setReused] = useState<Record<string, string>>({});
+  // A removed binding's entry goes, so a later binding of the same name is not called reused.
+  const bindingIds = bindings.map((b) => b.id).join('\n');
+  useEffect(() => {
+    const present = new Set(bindingIds.split('\n'));
+    setReused((prev) => {
+      const kept = Object.entries(prev).filter(([newId]) => present.has(newId));
+      return kept.length === Object.keys(prev).length ? prev : Object.fromEntries(kept);
+    });
+  }, [bindingIds]);
   const idProblem = draft.id === '' ? null : bindingIdProblem(value, draft.id);
   const pattern = draft.pattern !== '' ? draft.pattern : (patterns[0]?.ref ?? '');
   const board = draft.board !== '' ? draft.board : (boards[0] ?? '');
@@ -769,6 +965,14 @@ export function BindingsEditor({
       <p className="sr-only" role="status" aria-live="polite" data-testid="bindings-status">
         {status}
       </p>
+      <BindingOverview
+        value={value}
+        boards={boards}
+        boardChoices={boardChoices}
+        conflict={conflict}
+        validation={validation}
+        rowIdOf={rowIdOf}
+      />
       {bindings.length === 0 ? (
         <p className="text-sm text-text-muted">{t('editor.noBindings')}</p>
       ) : (
@@ -776,6 +980,11 @@ export function BindingsEditor({
           {bindings.map((binding) => (
             <BindingRow
               key={binding.id}
+              reusedFrom={reused[binding.id]}
+              onReused={(newId, sourceId) => {
+                setReused((prev) => ({ ...prev, [newId]: sourceId }));
+              }}
+              rowIdOf={rowIdOf}
               value={value}
               onChange={onChange}
               binding={binding}
