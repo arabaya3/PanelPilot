@@ -290,3 +290,65 @@ def test_a_confirmation_is_not_stored_and_applies_only_to_its_reference(
     assert saved.status_code == 201, saved.text[:600]
     record = revision_row(engine, project_id, 4)["requirements"]
     assert "references_confirmed" not in str(record)
+
+
+# --------------------------------------------------------------------------- #
+# The preview runs Save's own checks of the current request
+# --------------------------------------------------------------------------- #
+
+LINK = {
+    "fed_board": "SB-1",
+    "from_end": {"label": "SYN outgoing way 3"},
+    "to_end": {"label": "SYN incomer"},
+    "attributes": {"cores": 4},
+}
+
+
+@pytest.mark.parametrize("fed_board", ["SB-1", "NO-SUCH-BOARD"])
+def test_feeder_links_of_the_current_request_are_checked_as_a_save_checks_them(
+    client: TestClient, switch: Switch, fed_board: str
+) -> None:
+    project_id = _project(client, switch)
+    request = m7a_support.request([{**LINK, "fed_board": fed_board}])
+    preview = _preview(client, project_id, _configuration(), request)
+    if fed_board == "SB-1":
+        assert preview.status_code == 200, preview.text[:600]
+        assert _count(client, project_id) == 2
+        assert _save(client, project_id, request, _configuration()).status_code == 201
+        return
+    save = _save(client, project_id, request, _configuration())
+    assert preview.status_code == save.status_code == 422, (preview.text[:300], save.text[:300])
+    assert preview.json()["code"] == save.json()["code"]
+    assert preview.json().get("params") == save.json().get("params")
+    assert _count(client, project_id) == 2
+
+
+def _renamed(request: dict[str, Any], name: str) -> None:
+    request["boards"][0]["name"] = name
+    request["boards"][1]["fed_from"] = name
+
+
+def test_a_renamed_board_does_not_hide_a_moved_reference(
+    client: TestClient, switch: Switch
+) -> None:
+    project_id = _saved_bound(client, switch)
+    config = _bound_on_c1()
+    config["bindings"][0]["board"] = "MB-9"
+    for strip in config.get("strips", []):
+        if strip["board"] == "MB-1":
+            strip["board"] = "MB-9"
+    for item in config.get("components", []):
+        if item["board"] == "MB-1":
+            item["board"] = "MB-9"
+    renamed = m7a_support.request()
+    _renamed(renamed, "MB-9")
+    # The rename alone moves nothing.
+    assert _preview(client, project_id, config, renamed).status_code == 200
+    # Renamed and a load inserted before the bound one: refused.
+    _with_load(renamed, "MB-9", HEATER, 0)
+    params = _refusal(_preview(client, project_id, config, renamed))
+    assert (params["refusal"], params["before"], params["after"]) == (
+        "reference_moved",
+        "Lighting",
+        "Heater",
+    )

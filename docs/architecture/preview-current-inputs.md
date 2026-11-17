@@ -16,9 +16,11 @@ since.
 
 - The preview and the panel's Validate send the load schedule **as the editor
   holds it now** (the same request shape Save sends) with the configuration. The
-  server designs and composes both exactly as a save would: the same
-  `build_design`, `check_configuration`, `compose_snapshot` (so the same refusal
-  codes and the cable-core write gate). Nothing is written: no revision, no
+  server checks, designs and composes both through Save's own validation (the
+  same profile resolution, feeder-link checks, `build_design`,
+  `check_configuration`, `compose_snapshot` and link derivation, so the same
+  refusal codes, the cable-core write gate, and `configuration_requires_v2` on a
+  deployment that writes v1). Nothing is written: no revision, no
   approval change, no draft on the server.
 - It is labelled _Unsaved preview of the current load schedule and
   configuration_. The preview's staleness key covers the configuration, the
@@ -42,8 +44,13 @@ be re-attached to another load. The model has no stable load identity; adding
 one would change stored ids, hashes and renderers. Instead such a change is
 detected and refused, on preview and save alike:
 
-- A load is told apart by what the user entered for it: its description, its
-  kind and the board it feeds.
+- A load is told apart by what the user entered for it: its description and its
+  kind. A server feeder circuit is told apart by the position of the board it
+  feeds, so renaming the fed board does not make its feeder another load.
+- A board is followed by position: a board renamed since the last save (its
+  saved name gone, another name at its position) is the same board, so a
+  binding that follows the rename is still compared against what its ids named
+  before.
 - For each binding reference (its circuit, its cable, and each slot filled by a
   design device) whose value is **unchanged** from the configuration saved with
   the latest revision, the server compares the load that id names in that
@@ -62,11 +69,11 @@ detected and refused, on preview and save alike:
 - A reference the user changed, a binding new since the last save, an id that is
   new, and an appended load are not affected. An id that no longer exists is
   refused by the composer as before (`unknown_reference`).
-- The check applies to every path that composes a configuration against a
-  changed request: a save with the configuration sent, a save that carries the
-  stored configuration, and answer-generated revisions. A re-save of an earlier
-  revision is not checked (its request and configuration were composed
-  together).
+- The check applies to a save with the configuration sent, a save that carries
+  the stored configuration, and the preview of the current inputs. It does not
+  apply to answer-generated revisions (the answer flow has no way to confirm a
+  reference, so they compose as before) or to a re-save of an earlier revision
+  (its request and configuration were composed together).
 
 ## 4. Compatibility
 
@@ -82,6 +89,12 @@ detected and refused, on preview and save alike:
   are not recomposed); `DESIGN_CABLE_CORE_CROSS_BOARD` stays off by default.
 
 ## 5. Limitations
+
+- The preview covers the load schedule and configuration; its staleness key
+  does not cover the project's requirements answers, which a preview does not
+  send.
+- Boards are followed by position: reordering boards and renaming them in the
+  same edit cannot be told apart from two other boards.
 
 - Two loads entered identically (same description, kind and fed board) that
   swap places cannot be told apart; such a move is not detected.

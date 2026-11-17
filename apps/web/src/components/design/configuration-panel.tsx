@@ -200,6 +200,8 @@ export function ConfigurationPanel({
   // References the server found moved (from a preview, a validation or a save refusal).
   const [moved, setMoved] = useState<{ key: string; refs: MovedReference[] } | null>(null);
   const requestKey = JSON.stringify(currentRequest);
+  const currentKey = useRef(serialized);
+  currentKey.current = serialized;
   const choices: BoardChoices[] | null =
     boardChoices ??
     (previewChoices !== null && previewChoices.key === requestKey ? previewChoices.boards : null);
@@ -211,7 +213,8 @@ export function ConfigurationPanel({
       if (result.review.from_current_request) {
         setPreviewChoices({ key: forRequest, boards: choicesOf(result.review.boards ?? []) });
       }
-      setMoved(null);
+      // Only an answer for the configuration as it is now clears what was found moved.
+      if (forKey === currentKey.current) setMoved(null);
     } else if (result.kind === 'refused' && result.params?.refusal === 'reference_moved') {
       setMoved({ key: forKey, refs: movedOf(result.params) });
     }

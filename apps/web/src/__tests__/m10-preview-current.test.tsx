@@ -242,12 +242,14 @@ function Panel({
   confirmed = [],
   onConfirm = vi.fn(),
   choices = BOARDS,
+  externalRefusal = null,
 }: {
   validateImpl: Validate;
   request?: ProjectDesignRequest | null;
   confirmed?: ConfirmedReference[];
   onConfirm?: (entry: ConfirmedReference) => void;
   choices?: BoardChoices[] | null;
+  externalRefusal?: ConfigurationOutcome | null;
 }) {
   const [value, setValue] = useState<Record<string, unknown>>(BOUND);
   latestDoc = value;
@@ -267,6 +269,7 @@ function Panel({
       onConfirm={onConfirm}
       onUnauthorized={vi.fn()}
       validateImpl={validateImpl as never}
+      externalRefusal={externalRefusal as never}
     />
   );
 }
@@ -420,5 +423,38 @@ describe('M10 preview of the current inputs', () => {
       parseConfiguration({ doc: BOUND, dropUnrecoverable: false, confirmed: [{ id: 'x' }] })
         ?.confirmed,
     ).toBeUndefined();
+  });
+  it('a device slot that moved links to its field, kept or chosen', async () => {
+    const slotMoved = moved() as { params: Record<string, string> };
+    Object.assign(slotMoved.params, { field: 'slot', key: 'src', ref: 'comp-ka' });
+    slotMoved.params.moved = 'bind-1|slot|src|comp-ka';
+    const validate = vi.fn<Validate>(() => Promise.resolve(slotMoved as ConfigurationOutcome));
+    renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    await act(async () => {
+      await tick();
+    });
+    const link = within(screen.getByTestId('binding-moved')).getByTestId('binding-moved-link');
+    fireEvent.click(link);
+    const focused = document.activeElement as HTMLElement | null;
+    expect(focused?.id.endsWith('-slot-src')).toBe(true);
+  });
+
+  it('an answer for older inputs does not clear a moved reference found for the current ones', async () => {
+    let release: (value: ConfigurationOutcome) => void = () => undefined;
+    const slow = new Promise<ConfigurationOutcome>((resolve) => {
+      release = resolve;
+    });
+    const validate = vi.fn<Validate>(() => slow);
+    const view = renderApp(<Panel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    // The schedule changes and a save of the current inputs is refused for a moved reference.
+    view.rerender(<Panel validateImpl={validate} request={OTHER} externalRefusal={moved()} />);
+    expect(screen.getByTestId('binding-moved')).toBeTruthy();
+    release(reviewed('7'));
+    await act(async () => {
+      await tick();
+    });
+    expect(screen.getByTestId('binding-moved')).toBeTruthy();
   });
 });

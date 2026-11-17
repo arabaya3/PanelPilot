@@ -493,6 +493,11 @@ def _labeller(model: entities.DesignModelV2) -> Any:
 _REF_KINDS = ("circuit", "cable", "device")
 
 
+def _board_positions(project: Any) -> dict[str, int]:
+    """Each board's position in a v1 design (a board's id is its name, which can be renamed)."""
+    return {board.id: at for at, board in enumerate(getattr(project, "boards", None) or [])}
+
+
 def _owners(project: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
     """Each circuit, cable and device of a v1 design, with the load it belongs to.
 
@@ -502,10 +507,16 @@ def _owners(project: Any) -> dict[tuple[str, str, str], tuple[str, str, str]]:
     entered for it: its description, its kind and the board it feeds.
     """
     owners: dict[tuple[str, str, str], tuple[str, str, str]] = {}
+    positions = _board_positions(project)
     for board in getattr(project, "boards", None) or []:
         for circuit in board.circuits or []:
             load = getattr(circuit.load, "value", str(circuit.load))
-            mark = (circuit.description, load, circuit.feeds or "")
+            if circuit.feeds:
+                # A feeder is the server's, named after the board it feeds: it is the same
+                # feeder while it feeds the board at the same position, whatever its name.
+                mark = ("", "feeder", str(positions.get(circuit.feeds, circuit.feeds)))
+            else:
+                mark = (circuit.description, load, "")
             owners[(board.id, "circuit", circuit.id)] = mark
             if circuit.cable_id:
                 owners[(board.id, "cable", circuit.cable_id)] = mark
@@ -565,6 +576,14 @@ def moved_references(
             for field, key, _kind, ref in _refs(old):
                 saved[(old["id"], field, key)] = (old.get("board"), ref)
     before, after = _owners(baseline), _owners(current)
+    # A board renamed since the last save: its saved name maps to its name now, by position.
+    was_at = _board_positions(baseline)
+    now_named = {at: name for name, at in _board_positions(current).items()}
+    renamed = {
+        name: now_named[at]
+        for name, at in was_at.items()
+        if at in now_named and name not in now_named.values()
+    }
     kept = {
         (str(c.get("binding")), str(c.get("field")), str(c.get("key") or ""), str(c.get("id")))
         for c in confirmed
@@ -578,9 +597,11 @@ def moved_references(
         for field, key, kind, ref in _refs(binding):
             if not isinstance(ref, str) or not isinstance(board, str):
                 continue
-            if saved.get((bid, field, key)) != (board, ref):
+            was_board, was_ref = saved.get((bid, field, key), (None, None))
+            # Unchanged: the same id on the same board, or on the board it was renamed to.
+            if was_ref != ref or renamed.get(was_board, was_board) != board:
                 continue  # changed by the user, or new: chosen against the current choices
-            was, now = before.get((board, kind, ref)), after.get((board, kind, ref))
+            was, now = before.get((was_board, kind, ref)), after.get((board, kind, ref))
             if was is None or now is None or was == now:
                 continue
             if (bid, field, key, ref) in kept:
@@ -591,11 +612,15 @@ def moved_references(
                     "field": field,
                     "key": key,
                     "id": ref,
-                    "before": was[0],
-                    "after": now[0],
+                    "before": was[0] or _feeder_label(was),
+                    "after": now[0] or _feeder_label(now),
                 }
             )
     return moved
+
+
+def _feeder_label(mark: tuple[str, str, str]) -> str:
+    return f"feeder to board {int(mark[2]) + 1}" if mark[2].isdigit() else "feeder"
 
 
 def check_references(

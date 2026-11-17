@@ -643,7 +643,13 @@ function BindingRow({
               const given = state.slots[slot.id];
               if (given !== undefined && !('component' in given)) {
                 return (
-                  <p key={slot.id} className="text-xs" data-testid="binding-slot-kept">
+                  <p
+                    key={slot.id}
+                    id={`${rowId}-slot-${slot.id}`}
+                    tabIndex={-1}
+                    className="text-xs"
+                    data-testid="binding-slot-kept"
+                  >
                     {t('bindings.slotKept', { slot: slot.id })}
                   </p>
                 );

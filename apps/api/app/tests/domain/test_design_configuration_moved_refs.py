@@ -99,3 +99,55 @@ def test_check_references_refuses_naming_every_moved_reference() -> None:
     assert params["refusal"] == "reference_moved"
     assert (params["binding"], params["field"], params["ref"]) == ("b1", "circuit", "c1")
     assert params["moved"] == "b1|circuit||c1;b1|cable||c1-cable"
+
+
+def _boards(*boards: tuple[str, list[tuple[str, str, str | None]]]) -> Any:
+    """Boards in order, each with its circuits c1.. (description, load kind, feeds)."""
+    return SimpleNamespace(
+        boards=[
+            SimpleNamespace(
+                id=name,
+                circuits=[
+                    SimpleNamespace(
+                        id=f"c{i}",
+                        description=d,
+                        load=k,
+                        feeds=f,
+                        cable_id=f"c{i}-cable",
+                        device_ids=[f"c{i}-breaker"],
+                    )
+                    for i, (d, k, f) in enumerate(circuits, start=1)
+                ],
+                cables=[],
+            )
+            for name, circuits in boards
+        ]
+    )
+
+
+def _on(board: str, circuit: str = "c1") -> Any:
+    return {"bindings": [{"id": "b1", "board": board, "circuit": circuit, "slots": {}}]}
+
+
+def test_a_board_renamed_with_a_moved_load_is_still_moved() -> None:
+    before = _boards(("MB-1", [LIGHT]))
+    after = _boards(("MB-9", [HEAT, LIGHT]))
+    # The binding follows the rename (its board changed with it): its c1 is now Heater.
+    moved = dc.moved_references(before, after, _on("MB-9"), (), _on("MB-1"))
+    assert [(m["id"], m["before"], m["after"]) for m in moved] == [("c1", "Lighting", "Heater")]
+    # The rename alone moves nothing.
+    assert (
+        dc.moved_references(before, _boards(("MB-9", [LIGHT])), _on("MB-9"), (), _on("MB-1")) == []
+    )
+
+
+def test_a_feeder_is_the_same_while_it_feeds_the_board_at_the_same_position() -> None:
+    feeder = ("Feeder to SB-1", "feeder", "SB-1")
+    renamed = ("Feeder to SB-2", "feeder", "SB-2")
+    before = _boards(("MB-1", [feeder]), ("SB-1", []))
+    after = _boards(("MB-1", [renamed]), ("SB-2", []))
+    assert dc.moved_references(before, after, _on("MB-1"), (), _on("MB-1")) == []
+    # A load inserted before the feeder: c1 is no longer the feeder.
+    shifted = _boards(("MB-1", [HEAT, renamed]), ("SB-2", []))
+    moved = dc.moved_references(before, shifted, _on("MB-1"), (), _on("MB-1"))
+    assert [(m["before"], m["after"]) for m in moved] == [("feeder to board 2", "Heater")]

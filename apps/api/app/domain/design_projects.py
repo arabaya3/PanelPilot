@@ -2713,12 +2713,8 @@ def validate_configuration(
             code="revision_not_validated",
             params={"revision": latest.number, "reason": "request_not_valid"},
         ) from exc
-    baseline = entered
     if request.request is not None:
-        # The load schedule as the editor holds it now, checked as a save checks it.
-        design_domain.resolve_profile(request.request.profile)
-        check_requirements_input(request.request, None)
-        entered = request.request
+        return _validate_current(session, project, latest, request)
     design_configuration.check_configuration(request.configuration)
     project_design.refuse_client_feeders(entered.boards)
     as_entered = entered.model_copy(
@@ -2732,15 +2728,6 @@ def validate_configuration(
             code="configuration_refused",
             params={"refusal": "design_refused", **exc.params},
         ) from exc
-    if request.request is not None and baseline is not None:
-        # The same check a save makes: a reference that now names another load is refused.
-        design_configuration.check_references(
-            _reference_baseline(latest),
-            designed,
-            request.configuration,
-            [c.model_dump() for c in request.references_confirmed],
-            _baseline_configuration(latest),
-        )
     stored = design_configuration.compose_snapshot(
         designed.model_dump(mode="json"), request.configuration
     )
@@ -2761,8 +2748,62 @@ def validate_configuration(
         snapshot_sha256=snapshot.sha256_of(stored),
         findings=_design_findings(read.project, conditions, model),
         model=design_configuration.summary(model, _V2_CONFIRM),
-        from_current_request=request.request is not None,
+        from_current_request=False,
         boards=design_configuration.board_choices(designed),
+    )
+
+
+def _validate_current(
+    session: Session,
+    project: DesignProjectRow,
+    latest: DesignRevisionRow,
+    request: ConfigurationValidateRequest,
+) -> ConfigurationReview:
+    """The preview of the editor's current request with the configuration, as a save makes it.
+
+    It runs the very path a save runs (:func:`_validate`, with the same link entry as
+    :func:`_add_revision`): the same design, configuration and feeder-link checks, the same
+    moved-reference check against the latest revision, the same composition and the same
+    snapshot (and so hash). Nothing is written: no revision, no approval, no draft.
+    """
+    current = request.request
+    assert current is not None
+    design_domain.resolve_profile(current.profile)
+    project_design.refuse_client_feeders(current.boards)
+    prior = _stored_record(latest)
+    anchor = engineering_reviews.anchor_for(session=session, tenant_id=project.tenant_id)
+    columns = _validate(
+        current,
+        request.configuration,
+        anchor,
+        _LinkEntry(
+            board_refs=requirements.board_refs(current, prior),
+            entered_by_user_id=None,
+            entered_at=None,
+            prior_links=_stored_links(latest),
+            prior_model=_read_v2(latest.design_snapshot),
+        ),
+        _reference_baseline(latest),
+        [c.model_dump() for c in request.references_confirmed],
+        _baseline_configuration(latest),
+    )
+    stored = columns["design_snapshot"]
+    read = read_snapshot(stored)
+    model = read.v2
+    if model is None:  # pragma: no cover - a configuration always writes v2
+        raise ValidationError("the configuration did not compose", code="configuration_refused")
+    model = anchoring.anchor_model(model, anchor)
+    written = _written_schema()
+    return ConfigurationReview(
+        based_on_revision=latest.number,
+        snapshot_schema=read.schema,
+        written_schema=written,
+        saveable=written in (versions.V2, versions.V3),
+        snapshot_sha256=columns["snapshot_sha256"],
+        findings=[DesignFinding.model_validate(found) for found in columns["findings"]],
+        model=design_configuration.summary(model, _V2_CONFIRM),
+        from_current_request=True,
+        boards=design_configuration.board_choices(read.project),
     )
 
 
@@ -3212,8 +3253,6 @@ def answer_question(
                 answered,
                 f"Answered: {question['field']}",
                 configuration,
-                reference_baseline=_reference_baseline(row),
-                baseline_configuration=configuration,
                 prior=record if not record.get("derived") else {**record, "acknowledgements": []},
                 answered=[
                     {
