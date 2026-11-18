@@ -244,6 +244,10 @@ describe('M11 clear refusals', () => {
     expect(cable.getAttribute('aria-invalid')).toBeNull();
     expect(cable.getAttribute('aria-describedby')).toContain('-cable-refused');
     expect(screen.getByTestId('binding-field-refused').textContent).toBe(E.fieldNoteShared);
+    // The bindings overview says the same sentence, not the raw code.
+    const listed = screen.getByTestId('overview-refused');
+    expect(listed.textContent).toContain('does not yet save the same cable id and core');
+    expect(listed.textContent).not.toContain('Refused: core_shared_cable_id');
     const go = within(error).getByTestId('conflict-edit');
     expect(go.textContent).toBe(E.goField);
     fireEvent.click(go);
