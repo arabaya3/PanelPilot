@@ -2526,7 +2526,8 @@
       "notSavedEntry": "Not saved: {entry}. {explanation}",
       "previewEntry": "The preview could not be composed: {entry}. {explanation}",
       "unknownNoEntry": "The server refused this request. Try again; if it is refused again, the technical detail below gives the server's reason.",
-      "fieldNoteShared": "This cable is where the restriction applies; keep it if it is the cable actually installed."
+      "fieldNoteShared": "This cable is where the restriction applies; keep it if it is the cable actually installed.",
+      "entryNote": "The last save or preview was refused for this binding: see the explanation at the top of the configuration."
     }
   },
   "feederLink": {

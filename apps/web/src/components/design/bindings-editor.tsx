@@ -240,7 +240,10 @@ function BindingPreview({
         )}
         {state.kind === 'refused' && (
           <p className="text-xs font-semibold" data-testid="binding-preview-refused">
-            {state.message}
+            {/* Said at render, so a language switch says it in the new language. */}
+            {state.explained !== null
+              ? refusalSentence(t, state.explained, value, 'preview')
+              : state.message}
           </p>
         )}
       </div>
@@ -524,21 +527,11 @@ function BindingRow({
         <span>{t('bindings.applies', { pattern: binding.pattern })}</span>
       </p>
       {conflicted && (
-        <p className="text-xs font-semibold" role="alert" data-testid="binding-refused">
-          {t('bindings.refused', {
-            reason: conflict.reason || '—',
-            ref: conflict.ref || '—',
-          })}
+        // A pointer, not a second announcement: the explanation is the one at the top.
+        <p className="text-xs font-semibold" data-testid="binding-refused">
+          {t('explain.entryNote')}
         </p>
       )}
-      {conflicted &&
-        (conflict.reason === 'core_out_of_range' ||
-          conflict.reason === 'core_reused' ||
-          conflict.reason === 'core_shared_cable_id') && (
-          <p className="text-xs" data-testid="binding-refused-core">
-            {t(`bindings.refusedCore.${conflict.reason}`)}
-          </p>
-        )}
       {summary !== null && reusedFrom !== undefined && (
         <div
           className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2 text-xs"

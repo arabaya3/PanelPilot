@@ -628,7 +628,7 @@ export function ConfigurationPanel({
                     <>
                       <button
                         type="button"
-                        className="btn btn-sm btn-secondary"
+                        className="btn btn-sm btn-secondary max-w-full whitespace-normal break-words text-start"
                         onClick={() => {
                           editConflict(conflict, outcome.field ?? null);
                         }}
@@ -638,7 +638,7 @@ export function ConfigurationPanel({
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm btn-danger"
+                        className="btn btn-sm btn-danger max-w-full whitespace-normal break-words text-start"
                         onClick={() => {
                           onChange(removeEntry(doc, conflictSection, conflict.entry));
                           setOutcome({ kind: 'idle' });
