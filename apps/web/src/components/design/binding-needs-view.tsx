@@ -8,7 +8,7 @@
  * after typing settles, in a small status of its own; the list itself is not live.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { needFieldSuffix, type BindingNeed } from '@/components/design/binding-needs';
@@ -40,15 +40,24 @@ export function BindingNeeds({
 }) {
   const t = useIsolatingTranslations('configuration');
   const [announced, setAnnounced] = useState('');
-  const summary = t('needs.status', { count: String(needs.length), binding: bindingId });
+  // Said only when the count changes after it was first shown (never on opening the editor,
+  // so many bindings do not all speak at once), once typing has settled.
+  const shown = useRef<number | null>(null);
+  const count = needs.length;
   useEffect(() => {
+    if (shown.current === null) {
+      shown.current = count;
+      return;
+    }
+    if (shown.current === count) return;
     const timer = window.setTimeout(() => {
-      setAnnounced(summary);
+      shown.current = count;
+      setAnnounced(t('needs.status', { count: String(count), binding: bindingId }));
     }, ANNOUNCE_DELAY_MS);
     return () => {
       window.clearTimeout(timer);
     };
-  }, [summary]);
+  }, [count, bindingId, t]);
   if (needs.length === 0) {
     return (
       <p className="sr-only" role="status" data-testid="binding-needs-status">

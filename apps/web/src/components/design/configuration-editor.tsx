@@ -184,10 +184,13 @@ function AddEntry({
   const t = useIsolatingTranslations('configuration');
   const id = useId();
   const [board, setBoard] = useState(boards[0] ?? '');
-  // Arriving from a binding's need: its board is shown selected; the user can change it.
+  // Arriving from a binding's need: its board is shown selected once; the user can change it
+  // (only a new suggestion applies again, not every render of the board list).
+  const suggested =
+    suggestedBoard !== null && boards.includes(suggestedBoard) ? suggestedBoard : null;
   useEffect(() => {
-    if (suggestedBoard !== null && boards.includes(suggestedBoard)) setBoard(suggestedBoard);
-  }, [suggestedBoard, boards]);
+    if (suggested !== null) setBoard(suggested);
+  }, [suggested]);
   const [template, setTemplate] = useState<string | null>(null);
   const [designation, setDesignation] = useState('');
   const chosenBoard = boards.includes(board) ? board : (boards[0] ?? '');

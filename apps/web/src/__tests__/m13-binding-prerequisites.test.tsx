@@ -223,6 +223,39 @@ describe('Needed on this board', () => {
     expect(row.contains(document.activeElement)).toBe(true);
   });
 
+  it("the suggested board stays changeable: a re-render does not reset the user's board", () => {
+    function FreshBoards() {
+      const [value, setValue] = useState<Record<string, unknown>>(WITH_EMPTY);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          // A new array every render, as the page passes it.
+          boards={['MB-1', 'SB-1'].map((name) => name)}
+          model={null}
+          boardChoices={BOARDS2}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn() as never}
+        />
+      );
+    }
+    renderApp(<FreshBoards />, { locale: 'en', theme: 'light' });
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-0'));
+    const form = screen.getByTestId('add-component');
+    const board = within(form).getAllByRole('combobox')[0] as HTMLSelectElement;
+    expect(board.value).toBe('SB-1');
+    fireEvent.change(board, { target: { value: 'MB-1' } });
+    // An edit elsewhere re-renders the page (a new board list); the user's choice stays.
+    fireEvent.change(within(entryOf('bind-1')).getAllByTestId('point-marking')[0] as HTMLElement, {
+      target: { value: '8' },
+    });
+    expect((within(form).getAllByRole('combobox')[0] as HTMLSelectElement).value).toBe('MB-1');
+  });
+
   it('where a compatible item exists, it leads to the selector, not to creation', () => {
     const stocked = {
       ...WITH_EMPTY,
@@ -265,7 +298,7 @@ describe('Needed on this board', () => {
     );
   });
 
-  it('announces the count once typing settles, in its own small status', () => {
+  it('announces only a change of the count, once typing settles, in its own small status', () => {
     vi.useFakeTimers();
     try {
       renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
@@ -273,11 +306,28 @@ describe('Needed on this board', () => {
       const status = within(row).getByTestId('binding-needs-status');
       expect(status.getAttribute('role')).toBe('status');
       expect(within(row).getByTestId('binding-needs').getAttribute('aria-live')).toBeNull();
+      // Nothing said on opening.
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
       expect(status.textContent).toBe('');
+      // A strip is added on SB-1 (the role now says choose; the count stays 3): still silent.
+      fireEvent.click(within(row).getByTestId('binding-need-create-2'));
+      fireEvent.click(within(screen.getByTestId('add-strip')).getByTestId('add-strip-submit'));
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(status.textContent).toBe('');
+      // Choosing it lowers the count: said once, after the delay.
+      const role = within(row).getByTestId('binding-role-strip') as HTMLSelectElement;
+      fireEvent.change(role, { target: { value: role.options[1]?.value ?? '' } });
+      expect(within(row).getByTestId('binding-needs-status').textContent).toBe('');
       act(() => {
         vi.advanceTimersByTime(900);
       });
-      expect(status.textContent).toBe(fill(N.status, { binding: 'bind-1-SB-1', count: '3' }));
+      expect(within(row).getByTestId('binding-needs-status').textContent).toBe(
+        fill(N.status, { binding: 'bind-1-SB-1', count: '2' }),
+      );
     } finally {
       vi.useRealTimers();
     }
