@@ -254,6 +254,7 @@ export function BindingOverview({
                           text: (() => {
                             const explained = explainRefusal({
                               refusal: refused.reason,
+                              binding: binding.id,
                               ref: refused.ref,
                               [refused.refKind || 'ref']: refused.ref,
                             });

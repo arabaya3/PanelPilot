@@ -203,6 +203,23 @@ describe('explainRefusal', () => {
     expect(explainRefusal({ refusal: 'core_reused', cable: 'c1-cable' }).field).toBeNull();
   });
 
+  it('says unknown_reference by what it names, with or without a binding', () => {
+    expect(explainRefusal({ refusal: 'unknown_reference', cable: 'x' }).key).toBe(
+      'unknown_reference_cable',
+    );
+    expect(explainRefusal({ refusal: 'unknown_reference', ref: 't', terminal: 't' }).key).toBe(
+      'unknown_reference_other',
+    );
+    // Every key explainRefusal can produce has a sentence.
+    for (const params of [
+      { refusal: 'unknown_reference' },
+      { refusal: 'unknown_reference', binding: 'b', circuit: 'c' },
+      ...EXPLAINED_REFUSALS.map((refusal) => ({ refusal })),
+    ]) {
+      expect(E).toHaveProperty(explainRefusal(params).key);
+    }
+  });
+
   it('gives an unknown code the generic sentence, with the code kept', () => {
     const explained = explainRefusal({ refusal: 'brand_new_code', binding: 'b' });
     expect(explained.key).toBe('unknown');
@@ -403,6 +420,35 @@ describe('announcements', () => {
       await tick();
     });
     expect(screen.getByTestId('configuration-error').getAttribute('role')).toBe('alert');
+  });
+});
+
+describe('bindings overview', () => {
+  it('says an unknown_reference save refusal as the top message does', () => {
+    renderApp(
+      <CablePanel
+        validateImpl={vi.fn()}
+        externalRefusal={{
+          kind: 'refused',
+          detail: 'x',
+          code: 'configuration_refused',
+          params: {
+            refusal: 'unknown_reference',
+            binding: 'bind-1',
+            cable: 'c9-cable',
+            ref: 'c9-cable',
+            kind: 'cable',
+          },
+        }}
+      />,
+      { locale: 'en', theme: 'light' },
+    );
+    expect(screen.getByTestId('overview-refused').textContent).toContain(
+      "Cable c9-cable is not in this board's design.",
+    );
+    expect(screen.getByTestId('configuration-error').textContent).toContain(
+      "Cable c9-cable is not in this board's design.",
+    );
   });
 });
 

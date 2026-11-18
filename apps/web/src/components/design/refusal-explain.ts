@@ -78,12 +78,13 @@ export function explainRefusal(params: Record<string, string> | undefined): Expl
   const binding = text(p.binding) || null;
   let field: RefusalField | null = null;
   let key: string = (EXPLAINED_REFUSALS as readonly string[]).includes(code) ? code : 'unknown';
+  // Said by what it names, with or without a binding (there is no plain `unknown_reference`).
+  if (code === 'unknown_reference') key = `unknown_reference_${unknownKind(p)}`;
   if (binding !== null) {
     if (code === 'core_shared_cable_id' || code === 'core_out_of_range' || code === 'core_reused') {
       field = { name: 'cable' };
     } else if (code === 'unknown_reference') {
       const kind = unknownKind(p);
-      key = `unknown_reference_${kind}`;
       if (kind === 'cable') field = { name: 'cable' };
       else if (kind === 'circuit') field = { name: 'circuit' };
       else if (text(p.slot) !== '') field = { name: 'slot', key: p.slot as string };
