@@ -203,6 +203,10 @@ function AddEntry({
     const unfinished = designation !== '' || template !== null || boardEdited;
     if (unfinished && board !== context.board) {
       setPending(context.board);
+      // Said by moving focus to the question (the link focused the form's first control).
+      window.setTimeout(() => {
+        document.getElementById(`${id}-pending`)?.focus();
+      }, 0);
     } else {
       setBoard(context.board);
       setBoardEdited(false);
@@ -229,7 +233,7 @@ function AddEntry({
           aria-labelledby={`${id}-pending`}
           data-testid={`add-${kind}-context-conflict`}
         >
-          <p id={`${id}-pending`} dir="auto">
+          <p id={`${id}-pending`} tabIndex={-1} dir="auto">
             {t('needs.conflict', { board: pending, binding: context.binding })}
           </p>
           <div className="flex flex-wrap gap-2">

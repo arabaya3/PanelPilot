@@ -360,7 +360,7 @@ describe('Needed on this board', () => {
     ).toBe('MB-1');
   });
 
-  it('a second follow is a new context, even for the same board', () => {
+  it('a second follow is a new context, even for the same board', async () => {
     renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
     fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
     const board = within(screen.getByTestId('add-strip')).getByTestId<HTMLSelectElement>(
@@ -378,6 +378,11 @@ describe('Needed on this board', () => {
       fill(N.conflict, { board: 'SB-1', binding: 'bind-1-SB-1' }),
     );
     expect(board.value).toBe('MB-1');
+    // Focus moves to the question, so it is heard and answered first.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(conflict.contains(document.activeElement)).toBe(true);
     fireEvent.click(within(conflict).getByTestId('add-strip-context-keep'));
     expect(board.value).toBe('MB-1');
     // Following again and choosing the new context applies it.
