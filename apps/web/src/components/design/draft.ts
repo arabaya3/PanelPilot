@@ -85,13 +85,46 @@ export type DesignDraft = {
   configuration?: ConfigurationDraft;
 };
 
-export type ConfigurationDraft = { doc: Configuration; dropUnrecoverable: boolean };
+/** A binding reference kept for the load now at its position (see ReferenceConfirmation). */
+export type ConfirmedReference = {
+  binding: string;
+  field: 'circuit' | 'cable' | 'slot';
+  key: string | null;
+  id: string;
+  /** The refusal's token: binds the confirmation to the exact before and after. */
+  token: string;
+};
 
-function parseConfiguration(value: unknown): ConfigurationDraft | undefined {
+export type ConfigurationDraft = {
+  doc: Configuration;
+  dropUnrecoverable: boolean;
+  /** Kept through a reload with the edits they belong to; absent in older drafts. */
+  confirmed?: ConfirmedReference[];
+};
+
+function confirmedOf(value: unknown): ConfirmedReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item: unknown) => {
+    if (!isFields(item)) return [];
+    const { binding, field, key, id, token } = item;
+    if (typeof binding !== 'string' || typeof id !== 'string') return [];
+    // An older draft's confirmation has no token: it is bound to nothing, so it is dropped.
+    if (typeof token !== 'string' || token === '') return [];
+    if (field !== 'circuit' && field !== 'cable' && field !== 'slot') return [];
+    return [{ binding, field, key: typeof key === 'string' ? key : null, id, token }];
+  });
+}
+
+export function parseConfiguration(value: unknown): ConfigurationDraft | undefined {
   if (!isFields(value) || !isFields(value.doc) || typeof value.dropUnrecoverable !== 'boolean') {
     return undefined;
   }
-  return { doc: normalized(value.doc), dropUnrecoverable: value.dropUnrecoverable };
+  const confirmed = confirmedOf(value.confirmed);
+  return {
+    doc: normalized(value.doc),
+    dropUnrecoverable: value.dropUnrecoverable,
+    ...(confirmed.length > 0 ? { confirmed } : {}),
+  };
 }
 
 export type AiDraft = {

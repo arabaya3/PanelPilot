@@ -209,6 +209,8 @@ const MODEL: V2ModelSummary = {
 
 const REVIEW: ConfigurationReview = {
   based_on_revision: 1,
+  // Against the latest saved revision's request (no current request sent).
+  from_current_request: false,
   snapshot_schema: 'pp-design/2',
   written_schema: 'pp-design/2',
   saveable: true,

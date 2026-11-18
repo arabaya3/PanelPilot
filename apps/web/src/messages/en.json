@@ -2353,7 +2353,11 @@
         "data": "imported data",
         "assumption": "assumed"
       },
-      "previewAssumed": "assumed: {statement}"
+      "previewAssumed": "assumed: {statement}",
+      "previewLabelCurrent": "Unsaved preview of the current load schedule and configuration: composed by the server from both as they are in the editor now, exactly as Save would compose them. It is for review only, not electrical validation, and saves nothing.",
+      "previewNotSave": "A preview is not a save and does not guarantee one. Saving checks everything again and can still be refused: if another revision was saved meanwhile, the project reached its revision limit, your access changed, or an AI proposal it applies was used.",
+      "choicesUnchecked": "The circuit and cable choices are not checked for the load schedule as it is now (it changed since the last design). Refresh them from the server before choosing.",
+      "refreshChoices": "Refresh circuit and cable choices"
     },
     "overviewRefused": "Not saved: the configuration's {entry} cannot be composed ({reason}).",
     "overviewRefusedShow": "Show it in the configuration",
@@ -2462,6 +2466,24 @@
         "marking": "Point marking",
         "extra": "Stored key"
       }
+    },
+    "moved": {
+      "title": "{count} reference(s) of this binding are not proven to name the same load",
+      "field": {
+        "circuit": "Circuit",
+        "cable": "Cable",
+        "slot": "Slot {key}"
+      },
+      "named": "{field} {id} is now “{after}” (it was “{before}”). Choose again, or keep {id} for the load now there.",
+      "unnamed": "{field} {id} now names another load than when this binding was saved. Choose again, or keep it for the load now there.",
+      "keepNamed": "Keep {id} for “{after}”",
+      "keep": "Keep {id} for the load now there",
+      "kept": "{field} {id} kept for the load now there.",
+      "help": "Circuit, cable and device ids follow the order of loads and boards, so inserting, removing, moving or renaming changes what an id names. A reference is accepted only when the load it names now is the same in every entered detail as when it was saved. Nothing is changed for you: choose again, or keep the id explicitly.",
+      "meansNamed": "Keeping {id} means this binding connects to “{after}” ({afterCircuit} on {afterBoard}) instead of “{before}” ({beforeCircuit} on {beforeBoard}). Its wire details stay exactly as entered; they are not checked for the new load. Any later change to either load asks again.",
+      "means": "Keeping {id} means this binding uses it for the load it names now. Its wire details stay exactly as entered; they are not checked for that load. Any later change asks again.",
+      "unknownLoad": "a load not in the saved design",
+      "more": "{count} more reference(s) are not proven either; they are named once these are settled."
     }
   },
   "feederLink": {

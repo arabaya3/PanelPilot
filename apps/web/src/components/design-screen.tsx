@@ -125,6 +125,7 @@ import {
   formBoards,
   readDraft,
   writeDraft,
+  type ConfirmedReference,
   type DesignDraft,
 } from '@/components/design/draft';
 import {
@@ -601,6 +602,14 @@ function DesignWorkspace({
   const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
   const [dropUnrecoverable, setDropUnrecoverable] = useState(false);
   const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
+  // References the user keeps for the load now at their position after the load schedule
+  // changed (sent with the preview and the save; never stored; kept in the draft).
+  const [confirmed, setConfirmed] = useState<ConfirmedReference[]>([]);
+  /** The guided input a save sends now; a preview of the same request sends the same. */
+  function currentRequirementsInput() {
+    const plain = requirementsInputOf(boards, controlNeeds);
+    return aiOpen ? aiRequirementsInput(plain, boards, controlNeeds, aiControlTags, aiOpen) : plain;
+  }
   // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
   const [conflictJump, setConflictJump] = useState(0);
   /**
@@ -929,7 +938,13 @@ function DesignWorkspace({
       market,
       // Unsaved configuration edits come back with the rest after a reload.
       ...(opened !== null && (configEdited || dropChosen)
-        ? { configuration: { doc: configDoc, dropUnrecoverable } }
+        ? {
+            configuration: {
+              doc: configDoc,
+              dropUnrecoverable,
+              ...(confirmed.length > 0 ? { confirmed } : {}),
+            },
+          }
         : {}),
     };
     const text = JSON.stringify(draft);
@@ -963,6 +978,7 @@ function DesignWorkspace({
         if (draft.configuration) {
           setConfigDoc(draft.configuration.doc);
           setDropUnrecoverable(draft.configuration.dropUnrecoverable);
+          setConfirmed(draft.configuration.confirmed ?? []);
         }
       }
     }
@@ -1142,6 +1158,8 @@ function DesignWorkspace({
     setConfigStatus(project.configuration_status);
     setDropUnrecoverable(false);
     setConfigRefusal(null);
+    // Confirmations answer the revision they were made against: a newly opened one starts clean.
+    setConfirmed([]);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
     setOpenedLinks(storedLinksOf(project));
@@ -1391,8 +1409,12 @@ function DesignWorkspace({
 
   const designed = result.kind === 'designed' ? result.response.project : null;
   // M9b1: each board's circuits and cables from the design, offered to a binding as stated.
+  // Only a design of the load schedule as it stands now: after an edit its choices may
+  // name circuits that moved or are gone, so none are offered until the editor's preview
+  // (or Design) answers for the current inputs.
+  const designCurrent = result.kind === 'designed' && result.basis === basis;
   const boardChoices: BoardChoices[] | null =
-    designed === null
+    designed === null || !designCurrent
       ? null
       : (designed.boards ?? []).map((board) => ({
           id: board.id,
@@ -1922,15 +1944,8 @@ function DesignWorkspace({
                               ),
                             }
                           : {}),
-                        requirementsInput: aiOpen
-                          ? aiRequirementsInput(
-                              requirementsInputOf(boards, controlNeeds),
-                              boards,
-                              controlNeeds,
-                              aiControlTags,
-                              aiOpen,
-                            )
-                          : requirementsInputOf(boards, controlNeeds),
+                        ...(confirmed.length > 0 ? { referencesConfirmed: confirmed } : {}),
+                        requirementsInput: currentRequirementsInput(),
                       }
                     : null
                 }
@@ -2612,6 +2627,26 @@ function DesignWorkspace({
                   findingsRevision={opened.revision}
                   linkUses={linkUsesOf(boards)}
                   boardChoices={boardChoices}
+                  currentRequest={
+                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
+                  }
+                  currentRequirementsInput={
+                    complete && parsed !== 'invalid' ? currentRequirementsInput() : null
+                  }
+                  confirmed={confirmed}
+                  onConfirm={(entry) => {
+                    setConfirmed((prev) => [
+                      ...prev.filter(
+                        (c) =>
+                          !(
+                            c.binding === entry.binding &&
+                            c.field === entry.field &&
+                            c.key === entry.key
+                          ),
+                      ),
+                      entry,
+                    ]);
+                  }}
                   jumpToConflict={conflictJump}
                   saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {

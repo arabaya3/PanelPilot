@@ -1258,6 +1258,9 @@ def _validate(
     configuration: Mapping[str, Any] | None = None,
     anchor: anchoring.ReviewAnchor = anchoring.EMPTY,
     link_entry: _LinkEntry | None = None,
+    reference_baseline: Any | None = None,
+    references_confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
@@ -1294,6 +1297,17 @@ def _validate(
             ) from exc
         return {"findings": [_design_refused(exc).model_dump(mode="json")]}
     conditions = {board.name: board.conditions for board in request.boards}
+    if configuration is not None and reference_baseline is not None:
+        # Circuit, cable and device ids are positional: never re-attach a binding silently.
+        design_configuration.check_references(
+            reference_baseline.design,
+            designed,
+            configuration,
+            references_confirmed,
+            baseline_configuration,
+            baseline_request=reference_baseline.request,
+            current_request=request,
+        )
     stored = designed.model_dump(mode="json")
     v2: entities.DesignModelV2 | None = None
     if configuration is not None:
@@ -1470,6 +1484,71 @@ def _carried_configuration(
     return configuration
 
 
+def _baseline_configuration(row: DesignRevisionRow | None) -> dict[str, Any] | None:
+    """The configuration a revision stored (``None`` if none, or none can be recovered)."""
+    if row is None:
+        return None
+    configuration, status = _configuration_of(row, _stored_record(row))
+    return configuration if status != "not_recoverable" else None
+
+
+@dataclass(frozen=True)
+class _ReferenceBaseline:
+    """What a revision's binding references named: its v1 design and its request as entered.
+
+    Either can be ``None`` (a refused revision holds no design; a stored request may
+    no longer read): then nothing it named can be proven, and an unchanged reference
+    is refused until confirmed, never accepted because its id still exists.
+    """
+
+    design: Any | None
+    request: Any | None
+
+
+def _reference_baseline(row: DesignRevisionRow | None) -> _ReferenceBaseline | None:
+    """The latest revision's design and request, against which references are proven."""
+    if row is None:
+        return None
+    design = None
+    if row.design_snapshot is not None:
+        try:
+            design = read_snapshot(row.design_snapshot).project
+        except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+            design = None
+    return _ReferenceBaseline(design=design, request=row.request)
+
+
+def _linked_boards(stored_read: Any | None) -> frozenset[str]:
+    """M7a: the boards whose feeder a v3 revision records by a link (not an open item)."""
+    if stored_read is None:
+        return frozenset()
+    return frozenset(
+        board.name
+        for link in stored_read.links
+        for board in stored_read.project.boards
+        if board.id == link.feeder.fed_board
+    )
+
+
+def _check_save_input(
+    request: ProjectDesignRequest, requirements_input: RequirementsInput | None
+) -> None:
+    """The checks of a save's input before it is designed; a preview runs the same."""
+    design_domain.resolve_profile(request.profile)
+    project_design.refuse_client_feeders(request.boards)
+    check_requirements_input(request, requirements_input)
+
+
+def _check_room(project: DesignProjectRow) -> None:
+    """Refuse a revision past the most a project holds (``project_revisions_full``)."""
+    if project.revision_count >= MAX_REVISIONS:
+        raise ValidationError(
+            f"a project holds at most {MAX_REVISIONS} revisions",
+            code="project_revisions_full",
+            params={"limit": str(MAX_REVISIONS)},
+        )
+
+
 def _add_revision(
     session: Session,
     project: DesignProjectRow,
@@ -1483,6 +1562,9 @@ def _add_revision(
     answered: Sequence[Mapping[str, Any]] = (),
     resaved_from: int | None = None,
     carried: bool = False,
+    reference_baseline: Any | None = None,
+    references_confirmed: Sequence[Mapping[str, Any]] = (),
+    baseline_configuration: Mapping[str, Any] | None = None,
 ) -> None:
     """Add the project's next revision.
 
@@ -1490,12 +1572,7 @@ def _add_revision(
     (M7b); ``carried`` says it came from an earlier revision, so a refusal to
     compose it is a ``configuration_conflict``.
     """
-    if project.revision_count >= MAX_REVISIONS:
-        raise ValidationError(
-            f"a project holds at most {MAX_REVISIONS} revisions",
-            code="project_revisions_full",
-            params={"limit": str(MAX_REVISIONS)},
-        )
+    _check_room(project)
     previous = _revisions(session, project)[-1] if project.revision_count else None
     project.revision_count += 1
     saving_account = _account_id(user) if user.email else None
@@ -1511,9 +1588,14 @@ def _add_revision(
                 prior_links=_stored_links(previous),
                 prior_model=_read_v2(previous.design_snapshot) if previous is not None else None,
             ),
+            reference_baseline,
+            references_confirmed,
+            baseline_configuration,
         )
     except ValidationError as exc:
-        if carried and configuration is not None:
+        # A moved reference is actionable as it is (confirm or choose again), carried or not.
+        moved = (exc.params or {}).get("refusal") == "reference_moved"
+        if carried and configuration is not None and not moved:
             raise _configuration_conflict(exc) from exc
         raise
     stored_read = (
@@ -1524,16 +1606,7 @@ def _add_revision(
     designed = stored_read.project if stored_read is not None else None
     # M7a: in a v3 revision, a feeder with a link is recorded by the link and
     # its findings, not by the open item ``inter_board_wiring_not_modelled``.
-    linked = (
-        frozenset(
-            board.name
-            for link in stored_read.links
-            for board in stored_read.project.boards
-            if board.id == link.feeder.fed_board
-        )
-        if stored_read is not None
-        else frozenset()
-    )
+    linked = _linked_boards(stored_read)
     proposal = None
     ai_block = None
     if requirements_input is not None and requirements_input.ai is not None:
@@ -1788,12 +1861,9 @@ def revise_project(
     tenant = _scope_to(session, user)
     try:
         project = _load(session, project_id, lock=True)
-        # Malformed company settings are refused, not saved as a refused design.
-        design_domain.resolve_profile(request.request.profile)
-        # So is a typed feeder row, which an earlier revision may hold: the
-        # user removes it and sets "Fed from" (the stored revision is untouched).
-        project_design.refuse_client_feeders(request.request.boards)
-        check_requirements_input(request.request, request.requirements_input)
+        # Malformed company settings, a typed feeder row and unknown guided input are
+        # refused, not saved as a refused design (a preview runs the same checks).
+        _check_save_input(request.request, request.requirements_input)
         # Raising the revision count updates the row, which moves its
         # ``updated_at`` (the list's order) to now.
         latest_row = _revisions(session, project)[-1]
@@ -1815,6 +1885,9 @@ def revise_project(
             requirements_input=request.requirements_input,
             prior=prior,
             carried=carried,
+            reference_baseline=_reference_baseline(latest_row),
+            references_confirmed=[c.model_dump() for c in request.references_confirmed],
+            baseline_configuration=_baseline_configuration(latest_row),
         )
         # The number this save took: by the time it is opened, a concurrent
         # save may have added a later one.
@@ -2659,6 +2732,10 @@ def validate_configuration(
     project = _load(session, project_id)
     revisions = _revisions(session, project)
     latest = revisions[-1]
+    if request.request is not None:
+        # The editor's request replaces the stored one, as a save would: a stored request
+        # that no longer validates does not refuse it (a save would accept it).
+        return _validate_current(session, project, latest, request, user)
     try:
         entered = ProjectDesignRequest.model_validate(latest.request)
     except PydanticValidationError as exc:
@@ -2701,6 +2778,92 @@ def validate_configuration(
         snapshot_sha256=snapshot.sha256_of(stored),
         findings=_design_findings(read.project, conditions, model),
         model=design_configuration.summary(model, _V2_CONFIRM),
+        from_current_request=False,
+        boards=design_configuration.board_choices(designed),
+    )
+
+
+def _validate_current(
+    session: Session,
+    project: DesignProjectRow,
+    latest: DesignRevisionRow,
+    request: ConfigurationValidateRequest,
+    user: CurrentUser,
+) -> ConfigurationReview:
+    """The preview of the editor's current request with the configuration, as a save makes it.
+
+    It runs the very path a save runs (:func:`_validate`, with the same link entry as
+    :func:`_add_revision`): the same design, configuration and feeder-link checks, the same
+    moved-reference check against the latest revision, the same composition and the same
+    snapshot (and so hash). Nothing is written: no revision, no approval, no draft.
+    """
+    current = request.request
+    assert current is not None
+    _check_save_input(current, request.requirements_input)
+    _check_room(project)
+    prior = _stored_record(latest)
+    anchor = engineering_reviews.anchor_for(session=session, tenant_id=project.tenant_id)
+    columns = _validate(
+        current,
+        request.configuration,
+        anchor,
+        _LinkEntry(
+            board_refs=requirements.board_refs(current, prior),
+            entered_by_user_id=None,
+            entered_at=None,
+            prior_links=_stored_links(latest),
+            prior_model=_read_v2(latest.design_snapshot),
+        ),
+        _reference_baseline(latest),
+        [c.model_dump() for c in request.references_confirmed],
+        _baseline_configuration(latest),
+    )
+    stored = columns["design_snapshot"]
+    read = read_snapshot(stored)
+    model = read.v2
+    if model is None:  # pragma: no cover - a configuration always writes v2
+        raise ValidationError("the configuration did not compose", code="configuration_refused")
+    model = anchoring.anchor_model(model, anchor)
+    findings = [DesignFinding.model_validate(found) for found in columns["findings"]]
+    given = request.requirements_input
+    ai_block = None
+    if given is not None and given.ai is not None:
+        # Read only (no lock, nothing marked used): the save checks it again, under its lock.
+        _row, ai_block = design_ai.apply(
+            session=session,
+            user=user,
+            request=current,
+            given=given.ai,
+            control=given.control,
+            lock=False,
+        )
+    # The record a save builds, built and discarded: its refusals are a save's refusals.
+    requirements.build(
+        current,
+        read.project,
+        findings,
+        given,
+        prior=prior,
+        ai=ai_block,
+        linked=_linked_boards(read),
+    )
+    written = _written_schema()
+    return ConfigurationReview(
+        based_on_revision=latest.number,
+        snapshot_schema=read.schema,
+        written_schema=written,
+        saveable=written in (versions.V2, versions.V3),
+        snapshot_sha256=columns["snapshot_sha256"],
+        findings=findings,
+        model=design_configuration.summary(model, _V2_CONFIRM),
+        from_current_request=True,
+        boards=design_configuration.board_choices(read.project),
+        checked_at_save_only=[
+            "revision_conflict",
+            "revision_limit",
+            "access",
+            *(["ai_proposal_use"] if ai_block is not None else []),
+        ],
     )
 
 

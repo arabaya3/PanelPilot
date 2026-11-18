@@ -516,3 +516,77 @@ export function reuseSummary(config: Configuration, binding: ConfigBinding): Reu
     },
   };
 }
+
+/* ------------------------------------------------ current-input choices --- */
+
+/** A board's choices as the server's preview designed them (``ReviewBoardChoices``). */
+type ServerBoardChoices = {
+  id: string;
+  circuits: { id: string; description: string }[];
+  cables: { id: string; cores: number; designation?: string | null }[];
+};
+
+/** The server's per-board choices, labelled as the editor labels the opened design's. */
+export function choicesOf(boards: ServerBoardChoices[]): BoardChoices[] {
+  return boards.map((board) => ({
+    id: board.id,
+    circuits: board.circuits.map((circuit) => ({
+      id: circuit.id,
+      label: circuit.description ? `${circuit.id} · ${circuit.description}` : circuit.id,
+    })),
+    cables: board.cables.map((cable) => ({
+      id: cable.id,
+      label: cable.designation ? `${cable.designation} (${cable.id})` : cable.id,
+      cores: cable.cores,
+    })),
+  }));
+}
+
+/** A binding reference whose id now names another load (``reference_moved``). */
+export type MovedReference = {
+  binding: string;
+  field: 'circuit' | 'cable' | 'slot';
+  key: string | null;
+  id: string;
+  /** What a confirmation is bound to: this reference with its exact before and after. */
+  token: string;
+  /** What it named when saved and names now, where the server named them (the first one). */
+  before: { load: string; board: string; circuit: string } | null;
+  after: { load: string; board: string; circuit: string } | null;
+};
+
+function side(load?: string, board?: string, circuit?: string) {
+  return load !== undefined && board !== undefined ? { load, board, circuit: circuit ?? '' } : null;
+}
+
+/** The references a ``reference_moved`` refusal names, each in full (``r{i}_*``). */
+export function movedOf(params: Record<string, string> | undefined): MovedReference[] {
+  if (params === undefined) return [];
+  const out: MovedReference[] = [];
+  for (let i = 0; params[`r${String(i)}_binding`] !== undefined; i += 1) {
+    const at = (name: string) => params[`r${String(i)}_${name}`];
+    const binding = at('binding');
+    const field = at('field');
+    const id = at('id');
+    const token = at('token');
+    if (!binding || !id || !token) continue;
+    if (field !== 'circuit' && field !== 'cable' && field !== 'slot') continue;
+    const key = at('key');
+    out.push({
+      binding,
+      field,
+      key: key ? key : null,
+      id,
+      token,
+      before: side(at('before'), at('before_board'), at('before_circuit')),
+      after: side(at('after'), at('after_board'), at('after_circuit')),
+    });
+  }
+  return out;
+}
+
+/** How many unproven references the refusal found (more than it names in full, at times). */
+export function movedCountOf(params: Record<string, string> | undefined): number {
+  const count = Number(params?.moved_count ?? '0');
+  return Number.isFinite(count) ? count : 0;
+}

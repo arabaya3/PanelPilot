@@ -21,6 +21,7 @@ import {
   resaveRevision,
   resolveSafetyConcern,
   reviseProject,
+  type ReferenceConfirmation,
   saveProject,
   type ProjectDesignRequest,
   type ProjectPage,
@@ -160,6 +161,8 @@ export function ProjectsPanel({
       configuration?: Record<string, unknown>;
       configurationRemoved?: true;
     };
+    /** Binding references the user keeps for the load now at their position (not stored). */
+    referencesConfirmed?: ReferenceConfirmation[];
   } | null;
   opened: OpenedProject | null;
   /** `fill` is true when the project was opened, so the form takes it. */
@@ -308,6 +311,9 @@ export function ProjectsPanel({
           note,
           ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
           ...(current.configuration ?? {}),
+          ...(current.referencesConfirmed && current.referencesConfirmed.length > 0
+            ? { referencesConfirmed: current.referencesConfirmed }
+            : {}),
         })
       : await save({
           token,

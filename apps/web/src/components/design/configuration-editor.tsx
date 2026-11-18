@@ -12,7 +12,9 @@
  * invented. Bindings and patterns are kept as loaded; a binding can have its
  * point markings edited or be removed.
  */
+import type { MovedReference } from '@/components/design/binding-model';
 import type { OverviewValidation } from '@/components/design/binding-overview';
+import type { ConfirmedReference } from '@/components/design/draft';
 import { useId, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -444,6 +446,11 @@ export function ConfigurationEditor({
   onUnauthorized,
   savedRevision = 0,
   validation = null,
+  previewInputsKey = '',
+  previewCurrent = false,
+  moved = [],
+  onConfirm,
+  onRefreshChoices,
 }: {
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -457,6 +464,15 @@ export function ConfigurationEditor({
   savedRevision?: number;
   /** M9d: the last server validation, shown in the bindings overview. */
   validation?: OverviewValidation | null;
+  /** M10: what a preview answers besides the configuration (the load schedule, confirmations). */
+  previewInputsKey?: string;
+  /** Whether previews design the current load schedule (else the latest saved one). */
+  previewCurrent?: boolean;
+  /** References the server found moved, said beside their binding. */
+  moved?: MovedReference[];
+  onConfirm?: ((entry: ConfirmedReference) => void) | undefined;
+  /** Asks the server for circuit and cable choices of the current inputs; absent when not needed. */
+  onRefreshChoices?: (() => void) | undefined;
   /** The feeder-link ends the boards' link forms name now (M8), so removals can say what uses them. */
   linkUses?: LinkEndUse[];
   /** The board names of the form as it stands: an entry belongs to one of them. */
@@ -691,6 +707,11 @@ export function ConfigurationEditor({
         onUnauthorized={onUnauthorized}
         savedRevision={savedRevision}
         validation={validation}
+        previewInputsKey={previewInputsKey}
+        previewCurrent={previewCurrent}
+        moved={moved}
+        onConfirm={onConfirm}
+        onRefreshChoices={onRefreshChoices}
         rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
         headingId={`${idBase}-bindings`}
       />

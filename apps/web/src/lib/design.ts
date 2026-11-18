@@ -574,6 +574,8 @@ export function reviseProject(
     /** M7b: remove the stored configuration (sends `configuration: null`, `configuration_removed: true`). */
     configurationRemoved?: boolean;
     requirementsInput?: RequirementsInput | null;
+    /** References the user keeps for the load now at their position. */
+    referencesConfirmed?: ReferenceConfirmation[];
   },
 ): Promise<ProjectOutcome> {
   const {
@@ -583,6 +585,7 @@ export function reviseProject(
     configuration,
     configurationRemoved,
     requirementsInput,
+    referencesConfirmed,
   } = options;
   return call(
     options,
@@ -596,6 +599,9 @@ export function reviseProject(
           ? { configuration }
           : {}),
       ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
+      ...(referencesConfirmed && referencesConfirmed.length > 0
+        ? { references_confirmed: referencesConfirmed }
+        : {}),
     },
     saved,
   );
@@ -851,14 +857,32 @@ export function clarifySafetyMention(
  * and return what it would be: `POST /api/v1/design/projects/{id}/configuration/validate`.
  * Nothing is saved.
  */
+/** A binding reference the user keeps for the load now at its position (never stored). */
+export type ReferenceConfirmation = components['schemas']['ReferenceConfirmation'];
+export type ReviewBoardChoices = components['schemas']['ReviewBoardChoices'];
+
 export function validateConfiguration(
-  options: Transport & { id: string; configuration: Record<string, unknown> },
+  options: Transport & {
+    id: string;
+    configuration: Record<string, unknown>;
+    /** The load schedule as the editor holds it now; omitted, the latest revision's. */
+    request?: ProjectDesignRequest | null;
+    requirementsInput?: RequirementsInput | null;
+    referencesConfirmed?: ReferenceConfirmation[];
+  },
 ): Promise<ConfigurationOutcome> {
-  const { id, configuration } = options;
+  const { id, configuration, request, requirementsInput, referencesConfirmed } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/configuration/validate`,
-    { configuration },
+    {
+      configuration,
+      ...(request ? { request } : {}),
+      ...(request && requirementsInput ? { requirements_input: requirementsInput } : {}),
+      ...(referencesConfirmed && referencesConfirmed.length > 0
+        ? { references_confirmed: referencesConfirmed }
+        : {}),
+    },
     (payload) =>
       has(payload, 'model', 'findings', 'saveable')
         ? { kind: 'reviewed', review: payload as ConfigurationReview }

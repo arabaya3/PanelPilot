@@ -2579,6 +2579,15 @@ export interface components {
      *         snapshot_sha256: The hash the composed snapshot would be stored under.
      *         findings: Every finding the save would record (v1 checks and structural).
      *         model: The composed model.
+     *         from_current_request: Whether the request designed is the editor's
+     *             current one (sent with the validation) rather than the latest
+     *             revision's.
+     *         boards: Each board's circuits and cables in that design, for the
+     *             editor's choices.
+     *         checked_at_save_only: What a save checks that a preview cannot settle,
+     *             because it depends on state at the moment of saving (empty for a
+     *             preview of the latest revision). A preview is never a guarantee
+     *             that the save will succeed.
      */
     ConfigurationReview: {
       /** Based On Revision */
@@ -2594,19 +2603,40 @@ export interface components {
       /** Findings */
       findings: components['schemas']['DesignFinding'][];
       model: components['schemas']['V2ModelSummary'];
+      /**
+       * From Current Request
+       * @default false
+       */
+      from_current_request: boolean;
+      /** Boards */
+      boards?: components['schemas']['ReviewBoardChoices'][];
+      /** Checked At Save Only */
+      checked_at_save_only?: (
+        'revision_conflict' | 'revision_limit' | 'ai_proposal_use' | 'access'
+      )[];
     };
     /**
      * ConfigurationValidateRequest
-     * @description A configuration to try against a project's latest revision; nothing is saved.
+     * @description A configuration to try against a project; nothing is saved.
      *
      *     Attributes:
      *         configuration: As for ``ReviseProjectRequest.configuration``.
+     *         request: The load schedule as the editor holds it now, in the shape a
+     *             save sends; designed and composed exactly as a save would. ``None``
+     *             (the default, as before) uses the latest revision's request.
+     *         references_confirmed: As for ``ReviseProjectRequest``.
+     *         requirements_input: The guided input a save would send with
+     *             ``request`` (checked as a save checks it; nothing is applied).
      */
     ConfigurationValidateRequest: {
       /** Configuration */
       configuration: {
         [key: string]: unknown;
       };
+      request?: components['schemas']['ProjectDesignRequest-Input'] | null;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
+      /** References Confirmed */
+      references_confirmed?: components['schemas']['ReferenceConfirmation'][];
     };
     /**
      * ConfirmedLoad
@@ -5301,6 +5331,41 @@ export interface components {
       confidence: number;
     };
     /**
+     * ReferenceConfirmation
+     * @description A binding reference the user explicitly keeps after the load schedule changed.
+     *
+     *     Circuit, cable and design-device ids are positional (``c2``, ``c2-cable``,
+     *     ``c2-breaker``): when the load at that position is another load than when
+     *     the configuration was last saved, the reference is refused as
+     *     ``reference_moved`` until the user chooses another or confirms this one for
+     *     the load now there. Sent with the request it applies to; never stored. A
+     *     confirmation applies only with the ``token`` the refusal gave: it binds the
+     *     reference to the exact load it named and the exact load it names now, so any
+     *     later change to either refuses it again.
+     *
+     *     Attributes:
+     *         binding: The binding's id.
+     *         field: ``circuit``, ``cable`` or ``slot`` (a slot filled by a design device).
+     *         key: The slot id for ``slot``, else ``None``.
+     *         id: The circuit, cable or device id confirmed.
+     *         token: The refusal's ``token`` for this reference.
+     */
+    ReferenceConfirmation: {
+      /** Binding */
+      binding: string;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field: 'circuit' | 'cable' | 'slot';
+      /** Key */
+      key?: string | null;
+      /** Id */
+      id: string;
+      /** Token */
+      token: string;
+    };
+    /**
      * RequirementBoard
      * @description A board of the record.
      */
@@ -5637,6 +5702,45 @@ export interface components {
       anchored: boolean;
     };
     /**
+     * ReviewBoardChoices
+     * @description What a binding on a board may name, from the design the preview composed with.
+     *
+     *     Attributes:
+     *         id: The board.
+     *         circuits: Its circuits, in order.
+     *         cables: Its outgoing cables, in order.
+     */
+    ReviewBoardChoices: {
+      /** Id */
+      id: string;
+      /** Circuits */
+      circuits: components['schemas']['ReviewCircuitChoice'][];
+      /** Cables */
+      cables: components['schemas']['ReviewCableChoice'][];
+    };
+    /**
+     * ReviewCableChoice
+     * @description A cable of a board as the preview designed it (``cores`` as designed).
+     */
+    ReviewCableChoice: {
+      /** Id */
+      id: string;
+      /** Cores */
+      cores: number;
+      /** Designation */
+      designation?: string | null;
+    };
+    /**
+     * ReviewCircuitChoice
+     * @description A circuit of a board as the preview designed it.
+     */
+    ReviewCircuitChoice: {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+    };
+    /**
      * ReviewerOut
      * @description A current designation.
      *
@@ -5682,6 +5786,9 @@ export interface components {
      *         configuration_removed: ``True`` (with ``configuration`` ``None``)
      *             saves the revision with no configuration: the one explicit way to
      *             stop carrying it (M7b).
+     *         references_confirmed: Binding references the user keeps for the load
+     *             now at their position (see :class:`ReferenceConfirmation`); empty
+     *             by default.
      */
     ReviseProjectRequest: {
       request: components['schemas']['ProjectDesignRequest-Input'];
@@ -5700,6 +5807,8 @@ export interface components {
        * @default false
        */
       configuration_removed: boolean;
+      /** References Confirmed */
+      references_confirmed?: components['schemas']['ReferenceConfirmation'][];
     };
     /**
      * Revision
