@@ -154,7 +154,10 @@ export function ConfigurationPanel({
   confirmed = [],
   onConfirm,
   jumpToConflict = 0,
+  contentsSlot = null,
 }: {
+  /** Where the editor's Contents is rendered (the top of the page's view); in place if null. */
+  contentsSlot?: HTMLElement | null;
   token: string;
   projectId: string;
   latestRevision: number;
@@ -558,6 +561,7 @@ export function ConfigurationPanel({
         </p>
       )}
       <ConfigurationEditor
+        contentsSlot={contentsSlot}
         value={doc}
         onChange={onChange}
         boards={boards}

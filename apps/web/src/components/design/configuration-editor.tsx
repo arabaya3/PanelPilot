@@ -16,6 +16,7 @@ import type { MovedReference } from '@/components/design/binding-model';
 import type { OverviewValidation } from '@/components/design/binding-overview';
 import type { ConfirmedReference } from '@/components/design/draft';
 import type { RefusalField } from '@/components/design/refusal-explain';
+import { createPortal } from 'react-dom';
 import {
   BackToContents,
   ConfigurationContents,
@@ -450,6 +451,7 @@ export function ConfigurationEditor({
   onChange,
   boards,
   model,
+  contentsSlot = null,
   conflict,
   conflictField = null,
   conflictFieldRefused = true,
@@ -494,6 +496,8 @@ export function ConfigurationEditor({
   /** The opened revision's v2/v3 model, whose registry definitions are offered too; null for none. */
   model: V2ModelSummary | null;
   /** A save's `configuration_conflict`, whose entry is marked. */
+  /** Where the Contents is rendered; in place when null. */
+  contentsSlot?: HTMLElement | null;
   conflict: ConflictTarget | null;
   /** The binding field the refusal names (marked on its row). */
   conflictField?: RefusalField | null;
@@ -511,6 +515,19 @@ export function ConfigurationEditor({
   const strips = stripsOf(value);
   const ids = contentsIds(idBase);
   const firstBinding = bindingsOf(value)[0];
+  const contents = (
+    <ConfigurationContents
+      idBase={idBase}
+      value={value}
+      boardChoices={boardChoices}
+      validation={validation}
+      previewTarget={
+        preview !== null && firstBinding !== undefined
+          ? `${entryElementId(idBase, 'binding', firstBinding.id)}-preview-run`
+          : null
+      }
+    />
+  );
 
   function entryRow(
     kind: 'component' | 'strip',
@@ -650,17 +667,7 @@ export function ConfigurationEditor({
 
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="configuration-editor">
-      <ConfigurationContents
-        idBase={idBase}
-        value={value}
-        boardChoices={boardChoices}
-        validation={validation}
-        previewTarget={
-          preview !== null && firstBinding !== undefined
-            ? `${entryElementId(idBase, 'binding', firstBinding.id)}-preview-run`
-            : null
-        }
-      />
+      {contentsSlot !== null ? createPortal(contents, contentsSlot) : contents}
       <p className="text-sm text-text-muted">{t('editor.intro')}</p>
 
       <DefinitionsEditor
