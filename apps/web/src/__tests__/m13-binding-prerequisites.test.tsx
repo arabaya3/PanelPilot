@@ -339,4 +339,12 @@ describe('Needed on this board', () => {
     expect(Object.keys(ar).sort()).toEqual(Object.keys(N).sort());
     expect(Object.keys(he).sort()).toEqual(Object.keys(N).sort());
   });
+
+  it("after adding an item, focus returns to the form's first field (not lost to the page)", () => {
+    renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    const form = screen.getByTestId('add-strip');
+    fireEvent.click(within(form).getByTestId('add-strip-submit'));
+    expect(document.activeElement).toBe(within(form).getByTestId('add-strip-board'));
+  });
 });

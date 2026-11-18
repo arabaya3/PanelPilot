@@ -259,6 +259,9 @@ function AddEntry({
           onAdd({ board: chosenBoard, template, designation });
           setTemplate(null);
           setDesignation('');
+          // The button is disabled again (no definition chosen): keep the keyboard user in the
+          // form, on its first field, rather than losing focus to the page.
+          document.getElementById(`${id}-board`)?.focus();
         }}
         data-testid={`add-${kind}-submit`}
       >
