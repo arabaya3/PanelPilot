@@ -319,7 +319,7 @@ describe('Needed on this board', () => {
       });
       expect(status.textContent).toBe('');
       // Choosing it lowers the count: said once, after the delay.
-      const role = within(row).getByTestId('binding-role-strip') as HTMLSelectElement;
+      const role = within(row).getByTestId<HTMLSelectElement>('binding-role-strip');
       fireEvent.change(role, { target: { value: role.options[1]?.value ?? '' } });
       expect(within(row).getByTestId('binding-needs-status').textContent).toBe('');
       act(() => {
