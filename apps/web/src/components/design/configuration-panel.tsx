@@ -759,7 +759,9 @@ export function ConfigurationPanel({
             <button
               type="button"
               className="btn btn-sm btn-secondary"
+              id={`${id}-validate`}
               disabled={working || isEmptyConfiguration(doc)}
+              aria-describedby={`${id}-validate-help`}
               onClick={() => {
                 void validate();
               }}
@@ -768,7 +770,9 @@ export function ConfigurationPanel({
               {t('validate')}
             </button>
           </div>
-          <p className="text-sm text-text-muted">{t('validateHelp')}</p>
+          <p id={`${id}-validate-help`} tabIndex={-1} className="text-sm text-text-muted">
+            {t('validateHelp')}
+          </p>
         </div>
       </details>
     </div>

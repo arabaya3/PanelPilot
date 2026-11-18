@@ -16,12 +16,19 @@ import type { MovedReference } from '@/components/design/binding-model';
 import type { OverviewValidation } from '@/components/design/binding-overview';
 import type { ConfirmedReference } from '@/components/design/draft';
 import type { RefusalField } from '@/components/design/refusal-explain';
+import {
+  BackToContents,
+  ConfigurationContents,
+  GoToAddForm,
+  contentsIds,
+} from '@/components/design/configuration-contents';
 import { useId, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import {
   addComponent,
   addStrip,
+  bindingsOf,
   componentsOf,
   designationOf,
   designationText,
@@ -157,7 +164,10 @@ function AddEntry({
   boards,
   choices,
   onAdd,
+  formId,
 }: {
+  /** The form's id (the Contents' "Go to the add form" reaches it). */
+  formId: string;
   kind: 'component' | 'strip';
   boards: string[];
   choices: TemplateChoice[];
@@ -172,6 +182,7 @@ function AddEntry({
   const ready = chosenBoard !== '' && (kind === 'strip' || template !== null);
   return (
     <fieldset
+      id={formId}
       className="flex min-w-0 flex-col gap-3 rounded-md border border-border-subtle p-3"
       data-testid={`add-${kind}`}
     >
@@ -498,6 +509,8 @@ export function ConfigurationEditor({
 
   const components = componentsOf(value);
   const strips = stripsOf(value);
+  const ids = contentsIds(idBase);
+  const firstBinding = bindingsOf(value)[0];
 
   function entryRow(
     kind: 'component' | 'strip',
@@ -637,6 +650,17 @@ export function ConfigurationEditor({
 
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="configuration-editor">
+      <ConfigurationContents
+        idBase={idBase}
+        value={value}
+        boardChoices={boardChoices}
+        validation={validation}
+        previewTarget={
+          preview !== null && firstBinding !== undefined
+            ? `${entryElementId(idBase, 'binding', firstBinding.id)}-preview-run`
+            : null
+        }
+      />
       <p className="text-sm text-text-muted">{t('editor.intro')}</p>
 
       <DefinitionsEditor
@@ -652,7 +676,9 @@ export function ConfigurationEditor({
             element.scrollIntoView({ block: 'center' });
           element?.focus();
         }}
+        headerTools={<GoToAddForm target={ids.addDefinition} testId="go-add-definition" />}
       />
+      <BackToContents idBase={idBase} testId="back-definitions" />
 
       <PatternsEditor
         value={value}
@@ -660,12 +686,17 @@ export function ConfigurationEditor({
         templates={choices.map((choice) => choice.ref)}
         conflictRef={conflict !== null && conflict.kind === 'pattern' ? conflict.entry : null}
         rowIdOf={(ref) => entryElementId(idBase, 'pattern', ref)}
+        headingId={ids.patterns}
+        addFormId={ids.addPattern}
+        headerTools={<GoToAddForm target={ids.addPattern} testId="go-add-pattern" />}
       />
+      <BackToContents idBase={idBase} testId="back-patterns" />
 
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-components`}>
-        <h3 id={`${idBase}-components`} className="text-base font-semibold">
+        <h3 id={ids.components} tabIndex={-1} className="text-base font-semibold">
           {t('editor.components')}
         </h3>
+        <GoToAddForm target={ids.addComponent} testId="go-add-component" />
         {components.length === 0 ? (
           <p className="text-sm text-text-muted">{t('emptyTable')}</p>
         ) : (
@@ -674,6 +705,7 @@ export function ConfigurationEditor({
           </ul>
         )}
         <AddEntry
+          formId={ids.addComponent}
           kind="component"
           boards={boards}
           choices={choices}
@@ -683,17 +715,20 @@ export function ConfigurationEditor({
           }}
         />
       </section>
+      <BackToContents idBase={idBase} testId="back-components" />
 
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-strips`}>
-        <h3 id={`${idBase}-strips`} className="text-base font-semibold">
+        <h3 id={ids.strips} tabIndex={-1} className="text-base font-semibold">
           {t('editor.strips')}
         </h3>
+        <GoToAddForm target={ids.addStrip} testId="go-add-strip" />
         {strips.length === 0 ? (
           <p className="text-sm text-text-muted">{t('emptyTable')}</p>
         ) : (
           <ul className="flex flex-col gap-2">{strips.map((entry) => entryRow('strip', entry))}</ul>
         )}
         <AddEntry
+          formId={ids.addStrip}
           kind="strip"
           boards={boards}
           choices={choices}
@@ -702,6 +737,7 @@ export function ConfigurationEditor({
           }}
         />
       </section>
+      <BackToContents idBase={idBase} testId="back-strips" />
 
       <BindingsEditor
         value={value}
@@ -721,8 +757,12 @@ export function ConfigurationEditor({
         onConfirm={onConfirm}
         onRefreshChoices={onRefreshChoices}
         rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
-        headingId={`${idBase}-bindings`}
+        headingId={ids.bindings}
+        addFormId={ids.addBinding}
+        issuesId={ids.issues}
+        headerTools={<GoToAddForm target={ids.addBinding} testId="go-add-binding" />}
       />
+      <BackToContents idBase={idBase} testId="back-bindings" />
     </div>
   );
 }

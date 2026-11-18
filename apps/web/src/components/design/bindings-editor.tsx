@@ -221,6 +221,7 @@ function BindingPreview({
         </p>
       )}
       <button
+        id={`${base}-preview-run`}
         type="button"
         className={wrapButton('secondary') + ' self-start'}
         disabled={state.kind === 'loading'}
@@ -1126,7 +1127,14 @@ export function BindingsEditor({
   onRefreshChoices,
   conflictField = null,
   conflictFieldRefused = true,
+  addFormId,
+  issuesId,
+  headerTools = null,
 }: {
+  /** The add form's id and the issue overview's heading id (the Contents link to them). */
+  addFormId?: string;
+  issuesId?: string;
+  headerTools?: React.ReactNode;
   /** The binding field a save refusal names (marked on the conflict's row). */
   conflictField?: RefusalField | null;
   /** Whether that field's choice is what was refused (else a neutral note). */
@@ -1215,9 +1223,10 @@ export function BindingsEditor({
       aria-labelledby={headingId}
       data-testid="bindings-editor"
     >
-      <h3 id={headingId} className="text-base font-semibold">
+      <h3 id={headingId} tabIndex={-1} className="text-base font-semibold">
         {t('editor.bindings')}
       </h3>
+      {headerTools}
       <p className="text-sm text-text-muted">{t('bindings.intro')}</p>
       <p className="sr-only" role="status" aria-live="polite" data-testid="bindings-status">
         {status}
@@ -1238,6 +1247,7 @@ export function BindingsEditor({
         </Notice>
       )}
       <BindingOverview
+        headingId={issuesId}
         value={value}
         boards={boards}
         boardChoices={boardChoices}
@@ -1293,7 +1303,7 @@ export function BindingsEditor({
           {t('bindings.needPattern')}
         </p>
       ) : (
-        <fieldset className="flex min-w-0 flex-col gap-2" data-testid="add-binding">
+        <fieldset id={addFormId} className="flex min-w-0 flex-col gap-2" data-testid="add-binding">
           <legend className="text-sm font-semibold">{t('bindings.add')}</legend>
           <div className="flex min-w-0 flex-wrap items-end gap-2">
             <div className="field min-w-0 flex-1">

@@ -113,7 +113,10 @@ export function BindingOverview({
   conflict,
   validation,
   rowIdOf,
+  headingId = 'binding-overview-title',
 }: {
+  /** The heading's id (the Contents' issues link reaches it). */
+  headingId?: string | undefined;
   value: Configuration;
   boards: string[];
   boardChoices: BoardChoices[] | null;
@@ -177,10 +180,10 @@ export function BindingOverview({
   return (
     <section
       className="flex min-w-0 flex-col gap-3 rounded-md border border-border-subtle p-3"
-      aria-labelledby="binding-overview-title"
+      aria-labelledby={headingId}
       data-testid="binding-overview"
     >
-      <h4 id="binding-overview-title" className="text-sm font-semibold">
+      <h4 id={headingId} tabIndex={-1} className="text-sm font-semibold">
         {t('overview.title')}
       </h4>
       <p className="text-xs text-text-muted" data-testid="binding-overview-note">
