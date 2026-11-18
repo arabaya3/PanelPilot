@@ -760,7 +760,13 @@ export function ConfigurationEditor({
         headingId={ids.bindings}
         addFormId={ids.addBinding}
         issuesId={ids.issues}
-        headerTools={<GoToAddForm target={ids.addBinding} testId="go-add-binding" />}
+        headerTools={
+          <GoToAddForm
+            target={ids.addBinding}
+            fallback={`${ids.addBinding}-needs`}
+            testId="go-add-binding"
+          />
+        }
       />
       <BackToContents idBase={idBase} testId="back-bindings" />
     </div>

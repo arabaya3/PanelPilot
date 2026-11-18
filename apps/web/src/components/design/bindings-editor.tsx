@@ -1299,7 +1299,12 @@ export function BindingsEditor({
         </ul>
       )}
       {patterns.length === 0 ? (
-        <p className="text-xs text-text-muted" data-testid="bindings-need-pattern">
+        <p
+          id={addFormId !== undefined ? `${addFormId}-needs` : undefined}
+          tabIndex={-1}
+          className="text-xs text-text-muted"
+          data-testid="bindings-need-pattern"
+        >
           {t('bindings.needPattern')}
         </p>
       ) : (

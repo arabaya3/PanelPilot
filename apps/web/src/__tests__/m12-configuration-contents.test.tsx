@@ -256,4 +256,67 @@ describe('M12 Configuration Contents', () => {
     renderApp(<CablePanel validateImpl={vi.fn()} />, { locale: 'ar', theme: 'light' });
     expect(screen.getByTestId('configuration-contents').textContent).toContain(ar.title);
   });
+
+  it('with no pattern yet, Add a binding reaches why there is no form', () => {
+    function NoPattern() {
+      const [value, setValue] = useState<Record<string, unknown>>({ ...INITIAL, patterns: [] });
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1']}
+          model={null}
+          boardChoices={null}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn() as never}
+        />
+      );
+    }
+    renderApp(<NoPattern />, { locale: 'en', theme: 'light' });
+    for (const id of ['contents-add-binding', 'go-add-binding']) {
+      fireEvent.click(screen.getByTestId(id));
+      expect(document.activeElement).toBe(screen.getByTestId('bindings-need-pattern'));
+    }
+  });
+
+  it('counts wire details that name no wire as one issue, as the overview lists them', () => {
+    function Stray() {
+      const [value, setValue] = useState<Record<string, unknown>>({
+        ...CABLED,
+        bindings: [
+          {
+            ...(CABLED.bindings[0] as Record<string, unknown>),
+            wires: {
+              'zz/1': { number: { value: 'X1', source: 'user' } },
+              'zz/2': { number: { value: 'X2', source: 'user' } },
+            },
+          },
+        ],
+      });
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1', 'SB-1']}
+          model={null}
+          boardChoices={CABLE_BOARDS}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn() as never}
+        />
+      );
+    }
+    renderApp(<Stray />, { locale: 'en', theme: 'light' });
+    const listed = screen.getByTestId('overview-local').querySelectorAll('li').length;
+    expect(screen.getByTestId('contents-issues').textContent).toBe(
+      fill(C.issues, { count: String(listed) }),
+    );
+  });
 });

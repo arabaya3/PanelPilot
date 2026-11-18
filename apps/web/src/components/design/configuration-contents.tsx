@@ -22,7 +22,7 @@ import {
 } from '@/components/design/configuration-model';
 import { definitionsOf } from '@/components/design/definition-model';
 import { patternsOf } from '@/components/design/pattern-model';
-import { wireProblemCount, wireProblems } from '@/components/design/wire-model';
+import { wireProblems } from '@/components/design/wire-model';
 
 /** The element ids the Contents links reach (all derived from the editor's id base). */
 export function contentsIds(idBase: string) {
@@ -58,7 +58,13 @@ const FOCUSABLE =
  */
 export function goToTarget(id: string, fallback?: string): boolean {
   let element = document.getElementById(id);
-  if (element instanceof HTMLButtonElement && element.disabled) element = null;
+  const disabled =
+    (element instanceof HTMLButtonElement ||
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement) &&
+    element.disabled;
+  if (disabled) element = null;
   if (element === null && fallback !== undefined) element = document.getElementById(fallback);
   if (element === null) return false;
   const details = element.closest('details');
@@ -80,13 +86,18 @@ export function contentsCounts(
   validation: OverviewValidation | null,
 ) {
   const bindings = bindingsOf(value);
-  const toFix = bindings.reduce(
-    (sum, binding) =>
+  // Counted as the issue overview lists them: wire details that name no wire of the pattern
+  // (stray, extra, unreadable) are one item per binding there, so one here.
+  const toFix = bindings.reduce((sum, binding) => {
+    const wires = wireProblems(value, binding);
+    const others = wires.stray.length + wires.extra.length + wires.unreadable.length;
+    return (
       sum +
       bindingProblems(value, binding, boardChoices).length +
-      wireProblemCount(wireProblems(value, binding)),
-    0,
-  );
+      Object.keys(wires.values).length +
+      (others > 0 ? 1 : 0)
+    );
+  }, 0);
   return {
     definitions: definitionsOf(value).length,
     patterns: patternsOf(value).length,
@@ -107,7 +118,7 @@ function GoLink({
   testId,
 }: {
   target: string;
-  fallback?: string;
+  fallback?: string | undefined;
   children: React.ReactNode;
   testId: string;
 }) {
@@ -186,7 +197,11 @@ export function ConfigurationContents({
           <h4 className="text-xs font-semibold text-text-muted">{t('contents.actions')}</h4>
           <ul className="flex min-w-0 flex-col gap-1">
             <li>
-              <GoLink target={ids.addBinding} testId="contents-add-binding">
+              <GoLink
+                target={ids.addBinding}
+                fallback={`${ids.addBinding}-needs`}
+                testId="contents-add-binding"
+              >
                 {t('contents.addBinding')}
               </GoLink>
             </li>
@@ -216,11 +231,20 @@ export function ConfigurationContents({
 }
 
 /** After a section's heading: the way to its add form. */
-export function GoToAddForm({ target, testId }: { target: string; testId: string }) {
+export function GoToAddForm({
+  target,
+  testId,
+  fallback,
+}: {
+  target: string;
+  testId: string;
+  /** What explains why there is no form yet (e.g. bindings need a pattern). */
+  fallback?: string | undefined;
+}) {
   const t = useIsolatingTranslations('configuration');
   return (
     <p className="text-sm">
-      <GoLink target={target} testId={testId}>
+      <GoLink target={target} fallback={fallback} testId={testId}>
         {t('contents.goAdd')}
       </GoLink>
     </p>
