@@ -385,6 +385,27 @@ describe('M11 clear refusals', () => {
   });
 });
 
+describe('announcements', () => {
+  it("a save refusal from the page's own Save is not announced again by this panel", () => {
+    renderApp(<CablePanel validateImpl={vi.fn()} externalRefusal={refused(SHARED)} />, {
+      locale: 'en',
+      theme: 'light',
+    });
+    // The Overview already announced it (role=alert there); here it is shown, not re-announced.
+    expect(screen.getByTestId('configuration-error').getAttribute('role')).toBeNull();
+  });
+
+  it("the panel's own validation refusal is announced", async () => {
+    const validate = vi.fn<Validate>(() => Promise.resolve(refused(SHARED)));
+    renderApp(<CablePanel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('configuration-validate'));
+    await act(async () => {
+      await tick();
+    });
+    expect(screen.getByTestId('configuration-error').getAttribute('role')).toBe('alert');
+  });
+});
+
 describe('refusalSentence', () => {
   it('names a non-binding entry and explains its code', () => {
     const t = (key: string, values: Record<string, string> = {}) => {

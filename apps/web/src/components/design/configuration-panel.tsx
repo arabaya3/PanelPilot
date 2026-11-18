@@ -80,6 +80,11 @@ type ErrorOutcome = {
   fieldRefused?: boolean;
   /** The server's code, said as a technical detail only. */
   code?: string | null;
+  /**
+   * Already announced where it happened (the page's own Save, on the Overview): shown here
+   * without a live role, so opening this tab does not announce the same refusal again.
+   */
+  announced?: boolean;
 };
 
 type Outcome =
@@ -385,7 +390,7 @@ export function ConfigurationPanel({
   const [seenExternal, setSeenExternal] = useState<Refusal | null>(null);
   if (externalRefusal !== seenExternal) {
     setSeenExternal(externalRefusal);
-    if (externalRefusal !== null) setOutcome(refusalText(externalRefusal));
+    if (externalRefusal !== null) setOutcome({ ...refusalText(externalRefusal), announced: true });
     // A save refused for a moved reference: say it beside the binding, as a preview does.
     if (externalRefusal?.params?.refusal === 'reference_moved') {
       setMoved({
@@ -614,7 +619,7 @@ export function ConfigurationPanel({
         data-testid="configuration-result"
       >
         {outcome.kind === 'error' && outcome.disabled === null && (
-          <Notice tone="critical" testId="configuration-error">
+          <Notice tone="critical" live={outcome.announced !== true} testId="configuration-error">
             <span className="flex flex-col gap-2">
               <span className="break-words">{outcome.message}</span>
               {outcome.code ? (
