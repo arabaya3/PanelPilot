@@ -2018,19 +2018,17 @@ function DesignWorkspace({
               >
                 <span className="flex min-w-0 flex-col gap-1">
                   <span className="break-words" data-testid="overview-configuration-refused-text">
-                    {refusedEntry.kind === 'binding'
-                      ? refusalSentence(
-                          tc,
-                          explainRefusal(configRefusal?.params),
-                          configDoc,
-                          'save',
-                        )
-                      : tc('overviewRefused', {
-                          entry: tc(`editor.entryKind.${refusedEntry.kind}`, {
+                    {refusalSentence(
+                      tc,
+                      explainRefusal(configRefusal?.params),
+                      configDoc,
+                      'save',
+                      refusedEntry.kind === 'binding'
+                        ? undefined
+                        : tc(`editor.entryKind.${refusedEntry.kind}`, {
                             id: entryName(configDoc, refusedEntry.kind, refusedEntry.entry),
                           }),
-                          reason: refusedEntry.reason || '—',
-                        })}{' '}
+                    )}{' '}
                     {tc('explain.kept')}
                   </span>
                   {refusedEntry.reason !== '' && (

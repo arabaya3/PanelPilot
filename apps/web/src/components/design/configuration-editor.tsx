@@ -441,6 +441,7 @@ export function ConfigurationEditor({
   model,
   conflict,
   conflictField = null,
+  conflictFieldRefused = true,
   idBase,
   linkUses = [],
   boardChoices = null,
@@ -485,6 +486,7 @@ export function ConfigurationEditor({
   conflict: ConflictTarget | null;
   /** The binding field the refusal names (marked on its row). */
   conflictField?: RefusalField | null;
+  conflictFieldRefused?: boolean;
   /** Prefix of entries' element ids (see `entryElementId`). */
   idBase: string;
 }) {
@@ -708,6 +710,7 @@ export function ConfigurationEditor({
         boardChoices={boardChoices}
         conflict={conflict}
         conflictField={conflictField}
+        conflictFieldRefused={conflictFieldRefused}
         preview={preview}
         onUnauthorized={onUnauthorized}
         savedRevision={savedRevision}

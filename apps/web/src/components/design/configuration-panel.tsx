@@ -77,6 +77,7 @@ type ErrorOutcome = {
   conflict: ConflictTarget | null;
   /** The binding field the refusal names, when its parameters name one (never guessed). */
   field?: RefusalField | null;
+  fieldRefused?: boolean;
   /** The server's code, said as a technical detail only. */
   code?: string | null;
 };
@@ -321,6 +322,7 @@ export function ConfigurationPanel({
         disabled: null,
         conflict: named,
         field: explained.field,
+        fieldRefused: explained.fieldRefused,
         code: explained.code || null,
       };
     }
@@ -429,7 +431,7 @@ export function ConfigurationPanel({
     // The field the refusal names, if it is there and can take focus; else the entry itself.
     const fieldElement =
       field !== null && conflict.kind === 'binding'
-        ? (document.getElementById(refusalFieldId(entryId, field)))
+        ? document.getElementById(refusalFieldId(entryId, field))
         : null;
     const usable =
       fieldElement !== null && !(fieldElement as HTMLSelectElement).disabled ? fieldElement : null;
@@ -557,6 +559,7 @@ export function ConfigurationPanel({
         model={model}
         conflict={conflict}
         conflictField={outcome.kind === 'error' ? (outcome.field ?? null) : null}
+        conflictFieldRefused={outcome.kind === 'error' ? (outcome.fieldRefused ?? true) : true}
         idBase={id}
         linkUses={linkUses}
         boardChoices={choices}

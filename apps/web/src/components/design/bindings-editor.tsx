@@ -373,8 +373,8 @@ function BindingRow({
   refusedField = null,
   onPreviewRefusal,
 }: {
-  /** The field of this binding a save or preview refusal names (marked here). */
-  refusedField?: RefusalField | null;
+  /** The field of this binding a save or preview refusal names, and whether its choice was refused. */
+  refusedField?: { field: RefusalField; refused: boolean } | null;
   onPreviewRefusal: (explained: Explained | null, forValue: string) => void;
   previewInputsKey: string;
   previewCurrent: boolean;
@@ -423,6 +423,12 @@ function BindingRow({
   const conflicted =
     conflict !== null && conflict.kind === 'binding' && conflict.entry === binding.id;
   const points = bindingPoints(value, binding);
+  const markOf = (name: RefusalField['name'], key?: string): 'refused' | 'note' | null =>
+    refusedField !== null && isRefusedField(refusedField.field, name, key)
+      ? refusedField.refused
+        ? 'refused'
+        : 'note'
+      : null;
   const strips = stripChoices(value, binding.board);
 
   function select(
@@ -436,8 +442,9 @@ function BindingRow({
     noneLabel: string,
     fromDesign = false,
     locked = false,
-    refused = false,
+    mark: 'refused' | 'note' | null = null,
   ) {
+    const refused = mark !== null;
     const known = current === '' || options.some((option) => option.id === current);
     // A choice offered from the design cannot be checked until the project is designed in this session.
     const unchecked = fromDesign && boardChoices === null;
@@ -451,7 +458,7 @@ function BindingRow({
           className="input w-full"
           dir="auto"
           value={current}
-          aria-invalid={problem !== undefined || refused || undefined}
+          aria-invalid={problem !== undefined || mark === 'refused' || undefined}
           disabled={locked}
           aria-describedby={
             [
@@ -490,7 +497,7 @@ function BindingRow({
             className="text-xs font-semibold"
             data-testid="binding-field-refused"
           >
-            {t('explain.fieldNote')}
+            {t(mark === 'refused' ? 'explain.fieldNote' : 'explain.fieldNoteShared')}
           </p>
         )}
         {problem !== undefined && (
@@ -692,7 +699,7 @@ function BindingRow({
               t('bindings.noCircuit'),
               true,
               false,
-              isRefusedField(refusedField, 'circuit'),
+              markOf('circuit'),
             )}
           </div>
 
@@ -768,7 +775,7 @@ function BindingRow({
                       : t('bindings.notChosen'),
                     false,
                     false,
-                    isRefusedField(refusedField, 'slot', slot.id),
+                    markOf('slot', slot.id),
                   )}
                 </div>
               );
@@ -806,7 +813,8 @@ function BindingRow({
             {points.map((point) => {
               const fieldId = `${rowId}-point-${point.id}`;
               const problem = problemOf('marking', point.id);
-              const refusedPoint = isRefusedField(refusedField, 'point', point.id);
+              const pointMark = markOf('point', point.id);
+              const refusedPoint = pointMark !== null;
               return (
                 <div key={point.id} className="field min-w-0">
                   <label htmlFor={fieldId} className="field-label">
@@ -822,7 +830,7 @@ function BindingRow({
                     maxLength={50}
                     value={point.marking}
                     placeholder={t('notGivenPlaceholder')}
-                    aria-invalid={problem !== undefined || refusedPoint || undefined}
+                    aria-invalid={problem !== undefined || pointMark === 'refused' || undefined}
                     aria-describedby={
                       [
                         problem ? `${fieldId}-problem` : '',
@@ -868,7 +876,7 @@ function BindingRow({
                 t('bindings.noCable'),
                 true,
                 false,
-                isRefusedField(refusedField, 'cable'),
+                markOf('cable'),
               )}
             </div>
           )}
@@ -1124,9 +1132,12 @@ export function BindingsEditor({
   onConfirm,
   onRefreshChoices,
   conflictField = null,
+  conflictFieldRefused = true,
 }: {
   /** The binding field a save refusal names (marked on the conflict's row). */
   conflictField?: RefusalField | null;
+  /** Whether that field's choice is what was refused (else a neutral note). */
+  conflictFieldRefused?: boolean;
   previewInputsKey?: string;
   previewCurrent?: boolean;
   moved?: MovedReference[];
@@ -1158,21 +1169,28 @@ export function BindingsEditor({
   const [status, setStatus] = useState('');
   // The binding and field the last preview refusal named, for the configuration it was asked
   // with: marked only while the configuration is still that one (a later edit or answer clears it).
-  const [previewRefusal, setPreviewRefusal] = useState<{
-    explained: Explained;
-    forValue: string;
-  } | null>(null);
+  // Kept per row that asked, so one row's answer does not clear another row's refusal.
+  const [previewRefusals, setPreviewRefusals] = useState<
+    Record<string, { explained: Explained; forValue: string }>
+  >({});
   const valueText = JSON.stringify(value);
-  const refusedFieldOf = (bindingId: string): RefusalField | null => {
-    if (conflict !== null && conflict.kind === 'binding' && conflict.entry === bindingId) {
-      return conflictField;
-    }
+  const refusedFieldOf = (bindingId: string): { field: RefusalField; refused: boolean } | null => {
     if (
-      previewRefusal !== null &&
-      previewRefusal.forValue === valueText &&
-      previewRefusal.explained.binding === bindingId
+      conflict !== null &&
+      conflict.kind === 'binding' &&
+      conflict.entry === bindingId &&
+      conflictField !== null
     ) {
-      return previewRefusal.explained.field;
+      return { field: conflictField, refused: conflictFieldRefused };
+    }
+    for (const asked of Object.values(previewRefusals)) {
+      if (
+        asked.forValue === valueText &&
+        asked.explained.binding === bindingId &&
+        asked.explained.field !== null
+      ) {
+        return { field: asked.explained.field, refused: asked.explained.fieldRefused };
+      }
     }
     return null;
   };
@@ -1264,7 +1282,14 @@ export function BindingsEditor({
               savedRevision={savedRevision}
               refusedField={refusedFieldOf(binding.id)}
               onPreviewRefusal={(explained, forValue) => {
-                setPreviewRefusal(explained === null ? null : { explained, forValue });
+                setPreviewRefusals((prev) => {
+                  const others = Object.fromEntries(
+                    Object.entries(prev).filter(([rowBinding]) => rowBinding !== binding.id),
+                  );
+                  return explained === null
+                    ? others
+                    : { ...others, [binding.id]: { explained, forValue } };
+                });
               }}
             />
           ))}

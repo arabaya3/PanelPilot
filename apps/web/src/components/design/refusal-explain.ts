@@ -49,8 +49,14 @@ export type Explained = {
   key: string;
   /** The binding the refusal names, if any. */
   binding: string | null;
-  /** The field of that binding to change, only where the parameters name it. */
+  /** The field of that binding to go to, only where the parameters name it. */
   field: RefusalField | null;
+  /**
+   * Whether the field's own choice is what the server refused. False where the field is only
+   * where the restriction applies (a correct cable the deployment cannot save yet): then it is
+   * pointed at with a neutral note, never marked invalid.
+   */
+  fieldRefused: boolean;
   /** The values the sentence uses (ids, never server prose). */
   values: Record<string, string>;
 };
@@ -118,7 +124,7 @@ export function explainRefusal(params: Record<string, string> | undefined): Expl
     after: text(p.after) || '—',
     code: code || '—',
   };
-  return { code, key, binding, field, values };
+  return { code, key, binding, field, fieldRefused: code !== 'core_shared_cable_id', values };
 }
 
 /** The element id of a refused field in a binding row (`rowId` from `entryElementId`). */
@@ -161,9 +167,21 @@ export function refusalSentence(
   explained: Explained,
   doc: Record<string, unknown>,
   mode: 'save' | 'preview',
+  /** The entry the refusal names when it is not a binding (a strip, component, pattern...). */
+  entry?: string,
 ): string {
-  const explanation = t(`explain.${explained.key}`, explained.values);
+  const key =
+    explained.binding === null && entry === undefined && explained.key === 'unknown'
+      ? 'unknownNoEntry'
+      : explained.key;
+  const explanation = t(`explain.${key}`, explained.values);
   if (explained.binding === null) {
+    if (entry !== undefined) {
+      return t(mode === 'save' ? 'explain.notSavedEntry' : 'explain.previewEntry', {
+        entry,
+        explanation,
+      });
+    }
     return t(mode === 'save' ? 'explain.notSavedPlain' : 'explain.previewPlain', { explanation });
   }
   return t(mode === 'save' ? 'explain.notSaved' : 'explain.preview', {

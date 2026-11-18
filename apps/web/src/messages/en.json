@@ -2522,7 +2522,11 @@
       "template_conflict": "Definition {ref} is given twice with different content. Keep one version.",
       "configuration_invalid": "The configuration is malformed. Check its entries.",
       "design_refused": "The load schedule could not be designed, so the configuration cannot be applied. Fix the load schedule first.",
-      "unknown": "The configuration cannot be composed. Check this entry's choices; the technical detail below gives the server's reason."
+      "unknown": "The configuration cannot be composed. Check this entry's choices; the technical detail below gives the server's reason.",
+      "notSavedEntry": "Not saved: {entry}. {explanation}",
+      "previewEntry": "The preview could not be composed: {entry}. {explanation}",
+      "unknownNoEntry": "The server refused this request. Try again; if it is refused again, the technical detail below gives the server's reason.",
+      "fieldNoteShared": "This cable is where the restriction applies; keep it if it is the cable actually installed."
     }
   },
   "feederLink": {

@@ -8,7 +8,11 @@ import type { ProjectDesignRequest, ConfigurationOutcome } from '@/lib/design';
 import en from '@/messages/en.json';
 
 import { type ConfirmedReference } from '@/components/design/draft';
-import { EXPLAINED_REFUSALS, explainRefusal } from '@/components/design/refusal-explain';
+import {
+  EXPLAINED_REFUSALS,
+  explainRefusal,
+  refusalSentence,
+} from '@/components/design/refusal-explain';
 
 import { renderApp } from './helpers';
 
@@ -235,10 +239,11 @@ describe('M11 clear refusals', () => {
     expect(screen.getByTestId('configuration-error-code').textContent).toBe(
       E.code.replace('{code}', 'core_shared_cable_id'),
     );
+    // The cable is where the restriction applies, not a wrong choice: a neutral note, not invalid.
     const cable = screen.getByTestId<HTMLSelectElement>('binding-cable');
-    expect(cable.getAttribute('aria-invalid')).toBe('true');
+    expect(cable.getAttribute('aria-invalid')).toBeNull();
     expect(cable.getAttribute('aria-describedby')).toContain('-cable-refused');
-    expect(screen.getByTestId('binding-field-refused').textContent).toBe(E.fieldNote);
+    expect(screen.getByTestId('binding-field-refused').textContent).toBe(E.fieldNoteShared);
     const go = within(error).getByTestId('conflict-edit');
     expect(go.textContent).toBe(E.goField);
     fireEvent.click(go);
@@ -259,16 +264,14 @@ describe('M11 clear refusals', () => {
       'core_shared_cable_id',
     );
     const cable = screen.getByTestId<HTMLSelectElement>('binding-cable');
-    expect(cable.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByTestId('binding-field-refused').textContent).toBe(E.fieldNoteShared);
     fireEvent.click(screen.getByTestId('binding-preview-refused-go'));
     expect(document.activeElement).toBe(cable);
     // An edit makes the refusal outdated: the field is no longer marked as refused.
     fireEvent.change(screen.getAllByTestId('point-marking')[0] as HTMLElement, {
       target: { value: '9' },
     });
-    expect(
-      screen.getByTestId<HTMLSelectElement>('binding-cable').getAttribute('aria-invalid'),
-    ).toBeNull();
+    expect(screen.queryByTestId('binding-field-refused')).toBeNull();
     expect(screen.getByTestId('binding-preview-outdated')).toBeTruthy();
   });
 
@@ -338,6 +341,65 @@ describe('M11 clear refusals', () => {
     expect(screen.getByTestId('binding-moved-keep').textContent).toContain('Keep c1-cable');
     expect(screen.getByTestId('binding-moved-means').textContent).toContain(
       'instead of “Lighting” (c1 on MB-1)',
+    );
+  });
+
+  it('a refused choice (core out of range) marks the cable invalid', () => {
+    renderApp(
+      <CablePanel
+        validateImpl={vi.fn()}
+        externalRefusal={refused({
+          refusal: 'core_out_of_range',
+          binding: 'bind-1',
+          cable: 'c1-cable',
+          core: '7',
+        })}
+      />,
+      { locale: 'en', theme: 'light' },
+    );
+    const cable = screen.getByTestId<HTMLSelectElement>('binding-cable');
+    expect(cable.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByTestId('binding-field-refused').textContent).toBe(E.fieldNote);
+    expect(screen.getByTestId('configuration-error').textContent).toContain(
+      'Cable c1-cable has no core 7.',
+    );
+  });
+
+  it('a preview refused for a reason naming no entry does not point at one', async () => {
+    const validate = vi.fn<Validate>(() =>
+      Promise.resolve({ kind: 'refused', detail: 'x', code: 'rate_limited', params: {} }),
+    );
+    renderApp(<CablePanel validateImpl={validate} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(screen.getByTestId('binding-preview-run'));
+    await act(async () => {
+      await tick();
+    });
+    const said = screen.getByTestId('binding-preview-refused').textContent;
+    expect(said).toContain(E.unknownNoEntry);
+    expect(said).not.toContain("this entry's choices");
+    expect(screen.queryByTestId('binding-preview-refused-go')).toBeNull();
+  });
+});
+
+describe('refusalSentence', () => {
+  it('names a non-binding entry and explains its code', () => {
+    const t = (key: string, values: Record<string, string> = {}) => {
+      let node: unknown = en.configuration;
+      for (const part of key.split('.')) node = (node as Record<string, unknown>)[part];
+      return Object.entries(values).reduce(
+        (text, [name, value]) => text.replaceAll(`{${name}}`, value),
+        node as string,
+      );
+    };
+    const sentence = refusalSentence(
+      t,
+      explainRefusal({ refusal: 'duplicate_marking', strip: 'XP', point: '7' }),
+      {},
+      'save',
+      'terminal strip XP',
+    );
+    expect(sentence).toBe(
+      'Not saved: terminal strip XP. Two points on strip XP have the same marking (7). Give each point its own marking.',
     );
   });
 });
