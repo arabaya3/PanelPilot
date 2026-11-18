@@ -129,6 +129,7 @@ export function ProjectsPanel({
   onOpened,
   onSaveState,
   onRefused,
+  explainedElsewhere,
   onUnauthorized,
   beforeOpen = (open) => {
     open();
@@ -171,6 +172,11 @@ export function ProjectsPanel({
   onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
   /** Told what a refused save objected to, so the page can mark the fields at fault. */
   onRefused?: (refusal: Refusal) => void;
+  /**
+   * Whether the page says this save refusal itself (one primary message with a way to the
+   * entry): then it is not repeated here. Other refusals are still said here.
+   */
+  explainedElsewhere?: (refusal: Refusal) => boolean;
   /** Told when the server no longer accepts the token, so the page can renew it or ask to sign in. */
   onUnauthorized?: () => void;
   /** Asked before opening a project replaces what is on the page; calls `open` to go ahead. */
@@ -342,7 +348,9 @@ export function ProjectsPanel({
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       setMessage(
         outcome.kind === 'refused'
-          ? say(outcome)
+          ? explainedElsewhere?.(outcome)
+            ? null
+            : say(outcome)
           : outcome.kind === 'unauthorized'
             ? ta('saveUnauthorized')
             : t('saveFailed'),

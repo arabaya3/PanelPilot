@@ -15,6 +15,7 @@
 import type { MovedReference } from '@/components/design/binding-model';
 import type { OverviewValidation } from '@/components/design/binding-overview';
 import type { ConfirmedReference } from '@/components/design/draft';
+import type { RefusalField } from '@/components/design/refusal-explain';
 import { useId, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -439,6 +440,8 @@ export function ConfigurationEditor({
   boards,
   model,
   conflict,
+  conflictField = null,
+  conflictFieldRefused = true,
   idBase,
   linkUses = [],
   boardChoices = null,
@@ -481,6 +484,9 @@ export function ConfigurationEditor({
   model: V2ModelSummary | null;
   /** A save's `configuration_conflict`, whose entry is marked. */
   conflict: ConflictTarget | null;
+  /** The binding field the refusal names (marked on its row). */
+  conflictField?: RefusalField | null;
+  conflictFieldRefused?: boolean;
   /** Prefix of entries' element ids (see `entryElementId`). */
   idBase: string;
 }) {
@@ -703,6 +709,8 @@ export function ConfigurationEditor({
         boards={boards}
         boardChoices={boardChoices}
         conflict={conflict}
+        conflictField={conflictField}
+        conflictFieldRefused={conflictFieldRefused}
         preview={preview}
         onUnauthorized={onUnauthorized}
         savedRevision={savedRevision}

@@ -452,7 +452,11 @@ describe('M9b1 guided binding', () => {
     );
     const entry = screen.getByTestId('binding-entry');
     expect(entry.getAttribute('data-conflict')).toBe('true');
-    expect(within(entry).getByTestId('binding-refused').textContent).toContain('board_mismatch');
+    // M11: the row points at the one explanation; the code is its technical detail.
+    expect(within(entry).getByTestId('binding-refused').textContent).toBe(
+      en.configuration.explain.entryNote,
+    );
+    expect(screen.getByTestId('configuration-error-code').textContent).toContain('board_mismatch');
     view.rerender(
       <Harness validateImpl={vi.fn()} initial={stored} externalRefusal={refusal} jump={1} />,
     );
@@ -741,8 +745,8 @@ describe('M9b2: cable cores in a binding', () => {
     );
     const entry = screen.getByTestId('binding-entry');
     expect(entry.getAttribute('data-conflict')).toBe('true');
-    expect(within(entry).getByTestId('binding-refused-core').textContent).toBe(
-      B.refusedCore.core_out_of_range,
+    expect(screen.getByTestId('configuration-error').textContent).toContain(
+      'Cable cab-1 has no core 99.',
     );
   });
 
@@ -765,8 +769,8 @@ describe('M9b2: cable cores in a binding', () => {
     );
     const entry = screen.getByTestId('binding-entry');
     expect(entry.getAttribute('data-conflict')).toBe('true');
-    expect(within(entry).getByTestId('binding-refused-core').textContent).toBe(
-      B.refusedCore.core_shared_cable_id,
+    expect(screen.getByTestId('configuration-error').textContent).toContain(
+      'This deployment does not yet save the same cable id and core on two boards',
     );
   });
 

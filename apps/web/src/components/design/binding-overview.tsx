@@ -18,6 +18,7 @@
  * anything.
  */
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import { explainRefusal } from '@/components/design/refusal-explain';
 import {
   bindingProblems,
   bindingRowIds,
@@ -249,10 +250,16 @@ export function BindingOverview({
                       issues={[
                         {
                           key: 'refused',
-                          text: t('overview.refused', {
-                            reason: refused.reason || '—',
-                            ref: refused.ref || '—',
-                          }),
+                          // The per-code sentence, as at the top; the code stays its detail there.
+                          text: (() => {
+                            const explained = explainRefusal({
+                              refusal: refused.reason,
+                              binding: binding.id,
+                              ref: refused.ref,
+                              [refused.refKind || 'ref']: refused.ref,
+                            });
+                            return t(`explain.${explained.key}`, explained.values);
+                          })(),
                           target: rowId,
                           fallback: rowId,
                         },

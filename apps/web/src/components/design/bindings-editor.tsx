@@ -10,6 +10,14 @@
  * read-only validate endpoint and shows this binding's rows by the ids the
  * composer derives; the browser computes no wiring.
  */
+import {
+  explainRefusal,
+  isRefusedField,
+  refusalFieldId,
+  refusalSentence,
+  type Explained,
+  type RefusalField,
+} from '@/components/design/refusal-explain';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -79,7 +87,7 @@ type PreviewState =
   | { kind: 'idle' }
   | { kind: 'loading'; forText: string }
   | { kind: 'shown'; forText: string; model: V2ModelSummary }
-  | { kind: 'refused'; forText: string; message: string };
+  | { kind: 'refused'; forText: string; message: string; explained: Explained | null };
 
 /** The rows of a composed model that belong to one binding. */
 function rowsOf(model: V2ModelSummary, ids: ReturnType<typeof bindingRowIds>) {
@@ -108,7 +116,13 @@ function BindingPreview({
   savedRevision,
   inputsKey,
   current,
+  rowIdOf,
+  onRefusal,
 }: {
+  /** The element id of a binding's row (to go to the binding or field a refusal names). */
+  rowIdOf: (id: string) => string;
+  /** Told what a refused preview names (null when it composes), with the configuration asked. */
+  onRefusal: (explained: Explained | null, forValue: string) => void;
   value: Configuration;
   binding: ConfigBinding;
   preview: PreviewFn;
@@ -154,29 +168,35 @@ function BindingPreview({
     setState({ kind: 'loading', forText });
     const result = await preview(value);
     if (latest.current !== mine) return;
-    if (result.kind === 'reviewed')
+    const forValue = JSON.stringify(value);
+    if (result.kind === 'reviewed') {
       setState({ kind: 'shown', forText, model: result.review.model });
-    else {
-      // Said by the server's code (and the reference it names), never guessed here.
-      const message =
+      onRefusal(null, forValue);
+    } else {
+      // Said from the server's code and the ids it names, never from its English text.
+      const explained =
         result.kind === 'refused'
-          ? [result.params?.refusal ?? result.code ?? '', result.params?.ref ?? '']
-              .filter((part) => part !== '')
-              .join('; ')
-          : '';
+          ? explainRefusal(
+              result.code === 'configuration_refused' || result.code === 'configuration_conflict'
+                ? result.params
+                : { ...(result.params ?? {}), refusal: result.code ?? '' },
+            )
+          : null;
       if (result.kind === 'unauthorized') onUnauthorized?.();
       setState({
         kind: 'refused',
         forText,
+        explained,
         message:
-          result.kind === 'refused'
-            ? message || '—'
+          explained !== null
+            ? refusalSentence(t, explained, value, 'preview')
             : t(
                 result.kind === 'unauthorized'
                   ? 'bindings.previewSignIn'
                   : 'bindings.previewFailed',
               ),
       });
+      onRefusal(explained, forValue);
     }
   }
 
@@ -220,10 +240,47 @@ function BindingPreview({
         )}
         {state.kind === 'refused' && (
           <p className="text-xs font-semibold" data-testid="binding-preview-refused">
-            {t('bindings.previewRefused', { reason: state.message })}
+            {/* Said at render, so a language switch says it in the new language. */}
+            {state.explained !== null
+              ? refusalSentence(t, state.explained, value, 'preview')
+              : state.message}
           </p>
         )}
       </div>
+      {state.kind === 'refused' && state.explained !== null && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {state.explained.code !== '' && (
+            <span className="text-xs" data-testid="binding-preview-refused-code">
+              {t('explain.code', { code: state.explained.code })}
+            </span>
+          )}
+          {state.explained.binding !== null && (
+            <button
+              type="button"
+              className={wrapButton('secondary')}
+              onClick={() => {
+                const explained = state.explained;
+                if (explained?.binding == null) return;
+                const row = rowIdOf(explained.binding);
+                const field =
+                  explained.field !== null
+                    ? (document.getElementById(
+                        refusalFieldId(row, explained.field),
+                      ) as HTMLSelectElement | null)
+                    : null;
+                const target =
+                  field !== null && !field.disabled ? field : document.getElementById(row);
+                if (target !== null && 'scrollIntoView' in target)
+                  target.scrollIntoView({ block: 'center' });
+                target?.focus();
+              }}
+              data-testid="binding-preview-refused-go"
+            >
+              {state.explained.field !== null ? t('explain.goField') : t('explain.goEntry')}
+            </button>
+          )}
+        </div>
+      )}
       {rows !== null && (
         <div className="flex min-w-0 flex-col gap-2 text-sm" data-testid="binding-preview-rows">
           <h5 className="text-xs font-semibold">
@@ -316,7 +373,12 @@ function BindingRow({
   previewCurrent,
   moved,
   onConfirm,
+  refusedField = null,
+  onPreviewRefusal,
 }: {
+  /** The field of this binding a save or preview refusal names, and whether its choice was refused. */
+  refusedField?: { field: RefusalField; refused: boolean } | null;
+  onPreviewRefusal: (explained: Explained | null, forValue: string) => void;
   previewInputsKey: string;
   previewCurrent: boolean;
   /** This binding's references the server found moved with the load schedule. */
@@ -364,6 +426,12 @@ function BindingRow({
   const conflicted =
     conflict !== null && conflict.kind === 'binding' && conflict.entry === binding.id;
   const points = bindingPoints(value, binding);
+  const markOf = (name: RefusalField['name'], key?: string): 'refused' | 'note' | null =>
+    refusedField !== null && isRefusedField(refusedField.field, name, key)
+      ? refusedField.refused
+        ? 'refused'
+        : 'note'
+      : null;
   const strips = stripChoices(value, binding.board);
 
   function select(
@@ -377,7 +445,9 @@ function BindingRow({
     noneLabel: string,
     fromDesign = false,
     locked = false,
+    mark: 'refused' | 'note' | null = null,
   ) {
+    const refused = mark !== null;
     const known = current === '' || options.some((option) => option.id === current);
     // A choice offered from the design cannot be checked until the project is designed in this session.
     const unchecked = fromDesign && boardChoices === null;
@@ -391,10 +461,14 @@ function BindingRow({
           className="input w-full"
           dir="auto"
           value={current}
-          aria-invalid={problem !== undefined || undefined}
+          aria-invalid={problem !== undefined || mark === 'refused' || undefined}
           disabled={locked}
           aria-describedby={
-            [problem ? `${fieldId}-problem` : '', locked ? `${fieldId}-locked` : '']
+            [
+              problem ? `${fieldId}-problem` : '',
+              locked ? `${fieldId}-locked` : '',
+              refused ? `${fieldId}-refused` : '',
+            ]
               .filter(Boolean)
               .join(' ') || undefined
           }
@@ -418,6 +492,15 @@ function BindingRow({
         {locked && (
           <p id={`${fieldId}-locked`} className="text-xs" data-testid="binding-board-locked">
             {t('wires.boardLocked')}
+          </p>
+        )}
+        {refused && (
+          <p
+            id={`${fieldId}-refused`}
+            className="text-xs font-semibold"
+            data-testid="binding-field-refused"
+          >
+            {t(mark === 'refused' ? 'explain.fieldNote' : 'explain.fieldNoteShared')}
           </p>
         )}
         {problem !== undefined && (
@@ -444,21 +527,11 @@ function BindingRow({
         <span>{t('bindings.applies', { pattern: binding.pattern })}</span>
       </p>
       {conflicted && (
-        <p className="text-xs font-semibold" role="alert" data-testid="binding-refused">
-          {t('bindings.refused', {
-            reason: conflict.reason || '—',
-            ref: conflict.ref || '—',
-          })}
+        // A pointer, not a second announcement: the explanation is the one at the top.
+        <p className="text-xs font-semibold" data-testid="binding-refused">
+          {t('explain.entryNote')}
         </p>
       )}
-      {conflicted &&
-        (conflict.reason === 'core_out_of_range' ||
-          conflict.reason === 'core_reused' ||
-          conflict.reason === 'core_shared_cable_id') && (
-          <p className="text-xs" data-testid="binding-refused-core">
-            {t(`bindings.refusedCore.${conflict.reason}`)}
-          </p>
-        )}
       {summary !== null && reusedFrom !== undefined && (
         <div
           className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle p-2 text-xs"
@@ -618,6 +691,8 @@ function BindingRow({
               'binding-circuit',
               t('bindings.noCircuit'),
               true,
+              false,
+              markOf('circuit'),
             )}
           </div>
 
@@ -691,6 +766,9 @@ function BindingRow({
                     slot.deviceKind !== null && binding.circuit !== null
                       ? t('bindings.fromCircuit')
                       : t('bindings.notChosen'),
+                    false,
+                    false,
+                    markOf('slot', slot.id),
                   )}
                 </div>
               );
@@ -728,6 +806,8 @@ function BindingRow({
             {points.map((point) => {
               const fieldId = `${rowId}-point-${point.id}`;
               const problem = problemOf('marking', point.id);
+              const pointMark = markOf('point', point.id);
+              const refusedPoint = pointMark !== null;
               return (
                 <div key={point.id} className="field min-w-0">
                   <label htmlFor={fieldId} className="field-label">
@@ -743,13 +823,29 @@ function BindingRow({
                     maxLength={50}
                     value={point.marking}
                     placeholder={t('notGivenPlaceholder')}
-                    aria-invalid={problem !== undefined || undefined}
-                    aria-describedby={problem ? `${fieldId}-problem` : undefined}
+                    aria-invalid={problem !== undefined || pointMark === 'refused' || undefined}
+                    aria-describedby={
+                      [
+                        problem ? `${fieldId}-problem` : '',
+                        refusedPoint ? `${fieldId}-refused` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    }
                     onChange={(event) => {
                       onChange(setMarking(value, binding.id, point.id, event.target.value));
                     }}
                     data-testid="point-marking"
                   />
+                  {refusedPoint && (
+                    <p
+                      id={`${fieldId}-refused`}
+                      className="text-xs font-semibold"
+                      data-testid="binding-field-refused"
+                    >
+                      {t('explain.fieldNote')}
+                    </p>
+                  )}
                   {problem !== undefined && (
                     <Problem id={`${fieldId}-problem`} text={t('bindings.problem.missing')} />
                   )}
@@ -772,6 +868,8 @@ function BindingRow({
                 'binding-cable',
                 t('bindings.noCable'),
                 true,
+                false,
+                markOf('cable'),
               )}
             </div>
           )}
@@ -812,6 +910,8 @@ function BindingRow({
               savedRevision={savedRevision}
               inputsKey={previewInputsKey}
               current={previewCurrent}
+              rowIdOf={rowIdOf}
+              onRefusal={onPreviewRefusal}
             />
           )}
         </>
@@ -1024,7 +1124,13 @@ export function BindingsEditor({
   moved = [],
   onConfirm,
   onRefreshChoices,
+  conflictField = null,
+  conflictFieldRefused = true,
 }: {
+  /** The binding field a save refusal names (marked on the conflict's row). */
+  conflictField?: RefusalField | null;
+  /** Whether that field's choice is what was refused (else a neutral note). */
+  conflictFieldRefused?: boolean;
   previewInputsKey?: string;
   previewCurrent?: boolean;
   moved?: MovedReference[];
@@ -1054,6 +1160,33 @@ export function BindingsEditor({
   const patterns = bindablePatterns(value);
   const [draft, setDraft] = useState({ id: '', pattern: '', board: '', circuit: '' });
   const [status, setStatus] = useState('');
+  // The binding and field the last preview refusal named, for the configuration it was asked
+  // with: marked only while the configuration is still that one (a later edit or answer clears it).
+  // Kept per row that asked, so one row's answer does not clear another row's refusal.
+  const [previewRefusals, setPreviewRefusals] = useState<
+    Record<string, { explained: Explained; forValue: string }>
+  >({});
+  const valueText = JSON.stringify(value);
+  const refusedFieldOf = (bindingId: string): { field: RefusalField; refused: boolean } | null => {
+    if (
+      conflict !== null &&
+      conflict.kind === 'binding' &&
+      conflict.entry === bindingId &&
+      conflictField !== null
+    ) {
+      return { field: conflictField, refused: conflictFieldRefused };
+    }
+    for (const asked of Object.values(previewRefusals)) {
+      if (
+        asked.forValue === valueText &&
+        asked.explained.binding === bindingId &&
+        asked.explained.field !== null
+      ) {
+        return { field: asked.explained.field, refused: asked.explained.fieldRefused };
+      }
+    }
+    return null;
+  };
   // M9d: bindings made with "Use on another board" in this session (new id → source id).
   const [reused, setReused] = useState<Record<string, string>>({});
   // A removed binding's entry goes, so a later binding of the same name is not called reused.
@@ -1140,6 +1273,17 @@ export function BindingsEditor({
               addFieldId={addId}
               onUnauthorized={onUnauthorized}
               savedRevision={savedRevision}
+              refusedField={refusedFieldOf(binding.id)}
+              onPreviewRefusal={(explained, forValue) => {
+                setPreviewRefusals((prev) => {
+                  const others = Object.fromEntries(
+                    Object.entries(prev).filter(([rowBinding]) => rowBinding !== binding.id),
+                  );
+                  return explained === null
+                    ? others
+                    : { ...others, [binding.id]: { explained, forValue } };
+                });
+              }}
             />
           ))}
         </ul>
