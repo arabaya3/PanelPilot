@@ -2528,6 +2528,26 @@
       "unknownNoEntry": "The server refused this request. Try again; if it is refused again, the technical detail below gives the server's reason.",
       "fieldNoteShared": "This cable is where the restriction applies; keep it if it is the cable actually installed.",
       "entryNote": "The last save or preview was refused for this binding: see the explanation at the top of the configuration."
+    },
+    "contents": {
+      "title": "Contents of the configuration editor",
+      "sections": "Sections",
+      "actions": "Actions",
+      "definitions": "Definitions ({count})",
+      "patterns": "Patterns ({count})",
+      "components": "Components ({count})",
+      "strips": "Terminal strips ({count})",
+      "bindings": "Bindings ({count})",
+      "issues": "Issues to fix ({count})",
+      "issuesFindings": "Issues to fix ({count}); validation findings ({findings})",
+      "issuesFindingsOutdated": "Issues to fix ({count}); validation findings, outdated ({findings})",
+      "addBinding": "Add a binding",
+      "preview": "Preview the first binding",
+      "previewNeedsBinding": "Preview (add a binding first)",
+      "validate": "Validate (in Advanced)",
+      "goAdd": "Go to the add form",
+      "back": "Back to contents",
+      "issuesStatus": "{count} issue(s) to fix in the bindings."
     }
   },
   "feederLink": {

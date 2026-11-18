@@ -2528,6 +2528,26 @@
       "unknownNoEntry": "השרת דחה בקשה זו. נסו שוב; אם תידחה שוב, הפרט הטכני למטה מציין את סיבת השרת.",
       "fieldNoteShared": "בכבל זה חלה ההגבלה; השאירו אותו אם זה הכבל שמותקן בפועל.",
       "entryNote": "השמירה או התצוגה המקדימה האחרונה נדחו עבור קישור זה: ראו את ההסבר בראש התצורה."
+    },
+    "contents": {
+      "title": "תוכן עורך התצורה",
+      "sections": "מקטעים",
+      "actions": "פעולות",
+      "definitions": "הגדרות ({count})",
+      "patterns": "תבניות ({count})",
+      "components": "רכיבים ({count})",
+      "strips": "פסי מסופים ({count})",
+      "bindings": "קישורים ({count})",
+      "issues": "בעיות לתיקון ({count})",
+      "issuesFindings": "בעיות לתיקון ({count}); ממצאי אימות ({findings})",
+      "issuesFindingsOutdated": "בעיות לתיקון ({count}); ממצאי אימות, לא עדכניים ({findings})",
+      "addBinding": "הוספת קישור",
+      "preview": "תצוגה מקדימה של הקישור הראשון",
+      "previewNeedsBinding": "תצוגה מקדימה (הוסיפו קודם קישור)",
+      "validate": "אימות (במתקדם)",
+      "goAdd": "מעבר לטופס ההוספה",
+      "back": "חזרה לתוכן",
+      "issuesStatus": "{count} בעיות לתיקון בקישורים."
     }
   },
   "feederLink": {

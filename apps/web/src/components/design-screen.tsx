@@ -613,6 +613,8 @@ function DesignWorkspace({
   }
   // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
   const [conflictJump, setConflictJump] = useState(0);
+  // Where the Configuration editor puts its Contents (the top of the Configuration view).
+  const [contentsSlot, setContentsSlot] = useState<HTMLElement | null>(null);
   /**
    * The schema the opened revision's stored design names (from its marker,
    * not a read of it): null when unknown, undefined from an older server.
@@ -2598,6 +2600,8 @@ function DesignWorkspace({
         {viewPanel(
           'configuration',
           <>
+            {/* The editor's Contents is rendered here, first in reading and Tab order. */}
+            <div ref={setContentsSlot} data-testid="configuration-contents-slot" />
             {opened && (
               <Panel
                 title={tc('openedTitle', { revision: opened.revision })}
@@ -2629,6 +2633,7 @@ function DesignWorkspace({
             <Panel title={tc('newTitle')}>
               {opened && token !== null ? (
                 <ConfigurationPanel
+                  contentsSlot={contentsSlot}
                   key={`${ownerKey}|${opened.id}`}
                   token={token}
                   projectId={opened.id}

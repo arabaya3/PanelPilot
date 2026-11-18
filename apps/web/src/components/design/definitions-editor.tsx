@@ -539,7 +539,10 @@ export function DefinitionsEditor({
   conflictRef,
   rowIdOf,
   onEditUser,
+  headerTools = null,
 }: {
+  /** Shown right after the heading (the way to the add form). */
+  headerTools?: React.ReactNode;
   value: Configuration;
   onChange: (next: Configuration) => void;
   idBase: string;
@@ -565,9 +568,10 @@ export function DefinitionsEditor({
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${idBase}-definitions`}>
-      <h3 id={`${idBase}-definitions`} className="text-base font-semibold">
+      <h3 id={`${idBase}-definitions`} tabIndex={-1} className="text-base font-semibold">
         {t('definitions.title')}
       </h3>
+      {headerTools}
       <p className="text-sm text-text-muted">{t('definitions.intro')}</p>
       {definitions.length === 0 ? (
         <p className="text-sm text-text-muted" data-testid="definitions-none">
@@ -590,6 +594,7 @@ export function DefinitionsEditor({
         </ul>
       )}
       <fieldset
+        id={`${idBase}-add-definition`}
         className="flex min-w-0 flex-col gap-3 rounded-md border border-border-subtle p-3"
         data-testid="add-definition"
       >

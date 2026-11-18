@@ -1808,7 +1808,15 @@ export function PatternsEditor({
   templates,
   conflictRef,
   rowIdOf,
+  headingId,
+  addFormId,
+  headerTools = null,
 }: {
+  /** The heading's id (the Contents links to it); a generated one when not given. */
+  headingId?: string;
+  /** The add form's id (the Contents' "Go to the add form"). */
+  addFormId?: string;
+  headerTools?: React.ReactNode;
   value: Configuration;
   onChange: (next: Configuration) => void;
   /** The template refs a slot may name (the configuration's and the opened revision's registry). */
@@ -1828,12 +1836,13 @@ export function PatternsEditor({
   return (
     <section
       className="flex min-w-0 flex-col gap-3"
-      aria-labelledby={`${id}-title`}
+      aria-labelledby={headingId ?? `${id}-title`}
       data-testid="patterns-editor"
     >
-      <h3 id={`${id}-title`} className="text-base font-semibold">
+      <h3 id={headingId ?? `${id}-title`} tabIndex={-1} className="text-base font-semibold">
         {t('patterns.title')}
       </h3>
+      {headerTools}
       <p className="text-sm text-text-muted">{t('patterns.intro')}</p>
       <p
         ref={statusRef}
@@ -1865,7 +1874,12 @@ export function PatternsEditor({
           ))}
         </ul>
       )}
-      <div className="flex min-w-0 flex-wrap items-end gap-2" data-testid="add-pattern">
+      <div
+        id={addFormId}
+        data-contents-form="true"
+        className="flex min-w-0 flex-wrap items-end gap-2"
+        data-testid="add-pattern"
+      >
         <div className="field min-w-0 flex-1">
           <label htmlFor={`${id}-add-id`} className="field-label">
             {t('patterns.id')}
