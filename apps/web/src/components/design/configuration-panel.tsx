@@ -24,6 +24,12 @@ import {
   type MovedReference,
 } from '@/components/design/binding-model';
 import type { ConfirmedReference } from '@/components/design/draft';
+import {
+  explainRefusal,
+  refusalFieldId,
+  refusalSentence,
+  type RefusalField,
+} from '@/components/design/refusal-explain';
 import type { LinkEndUse } from '@/components/design/definition-model';
 import {
   GroupedFindingsOfDesign,
@@ -69,6 +75,10 @@ type ErrorOutcome = {
   message: string;
   disabled: string | null;
   conflict: ConflictTarget | null;
+  /** The binding field the refusal names, when its parameters name one (never guessed). */
+  field?: RefusalField | null;
+  /** The server's code, said as a technical detail only. */
+  code?: string | null;
 };
 
 type Outcome =
@@ -302,6 +312,18 @@ export function ConfigurationPanel({
         conflict: named,
       };
     }
+    if (named !== null && named.kind === 'binding') {
+      // One sentence from the code and the ids it names: what failed, where, what next.
+      const explained = explainRefusal(params);
+      return {
+        kind: 'error',
+        message: refusalSentence(t, explained, doc, 'save'),
+        disabled: null,
+        conflict: named,
+        field: explained.field,
+        code: explained.code || null,
+      };
+    }
     if (named !== null) {
       // Refused for one entry (M7b): said and marked like a conflict, with its board.
       const board =
@@ -402,8 +424,16 @@ export function ConfigurationPanel({
     }
   }
 
-  function editConflict(conflict: ConflictTarget) {
-    const element = document.getElementById(entryElementId(id, conflict.kind, conflict.entry));
+  function editConflict(conflict: ConflictTarget, field: RefusalField | null = null) {
+    const entryId = entryElementId(id, conflict.kind, conflict.entry);
+    // The field the refusal names, if it is there and can take focus; else the entry itself.
+    const fieldElement =
+      field !== null && conflict.kind === 'binding'
+        ? (document.getElementById(refusalFieldId(entryId, field)))
+        : null;
+    const usable =
+      fieldElement !== null && !(fieldElement as HTMLSelectElement).disabled ? fieldElement : null;
+    const element = usable ?? document.getElementById(entryId);
     // Not every browser environment scrolls (a test's DOM has no scrollIntoView).
     if (element !== null && 'scrollIntoView' in element)
       element.scrollIntoView({ block: 'center' });
@@ -414,7 +444,7 @@ export function ConfigurationPanel({
   useEffect(() => {
     if (jumpToConflict === 0 || conflictNow === null) return;
     const timer = window.setTimeout(() => {
-      editConflict(conflictNow);
+      editConflict(conflictNow, outcome.kind === 'error' ? (outcome.field ?? null) : null);
     }, 0);
     return () => {
       window.clearTimeout(timer);
@@ -526,6 +556,7 @@ export function ConfigurationPanel({
         boards={boards}
         model={model}
         conflict={conflict}
+        conflictField={outcome.kind === 'error' ? (outcome.field ?? null) : null}
         idBase={id}
         linkUses={linkUses}
         boardChoices={choices}
@@ -583,6 +614,11 @@ export function ConfigurationPanel({
           <Notice tone="critical" testId="configuration-error">
             <span className="flex flex-col gap-2">
               <span className="break-words">{outcome.message}</span>
+              {outcome.code ? (
+                <span className="text-xs" data-testid="configuration-error-code">
+                  {t('explain.code', { code: outcome.code })}
+                </span>
+              ) : null}
               {conflict && (
                 <span className="flex flex-wrap gap-2" data-testid="configuration-conflict">
                   {conflictSection !== null ? (
@@ -591,11 +627,11 @@ export function ConfigurationPanel({
                         type="button"
                         className="btn btn-sm btn-secondary"
                         onClick={() => {
-                          editConflict(conflict);
+                          editConflict(conflict, outcome.field ?? null);
                         }}
                         data-testid="conflict-edit"
                       >
-                        {t('conflict.edit')}
+                        {outcome.field ? t('explain.goField') : t('conflict.edit')}
                       </button>
                       <button
                         type="button"

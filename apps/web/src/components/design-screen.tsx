@@ -38,6 +38,7 @@ import {
   normalized,
   type Configuration,
 } from '@/components/design/configuration-model';
+import { explainRefusal, refusalSentence } from '@/components/design/refusal-explain';
 import type { BoardChoices } from '@/components/design/binding-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
@@ -1864,7 +1865,7 @@ function DesignWorkspace({
             {tw('draft.projectGone')}
           </Notice>
         )}
-        {dirty && lastSave === 'failed' && (
+        {dirty && lastSave === 'failed' && refusedEntry === null && (
           <Notice tone="warning" live={false}>
             {tw('save.failedHint')}
           </Notice>
@@ -1961,6 +1962,9 @@ function DesignWorkspace({
                 trial={identity === 'trial'}
                 note={revisionNote}
                 onNoteChange={setRevisionNote}
+                explainedElsewhere={(refusal: Refusal) =>
+                  isConfigurationRefusal(refusal) && conflictTarget(refusal.params) !== null
+                }
                 onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
                   setConfigRefusal(isConfigurationRefusal(refusal) ? refusal : null);
@@ -1996,8 +2000,7 @@ function DesignWorkspace({
             )}
             {refusedEntry !== null && (
               <Notice
-                tone="warning"
-                live={false}
+                tone="critical"
                 testId="overview-configuration-refused"
                 action={
                   <button
@@ -2013,12 +2016,29 @@ function DesignWorkspace({
                   </button>
                 }
               >
-                {tc('overviewRefused', {
-                  entry: tc(`editor.entryKind.${refusedEntry.kind}`, {
-                    id: entryName(configDoc, refusedEntry.kind, refusedEntry.entry),
-                  }),
-                  reason: refusedEntry.reason || '—',
-                })}
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="break-words" data-testid="overview-configuration-refused-text">
+                    {refusedEntry.kind === 'binding'
+                      ? refusalSentence(
+                          tc,
+                          explainRefusal(configRefusal?.params),
+                          configDoc,
+                          'save',
+                        )
+                      : tc('overviewRefused', {
+                          entry: tc(`editor.entryKind.${refusedEntry.kind}`, {
+                            id: entryName(configDoc, refusedEntry.kind, refusedEntry.entry),
+                          }),
+                          reason: refusedEntry.reason || '—',
+                        })}{' '}
+                    {tc('explain.kept')}
+                  </span>
+                  {refusedEntry.reason !== '' && (
+                    <span className="text-xs" data-testid="overview-configuration-refused-code">
+                      {tc('explain.code', { code: refusedEntry.reason })}
+                    </span>
+                  )}
+                </span>
               </Notice>
             )}
           </>,
