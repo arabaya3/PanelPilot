@@ -2548,6 +2548,24 @@
       "goAdd": "מעבר לטופס ההוספה",
       "back": "חזרה לתוכן",
       "issuesStatus": "{count} בעיות לתיקון בקישורים."
+    },
+    "needs": {
+      "title": "נדרש בלוח {board}",
+      "status": "קישור {binding}: עדיין נדרשים {count} פריטים.",
+      "createComponent": "משבצת {slot}: עדיין אין בלוח {board} רכיב מההגדרה {template}.",
+      "createComponentAny": "משבצת {slot}: עדיין אין רכיב בלוח {board}.",
+      "goCreateComponent": "הוספת רכיב",
+      "createStrip": "תפקיד פס {role}: עדיין אין פס מסופים בלוח {board}.",
+      "goCreateStrip": "הוספת פס מסופים",
+      "chooseComponent": "משבצת {slot}: בחרו אחד מ-{count} רכיבים תואמים שכבר בלוח זה.",
+      "chooseStrip": "תפקיד פס {role}: בחרו אחד מ-{count} פסי מסופים שכבר בלוח זה.",
+      "chooseCable": "כבל: בחרו אחד מ-{count} כבלים מהתכנון של לוח זה.",
+      "noCable": "כבל: בתכנון של לוח {board} אין כבל לבחירה.",
+      "goChoose": "מעבר לבחירה",
+      "cableOutdated": "כבל: הבחירות אינן בדוקות לטבלת העומסים הנוכחית.",
+      "goRefresh": "רענון בחירות המעגלים והכבלים",
+      "cableDesign": "כבל: הריצו תכנון (טבלת עומסים ← תכנון) כדי להציג את הכבלים של לוח זה.",
+      "back": "חזרה לקישור {binding}"
     }
   },
   "feederLink": {

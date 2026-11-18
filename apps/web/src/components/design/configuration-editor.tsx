@@ -17,13 +17,14 @@ import type { OverviewValidation } from '@/components/design/binding-overview';
 import type { ConfirmedReference } from '@/components/design/draft';
 import type { RefusalField } from '@/components/design/refusal-explain';
 import { createPortal } from 'react-dom';
+import { BackToBinding, type NeedReturn } from '@/components/design/binding-needs-view';
 import {
   BackToContents,
   ConfigurationContents,
   GoToAddForm,
   contentsIds,
 } from '@/components/design/configuration-contents';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import {
@@ -166,9 +167,15 @@ function AddEntry({
   choices,
   onAdd,
   formId,
+  suggestedBoard = null,
+  back = null,
 }: {
   /** The form's id (the Contents' "Go to the add form" reaches it). */
   formId: string;
+  /** A board to show selected when arriving from a binding's need (still editable here). */
+  suggestedBoard?: string | null;
+  /** "Back to binding", after arriving from a binding's need. */
+  back?: React.ReactNode;
   kind: 'component' | 'strip';
   boards: string[];
   choices: TemplateChoice[];
@@ -177,6 +184,10 @@ function AddEntry({
   const t = useIsolatingTranslations('configuration');
   const id = useId();
   const [board, setBoard] = useState(boards[0] ?? '');
+  // Arriving from a binding's need: its board is shown selected; the user can change it.
+  useEffect(() => {
+    if (suggestedBoard !== null && boards.includes(suggestedBoard)) setBoard(suggestedBoard);
+  }, [suggestedBoard, boards]);
   const [template, setTemplate] = useState<string | null>(null);
   const [designation, setDesignation] = useState('');
   const chosenBoard = boards.includes(board) ? board : (boards[0] ?? '');
@@ -190,6 +201,7 @@ function AddEntry({
       <legend className="px-1 text-sm font-semibold">
         {t(kind === 'component' ? 'editor.addComponent' : 'editor.addStrip')}
       </legend>
+      {back}
       <div className="field min-w-0">
         <label htmlFor={`${id}-board`} className="field-label">
           {t('editor.board')}
@@ -514,6 +526,19 @@ export function ConfigurationEditor({
   const components = componentsOf(value);
   const strips = stripsOf(value);
   const ids = contentsIds(idBase);
+  // After following a binding's need to an add form: where to come back to, and its board.
+  const [needReturn, setNeedReturn] = useState<{ back: NeedReturn; board: string } | null>(null);
+  const backLink =
+    needReturn === null ? null : (
+      <BackToBinding
+        back={needReturn.back}
+        rowIdOf={(id) => entryElementId(idBase, 'binding', id)}
+        sectionId={ids.bindings}
+        onDone={() => {
+          setNeedReturn(null);
+        }}
+      />
+    );
   const firstBinding = bindingsOf(value)[0];
   const contents = (
     <ConfigurationContents
@@ -713,6 +738,8 @@ export function ConfigurationEditor({
         )}
         <AddEntry
           formId={ids.addComponent}
+          suggestedBoard={needReturn?.board ?? null}
+          back={backLink}
           kind="component"
           boards={boards}
           choices={choices}
@@ -736,6 +763,8 @@ export function ConfigurationEditor({
         )}
         <AddEntry
           formId={ids.addStrip}
+          suggestedBoard={needReturn?.board ?? null}
+          back={backLink}
           kind="strip"
           boards={boards}
           choices={choices}
@@ -767,6 +796,14 @@ export function ConfigurationEditor({
         headingId={ids.bindings}
         addFormId={ids.addBinding}
         issuesId={ids.issues}
+        needTargets={{
+          component: ids.addComponent,
+          strip: ids.addStrip,
+          refresh: `${idBase}-refresh-choices`,
+        }}
+        onFollowCreate={(back, board) => {
+          setNeedReturn({ back, board });
+        }}
         headerTools={
           <GoToAddForm
             target={ids.addBinding}
