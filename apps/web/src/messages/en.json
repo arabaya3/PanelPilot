@@ -2530,7 +2530,7 @@
       "entryNote": "The last save or preview was refused for this binding: see the explanation at the top of the configuration."
     },
     "contents": {
-      "title": "Contents",
+      "title": "Contents of the configuration editor",
       "sections": "Sections",
       "actions": "Actions",
       "definitions": "Definitions ({count})",

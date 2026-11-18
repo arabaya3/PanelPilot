@@ -495,9 +495,9 @@ export function ConfigurationEditor({
   boards: string[];
   /** The opened revision's v2/v3 model, whose registry definitions are offered too; null for none. */
   model: V2ModelSummary | null;
-  /** A save's `configuration_conflict`, whose entry is marked. */
   /** Where the Contents is rendered; in place when null. */
   contentsSlot?: HTMLElement | null;
+  /** A save's `configuration_conflict`, whose entry is marked. */
   conflict: ConflictTarget | null;
   /** The binding field the refusal names (marked on its row). */
   conflictField?: RefusalField | null;
