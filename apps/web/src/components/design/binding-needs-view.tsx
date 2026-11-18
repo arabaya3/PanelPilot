@@ -17,8 +17,14 @@ import { goToTarget } from '@/components/design/configuration-contents';
 /** Where the needs lead: the existing add forms and the choice refresh. */
 export type NeedTargets = { component: string; strip: string; refresh: string };
 
-/** The binding field to come back to after visiting a create form. */
+/** The binding field to come back to after visiting a create form or Design. */
 export type NeedReturn = { binding: string; field: string };
+
+/** Where to come back to from the page's Design action: element ids, most specific first. */
+export type DesignReturn = { binding: string; field: string; row: string; section: string };
+
+/** Which add form a create need opened. */
+export type NeedForm = 'component' | 'strip';
 
 const ANNOUNCE_DELAY_MS = 800;
 
@@ -29,14 +35,17 @@ export function BindingNeeds({
   rowId,
   targets,
   onFollowCreate,
+  onGoDesign,
 }: {
+  /** Go to the page's Design action (never running it), remembering where to come back to. */
+  onGoDesign?: ((back: NeedReturn) => void) | undefined;
   needs: BindingNeed[];
   bindingId: string;
   board: string;
   rowId: string;
   targets: NeedTargets;
-  /** Remember where to come back to before a create form is visited (and its board). */
-  onFollowCreate: (back: NeedReturn, board: string) => void;
+  /** Remember where to come back to before a create form is visited (its board and form). */
+  onFollowCreate: (back: NeedReturn, board: string, form: NeedForm) => void;
 }) {
   const t = useIsolatingTranslations('configuration');
   const [announced, setAnnounced] = useState('');
@@ -100,7 +109,7 @@ export function BindingNeeds({
             targets.component,
             `binding-need-create-${String(index)}`,
             () => {
-              onFollowCreate(back, board);
+              onFollowCreate(back, board, 'component');
             },
           )}
         </>
@@ -112,7 +121,7 @@ export function BindingNeeds({
             targets.strip,
             `binding-need-create-${String(index)}`,
             () => {
-              onFollowCreate(back, board);
+              onFollowCreate(back, board, 'strip');
             },
           )}
         </>
@@ -140,7 +149,22 @@ export function BindingNeeds({
         {link(t('needs.goRefresh'), targets.refresh, `binding-need-refresh-${String(index)}`)}
       </>
     ) : (
-      <span>{t('needs.cableDesign')}</span>
+      <>
+        <span>{t('needs.cableDesign')}</span>{' '}
+        {onGoDesign && (
+          <a
+            href="#design"
+            className="link max-w-full whitespace-normal break-words underline"
+            onClick={(event) => {
+              event.preventDefault();
+              onGoDesign({ binding: bindingId, field: 'cable' });
+            }}
+            data-testid={`binding-need-design-${String(index)}`}
+          >
+            {t('needs.goDesign')}
+          </a>
+        )}
+      </>
     );
   }
 

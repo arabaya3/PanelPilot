@@ -347,4 +347,108 @@ describe('Needed on this board', () => {
     fireEvent.click(within(form).getByTestId('add-strip-submit'));
     expect(document.activeElement).toBe(within(form).getByTestId('add-strip-board'));
   });
+
+  it('the board and the way back show only in the form that was opened', () => {
+    renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    expect(within(screen.getByTestId('add-strip')).queryByTestId('back-to-binding')).not.toBeNull();
+    expect(within(screen.getByTestId('add-component')).queryByTestId('back-to-binding')).toBeNull();
+    expect(
+      within(screen.getByTestId('add-component')).getByTestId<HTMLSelectElement>(
+        'add-component-board',
+      ).value,
+    ).toBe('MB-1');
+  });
+
+  it('a second follow is a new context, even for the same board', () => {
+    renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    const board = within(screen.getByTestId('add-strip')).getByTestId<HTMLSelectElement>(
+      'add-strip-board',
+    );
+    expect(board.value).toBe('SB-1');
+    // The user changes the board (an edit of the form), then follows a need for SB-1 again.
+    fireEvent.change(board, { target: { value: 'MB-1' } });
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    // Their edit is not overwritten silently: they are asked.
+    const conflict = within(screen.getByTestId('add-strip')).getByTestId(
+      'add-strip-context-conflict',
+    );
+    expect(conflict.textContent).toContain(
+      fill(N.conflict, { board: 'SB-1', binding: 'bind-1-SB-1' }),
+    );
+    expect(board.value).toBe('MB-1');
+    fireEvent.click(within(conflict).getByTestId('add-strip-context-keep'));
+    expect(board.value).toBe('MB-1');
+    // Following again and choosing the new context applies it.
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    fireEvent.click(within(screen.getByTestId('add-strip')).getByTestId('add-strip-context-use'));
+    expect(board.value).toBe('SB-1');
+  });
+
+  it('typed input is never overwritten by a new context without asking', () => {
+    renderApp(<NeedsPanel initial={WITH_EMPTY} />, { locale: 'en', theme: 'light' });
+    const form = screen.getByTestId('add-strip');
+    fireEvent.change(within(form).getByTestId('add-strip-designation'), {
+      target: { value: 'YS' },
+    });
+    // The form shows MB-1 (its default) with typed input; a need for SB-1 asks first.
+    fireEvent.click(within(entryOf('bind-1-SB-1')).getByTestId('binding-need-create-2'));
+    expect(within(form).getByTestId('add-strip-context-conflict')).toBeTruthy();
+    fireEvent.click(within(form).getByTestId('add-strip-context-use'));
+    expect(within(form).getByTestId<HTMLSelectElement>('add-strip-board').value).toBe('SB-1');
+    // The typed designation is kept.
+    expect(within(form).getByTestId<HTMLInputElement>('add-strip-designation').value).toBe('YS');
+  });
+
+  it('a cable that needs Design links to it, without running it', () => {
+    const onGoDesign = vi.fn();
+    const cabled = {
+      ...WITH_EMPTY,
+      patterns: [
+        {
+          ...(INITIAL.patterns[0] as Record<string, unknown>),
+          nets: [
+            {
+              ...(INITIAL.patterns[0] as { nets: Record<string, unknown>[] }).nets[0],
+              connections: [{ from: 0, to: 1, via: 'cable_core', core: 1, label: null }],
+            },
+          ],
+        },
+      ],
+    };
+    function DesignPanel() {
+      const [value, setValue] = useState<Record<string, unknown>>(cabled);
+      return (
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          value={value}
+          onChange={setValue}
+          status="none"
+          boards={['MB-1', 'SB-1']}
+          model={null}
+          boardChoices={null}
+          onUnauthorized={vi.fn()}
+          validateImpl={vi.fn() as never}
+          onGoDesign={onGoDesign}
+        />
+      );
+    }
+    renderApp(<DesignPanel />, { locale: 'en', theme: 'light' });
+    const needs = within(entryOf('bind-1-SB-1')).getByTestId('binding-needs');
+    const link = within(needs).getByText(N.goDesign);
+    fireEvent.click(link);
+    expect(onGoDesign).toHaveBeenCalledTimes(1);
+    const back = onGoDesign.mock.calls[0]?.[0] as {
+      binding: string;
+      field: string;
+      row: string;
+      section: string;
+    };
+    expect(back.binding).toBe('bind-1-SB-1');
+    expect(back.field).toBe(`${back.row}-cable`);
+    expect(back.section.endsWith('-bindings')).toBe(true);
+  });
 });

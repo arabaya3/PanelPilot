@@ -2565,7 +2565,11 @@
       "cableOutdated": "Cable: the choices are not checked for the current load schedule.",
       "goRefresh": "Refresh circuit and cable choices",
       "cableDesign": "Cable: run Design (Load schedule → Design) to list this board's cables.",
-      "back": "Back to binding {binding}"
+      "back": "Back to binding {binding}",
+      "goDesign": "Go to Design",
+      "conflict": "This form already has input you entered. Use board {board} for binding {binding}?",
+      "conflictUse": "Use board {board}",
+      "conflictKeep": "Keep my input"
     }
   },
   "feederLink": {

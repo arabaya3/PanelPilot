@@ -13,6 +13,8 @@
 import { bindingNeeds } from '@/components/design/binding-needs';
 import {
   BindingNeeds,
+  type DesignReturn,
+  type NeedForm,
   type NeedReturn,
   type NeedTargets,
 } from '@/components/design/binding-needs-view';
@@ -385,12 +387,14 @@ function BindingRow({
   needTargets = null,
   refreshable = false,
   onFollowCreate,
+  onGoDesign,
 }: {
   /** Where "Needed on this board" leads (null: the list is not shown). */
   needTargets?: NeedTargets | null;
   /** Whether the choices can be refreshed now (the inputs changed since the design). */
   refreshable?: boolean;
-  onFollowCreate?: ((back: NeedReturn, board: string) => void) | undefined;
+  onFollowCreate?: ((back: NeedReturn, board: string, form: NeedForm) => void) | undefined;
+  onGoDesign?: ((back: NeedReturn) => void) | undefined;
   /** The field of this binding a save or preview refusal names, and whether its choice was refused. */
   refusedField?: { field: RefusalField; refused: boolean } | null;
   onPreviewRefusal: (explained: Explained | null, forValue: string) => void;
@@ -548,9 +552,10 @@ function BindingRow({
           board={binding.board}
           rowId={rowId}
           targets={needTargets}
-          onFollowCreate={(back, board) => {
-            onFollowCreate?.(back, board);
+          onFollowCreate={(back, board, form) => {
+            onFollowCreate?.(back, board, form);
           }}
+          onGoDesign={onGoDesign}
         />
       )}
       {conflicted && (
@@ -1158,9 +1163,11 @@ export function BindingsEditor({
   headerTools = null,
   needTargets = null,
   onFollowCreate,
+  onGoDesign,
 }: {
   needTargets?: NeedTargets | null;
-  onFollowCreate?: ((back: NeedReturn, board: string) => void) | undefined;
+  onFollowCreate?: ((back: NeedReturn, board: string, form: NeedForm) => void) | undefined;
+  onGoDesign?: ((back: DesignReturn) => void) | undefined;
   /** The add form's id and the issue overview's heading id (the Contents link to them). */
   addFormId?: string;
   issuesId?: string;
@@ -1318,6 +1325,15 @@ export function BindingsEditor({
               needTargets={needTargets}
               refreshable={onRefreshChoices !== undefined}
               onFollowCreate={onFollowCreate}
+              onGoDesign={(back) => {
+                const row = rowIdOf(back.binding);
+                onGoDesign?.({
+                  binding: back.binding,
+                  field: `${row}-${back.field}`,
+                  row,
+                  section: headingId,
+                });
+              }}
               onPreviewRefusal={(explained, forValue) => {
                 setPreviewRefusals((prev) => {
                   const others = Object.fromEntries(

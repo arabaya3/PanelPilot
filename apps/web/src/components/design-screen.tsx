@@ -39,6 +39,7 @@ import {
   type Configuration,
 } from '@/components/design/configuration-model';
 import { explainRefusal, refusalSentence } from '@/components/design/refusal-explain';
+import { goToTarget } from '@/components/design/configuration-contents';
 import type { BoardChoices } from '@/components/design/binding-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
@@ -613,6 +614,13 @@ function DesignWorkspace({
   }
   // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
   const [conflictJump, setConflictJump] = useState(0);
+  // After a binding need led to Design: the binding field to come back to (never run here).
+  const [designReturn, setDesignReturn] = useState<{
+    binding: string;
+    field: string;
+    row: string;
+    section: string;
+  } | null>(null);
   // Where the Configuration editor puts its Contents (the top of the Configuration view).
   const [contentsSlot, setContentsSlot] = useState<HTMLElement | null>(null);
   /**
@@ -1784,6 +1792,7 @@ function DesignWorkspace({
         actions={
           <div className="flex flex-col items-start gap-1">
             <button
+              id={`${id}-design`}
               type="submit"
               form={formId}
               disabled={token === null || !complete || result.kind === 'working'}
@@ -1792,6 +1801,27 @@ function DesignWorkspace({
             >
               {result.kind === 'working' ? t('working') : t('submit')}
             </button>
+            {designReturn !== null && (
+              <a
+                href={`#${designReturn.field}`}
+                className="link max-w-xs whitespace-normal break-words text-sm underline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  const back = designReturn;
+                  selectView('configuration');
+                  // After the Configuration view shows: the field, else the binding, else the
+                  // bindings section (whatever still exists).
+                  window.setTimeout(() => {
+                    const reached =
+                      goToTarget(back.field) || goToTarget(back.row) || goToTarget(back.section);
+                    if (reached) setDesignReturn(null);
+                  }, 0);
+                }}
+                data-testid="design-back-to-binding"
+              >
+                {tc('needs.back', { binding: designReturn.binding })}
+              </a>
+            )}
             {/* A disabled button says nothing about why. Said only for what the
                 engineer can fix: a session still starting is not their doing. */}
             {incomplete && (
@@ -2634,6 +2664,11 @@ function DesignWorkspace({
               {opened && token !== null ? (
                 <ConfigurationPanel
                   contentsSlot={contentsSlot}
+                  onGoDesign={(target) => {
+                    setDesignReturn(target);
+                    // Design itself, or what explains why it cannot run yet; never run here.
+                    goToTarget(`${id}-design`, `${id}-incomplete`);
+                  }}
                   key={`${ownerKey}|${opened.id}`}
                   token={token}
                   projectId={opened.id}

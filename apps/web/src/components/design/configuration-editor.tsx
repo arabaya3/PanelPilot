@@ -17,7 +17,12 @@ import type { OverviewValidation } from '@/components/design/binding-overview';
 import type { ConfirmedReference } from '@/components/design/draft';
 import type { RefusalField } from '@/components/design/refusal-explain';
 import { createPortal } from 'react-dom';
-import { BackToBinding, type NeedReturn } from '@/components/design/binding-needs-view';
+import {
+  BackToBinding,
+  type DesignReturn,
+  type NeedForm,
+  type NeedReturn,
+} from '@/components/design/binding-needs-view';
 import {
   BackToContents,
   ConfigurationContents,
@@ -167,13 +172,16 @@ function AddEntry({
   choices,
   onAdd,
   formId,
-  suggestedBoard = null,
+  context = null,
   back = null,
 }: {
   /** The form's id (the Contents' "Go to the add form" reaches it). */
   formId: string;
-  /** A board to show selected when arriving from a binding's need (still editable here). */
-  suggestedBoard?: string | null;
+  /**
+   * Arriving from a binding's need opened for this form: the binding and its board. Each
+   * follow is a new context (`nonce`), even for the same board.
+   */
+  context?: { binding: string; board: string; nonce: number } | null;
   /** "Back to binding", after arriving from a binding's need. */
   back?: React.ReactNode;
   kind: 'component' | 'strip';
@@ -184,15 +192,24 @@ function AddEntry({
   const t = useIsolatingTranslations('configuration');
   const id = useId();
   const [board, setBoard] = useState(boards[0] ?? '');
-  // Arriving from a binding's need: its board is shown selected once; the user can change it
-  // (only a new suggestion applies again, not every render of the board list).
-  const suggested =
-    suggestedBoard !== null && boards.includes(suggestedBoard) ? suggestedBoard : null;
-  useEffect(() => {
-    if (suggested !== null) setBoard(suggested);
-  }, [suggested]);
+  const [boardEdited, setBoardEdited] = useState(false);
   const [template, setTemplate] = useState<string | null>(null);
   const [designation, setDesignation] = useState('');
+  // A new context whose board would replace input the user entered: asked, never silent.
+  const [pending, setPending] = useState<string | null>(null);
+  const nonce = context?.nonce ?? null;
+  useEffect(() => {
+    if (context === null || !boards.includes(context.board)) return;
+    const unfinished = designation !== '' || template !== null || boardEdited;
+    if (unfinished && board !== context.board) {
+      setPending(context.board);
+    } else {
+      setBoard(context.board);
+      setBoardEdited(false);
+      setPending(null);
+    }
+    // Only a new follow applies (not every render, nor every keystroke in the form).
+  }, [nonce]);
   const chosenBoard = boards.includes(board) ? board : (boards[0] ?? '');
   const ready = chosenBoard !== '' && (kind === 'strip' || template !== null);
   return (
@@ -205,6 +222,44 @@ function AddEntry({
         {t(kind === 'component' ? 'editor.addComponent' : 'editor.addStrip')}
       </legend>
       {back}
+      {pending !== null && context !== null && (
+        <div
+          className="flex min-w-0 flex-col gap-2 rounded-md border border-border-subtle p-2 text-sm"
+          role="group"
+          aria-labelledby={`${id}-pending`}
+          data-testid={`add-${kind}-context-conflict`}
+        >
+          <p id={`${id}-pending`} dir="auto">
+            {t('needs.conflict', { board: pending, binding: context.binding })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary max-w-full whitespace-normal break-words"
+              onClick={() => {
+                setBoard(pending);
+                setBoardEdited(false);
+                setPending(null);
+                document.getElementById(`${id}-board`)?.focus();
+              }}
+              data-testid={`add-${kind}-context-use`}
+            >
+              {t('needs.conflictUse', { board: pending })}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary max-w-full whitespace-normal break-words"
+              onClick={() => {
+                setPending(null);
+                document.getElementById(`${id}-board`)?.focus();
+              }}
+              data-testid={`add-${kind}-context-keep`}
+            >
+              {t('needs.conflictKeep')}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="field min-w-0">
         <label htmlFor={`${id}-board`} className="field-label">
           {t('editor.board')}
@@ -215,6 +270,7 @@ function AddEntry({
           dir="auto"
           value={chosenBoard}
           onChange={(event) => {
+            setBoardEdited(true);
             setBoard(event.target.value);
           }}
           data-testid={`add-${kind}-board`}
@@ -259,6 +315,7 @@ function AddEntry({
           onAdd({ board: chosenBoard, template, designation });
           setTemplate(null);
           setDesignation('');
+          setBoardEdited(false);
           // The button is disabled again (no definition chosen): keep the keyboard user in the
           // form, on its first field, rather than losing focus to the page.
           document.getElementById(`${id}-board`)?.focus();
@@ -469,6 +526,7 @@ export function ConfigurationEditor({
   onChange,
   boards,
   model,
+  onGoDesign,
   contentsSlot = null,
   conflict,
   conflictField = null,
@@ -515,6 +573,8 @@ export function ConfigurationEditor({
   model: V2ModelSummary | null;
   /** Where the Contents is rendered; in place when null. */
   contentsSlot?: HTMLElement | null;
+  /** Go to the page's Design action from a binding need (never running it). */
+  onGoDesign?: ((back: DesignReturn) => void) | undefined;
   /** A save's `configuration_conflict`, whose entry is marked. */
   conflict: ConflictTarget | null;
   /** The binding field the refusal names (marked on its row). */
@@ -533,7 +593,18 @@ export function ConfigurationEditor({
   const strips = stripsOf(value);
   const ids = contentsIds(idBase);
   // After following a binding's need to an add form: where to come back to, and its board.
-  const [needReturn, setNeedReturn] = useState<{ back: NeedReturn; board: string } | null>(null);
+  // Only the form that was opened shows the binding's board and the way back; each follow is a
+  // new context (nonce), even for the same board.
+  const [needReturn, setNeedReturn] = useState<{
+    back: NeedReturn;
+    board: string;
+    form: NeedForm;
+    nonce: number;
+  } | null>(null);
+  const contextFor = (form: NeedForm) =>
+    needReturn !== null && needReturn.form === form
+      ? { binding: needReturn.back.binding, board: needReturn.board, nonce: needReturn.nonce }
+      : null;
   const backLink =
     needReturn === null ? null : (
       <BackToBinding
@@ -744,8 +815,8 @@ export function ConfigurationEditor({
         )}
         <AddEntry
           formId={ids.addComponent}
-          suggestedBoard={needReturn?.board ?? null}
-          back={backLink}
+          context={contextFor('component')}
+          back={needReturn?.form === 'component' ? backLink : null}
           kind="component"
           boards={boards}
           choices={choices}
@@ -769,8 +840,8 @@ export function ConfigurationEditor({
         )}
         <AddEntry
           formId={ids.addStrip}
-          suggestedBoard={needReturn?.board ?? null}
-          back={backLink}
+          context={contextFor('strip')}
+          back={needReturn?.form === 'strip' ? backLink : null}
           kind="strip"
           boards={boards}
           choices={choices}
@@ -807,9 +878,15 @@ export function ConfigurationEditor({
           strip: ids.addStrip,
           refresh: `${idBase}-refresh-choices`,
         }}
-        onFollowCreate={(back, board) => {
-          setNeedReturn({ back, board });
+        onFollowCreate={(back, board, form) => {
+          setNeedReturn((previous) => ({
+            back,
+            board,
+            form,
+            nonce: (previous?.nonce ?? 0) + 1,
+          }));
         }}
+        onGoDesign={onGoDesign}
         headerTools={
           <GoToAddForm
             target={ids.addBinding}
