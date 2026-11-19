@@ -253,7 +253,7 @@ export function ProjectsPanel({
   // Unsaved work to settle before `go` replaces it (another project, or a new one).
   const [switching, setSwitching] = useState<{
     target: string;
-    go: (discard: boolean) => void;
+    go: (discard: boolean, settled?: boolean) => void;
   } | null>(null);
   const tUi = useIsolatingTranslations('ui');
   const [ownNote, setOwnNote] = useState('');
@@ -431,7 +431,7 @@ export function ProjectsPanel({
    * Otherwise the switch dialog asks to save, discard or cancel; a discard is
    * applied only once the other project is actually there (`go(true)`).
    */
-  function requestSwitch(target: string, go: (discard: boolean) => void) {
+  function requestSwitch(target: string, go: (discard: boolean, settled?: boolean) => void) {
     if (onDiscard === undefined) {
       beforeOpen(() => {
         go(false);
@@ -451,14 +451,15 @@ export function ProjectsPanel({
     if (pending === null) return;
     // A save that is refused or fails keeps this project and everything typed:
     // the switch does not go on.
-    if (await store()) pending.go(false);
+    // Saved: settled, so the open is not asked about again.
+    if (await store()) pending.go(false, true);
   }
 
   function load(projectId: string, revision?: number, focus = false, target?: string) {
     focusFrom.current = document.activeElement;
-    requestSwitch(target ?? opened?.name ?? '', (discard) => {
+    requestSwitch(target ?? opened?.name ?? '', (discard, settled = false) => {
       focusOpened.current = focus;
-      void fetchAndOpen(projectId, revision, discard);
+      void fetchAndOpen(projectId, revision, discard, settled || discard);
     });
   }
 
@@ -480,7 +481,17 @@ export function ProjectsPanel({
     });
   }
 
-  async function fetchAndOpen(projectId: string, revision?: number, discard = false) {
+  /**
+   * @param settled Unsaved work was already settled for this open (saved or
+   *   discarded in the switch dialog); otherwise work typed while it opens is
+   *   asked about before it is replaced.
+   */
+  async function fetchAndOpen(
+    projectId: string,
+    revision?: number,
+    discard = false,
+    settled = false,
+  ) {
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
@@ -498,7 +509,7 @@ export function ProjectsPanel({
       };
       // Work typed while it was opening (the page was clean when Open was
       // pressed): never replaced without asking.
-      if (!discard && dirtyNow.current && onDiscard !== undefined) {
+      if (!settled && dirtyNow.current && onDiscard !== undefined) {
         // The engineer is working elsewhere on the page: focus is not moved for it.
         focusOpened.current = false;
         focusFrom.current = null;
