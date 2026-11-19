@@ -317,4 +317,31 @@ describe('edits made while Save is running', () => {
     expect(designation().value).toBe('X9');
     expect(JSON.stringify(api.revise.mock.calls[0]?.[0]?.configuration)).toContain('X7');
   });
+
+  it('the switch dialog is rendered at the page level, never inside a hidden view', async () => {
+    api.list.mockResolvedValue({
+      kind: 'listed',
+      page: {
+        permissions: [],
+        projects: [
+          { id: 'p1', name: 'Stored tower', revisions: 1, updated_at: '2026-11-01T10:00:00Z' },
+          { id: 'p2', name: 'Second plant', revisions: 1, updated_at: '2026-11-02T10:00:00Z' },
+        ],
+      },
+    });
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    fireEvent.click(within(screen.getByTestId('project-p2')).getByText('Open'));
+    const dialog = await waitFor(() => {
+      const found = screen.getByTestId('switch-dialog').closest('dialog');
+      expect(found?.open).toBe(true);
+      return found as HTMLDialogElement;
+    });
+    expect(dialog.closest('[data-testid="view-overview"]')).toBeNull();
+    expect(dialog.closest('[data-testid="projects-panel"]')).toBeNull();
+  });
 });

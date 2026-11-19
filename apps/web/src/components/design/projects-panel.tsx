@@ -1,6 +1,7 @@
 'use client';
 
 import { useLocale } from 'next-intl';
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
@@ -259,6 +260,11 @@ export function ProjectsPanel({
     go: (discard: boolean, mark?: string) => void;
   } | null>(null);
   const tUi = useIsolatingTranslations('ui');
+  // The switch dialog is portalled to the page once on the client (no server markup to match).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [ownNote, setOwnNote] = useState('');
   const note = heldNote ?? ownNote;
   const setNote = onNoteChange ?? setOwnNote;
@@ -1021,59 +1027,66 @@ export function ProjectsPanel({
           {t('draftsLocal')}
         </p>
       )}
-      <Dialog
-        open={switching !== null}
-        onClose={() => {
-          setSwitching(null);
-        }}
-        title={t('switchTitle')}
-        closeLabel={tUi('close')}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2" data-testid="switch-dialog">
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => {
-                setSwitching(null);
-              }}
-              data-testid="switch-cancel"
-            >
-              {t('switchCancel')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-danger"
-              onClick={() => {
-                const pending = switching;
-                setSwitching(null);
-                pending?.go(true);
-              }}
-              data-testid="switch-discard"
-            >
-              {opened ? t('switchDiscard', { name: opened.name }) : t('switchDiscardNew')}
-            </button>
-            {canSaveFirst && (
-              <button
-                type="button"
-                className="btn btn-sm btn-primary"
-                onClick={() => {
-                  void saveThenSwitch();
-                }}
-                data-testid="switch-save"
-              >
-                {t('switchSave')}
-              </button>
-            )}
-          </div>
-        }
-      >
-        <p className="text-sm" dir="auto" data-testid="switch-body">
-          {t(canSaveFirst ? 'switchBody' : 'switchBodyNoSave', {
-            name: currentName,
-            target: switching?.target ?? '',
-          })}
-        </p>
-      </Dialog>
+      {/* Rendered at the page level: the panel sits in a view that is hidden
+          while another tab is shown, and a modal inside a hidden view would
+          block the page without being seen. */}
+      {mounted &&
+        createPortal(
+          <Dialog
+            open={switching !== null}
+            onClose={() => {
+              setSwitching(null);
+            }}
+            title={t('switchTitle')}
+            closeLabel={tUi('close')}
+            footer={
+              <div className="flex flex-wrap justify-end gap-2" data-testid="switch-dialog">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => {
+                    setSwitching(null);
+                  }}
+                  data-testid="switch-cancel"
+                >
+                  {t('switchCancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => {
+                    const pending = switching;
+                    setSwitching(null);
+                    pending?.go(true);
+                  }}
+                  data-testid="switch-discard"
+                >
+                  {opened ? t('switchDiscard', { name: opened.name }) : t('switchDiscardNew')}
+                </button>
+                {canSaveFirst && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      void saveThenSwitch();
+                    }}
+                    data-testid="switch-save"
+                  >
+                    {t('switchSave')}
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <p className="text-sm" dir="auto" data-testid="switch-body">
+              {t(canSaveFirst ? 'switchBody' : 'switchBodyNoSave', {
+                name: currentName,
+                target: switching?.target ?? '',
+              })}
+            </p>
+          </Dialog>,
+          document.body,
+        )}
     </section>
   );
 }
