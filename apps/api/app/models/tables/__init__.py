@@ -13,6 +13,7 @@ from app.models.tables import (  # noqa: F401
     billing,
     calculations,
     design_ai_proposals,
+    design_drafts,
     design_projects,
     diagnostics,
     engineering_reviews,

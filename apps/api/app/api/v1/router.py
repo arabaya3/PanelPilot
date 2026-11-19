@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     billing,
     calculations,
     design,
+    design_drafts,
     diagnostics,
     engineering_reviews,
     feedback,
@@ -51,6 +52,7 @@ api_router.include_router(diagnostics.sessions_router, prefix="/sessions", tags=
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(design.router, prefix="/design", tags=["design"])
+api_router.include_router(design_drafts.router, prefix="/design", tags=["design"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(team.router, prefix="/team", tags=["team"])
 api_router.include_router(

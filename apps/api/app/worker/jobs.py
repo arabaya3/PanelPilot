@@ -254,6 +254,40 @@ def run_purge_ai_proposals(args: list[str]) -> int:
     return 0
 
 
+def run_purge_design_drafts(args: list[str]) -> int:
+    """Delete server-backed drafts (and tombstones) past their retention, and old request ids.
+
+    A draft not updated for ``DESIGN_DRAFT_RETENTION_DAYS`` (30) is deleted
+    from the live database; request ids older than
+    ``DESIGN_DRAFT_REQUEST_RETENTION_HOURS`` (48) are forgotten. Copies in
+    backups are outside this job.
+
+    Args:
+        args: None are taken.
+
+    Returns:
+        ``0``, or ``2`` on a usage error.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain.design_drafts import purge_expired
+
+    if args:
+        print("usage: purge-design-drafts", file=sys.stderr)
+        return 2
+    session = next(get_session())
+    with (
+        closing(session),
+        cross_tenant(session, reason="retention purge of server-backed drafts across tenants"),
+    ):
+        drafts, requests = purge_expired(session=session)
+        session.commit()
+    print(f"removed {drafts} drafts and {requests} draft request records")
+    return 0
+
+
 def run_crawl_queue(args: list[str]) -> int:
     """Run the oldest crawl queued through the API, if there is one.
 
@@ -912,6 +946,11 @@ REGISTRY: dict[str, JobSpec] = {
             "enqueue-deferred",
             "Queue the next batch of a source's staged passages a crawl deferred.",
             run_enqueue_deferred,
+        ),
+        JobSpec(
+            "purge-design-drafts",
+            "Delete server-backed drafts and request ids past their retention.",
+            run_purge_design_drafts,
         ),
         JobSpec(
             "purge-ai-proposals",

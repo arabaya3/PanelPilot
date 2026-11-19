@@ -32,3 +32,6 @@
 # Delete AI intake proposals no saved revision applied once they are older
 # than AI_INTAKE_UNUSED_RETENTION_DAYS (M6b S3). Applied ones are never touched.
 15 4 * * *    purge-ai-proposals
+# Delete server-backed drafts not updated for DESIGN_DRAFT_RETENTION_DAYS (30)
+# and request ids older than DESIGN_DRAFT_REQUEST_RETENTION_HOURS (48).
+25 4 * * *    purge-design-drafts

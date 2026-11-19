@@ -1607,6 +1607,11 @@ class ReviseProjectRequest(StrictModel):
     configuration: dict[str, Any] | None = None
     configuration_removed: bool = False
     references_confirmed: list[ReferenceConfirmation] = Field(default_factory=list, max_length=500)
+    # The revision the edit was made from. When sent, the save is refused
+    # (409 ``revision_stale_base``) unless it is still the latest, checked
+    # under the same lock that numbers the new revision. Absent: the
+    # earlier contract (the save becomes the next revision).
+    expected_revision: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _removal_sends_none(self) -> ReviseProjectRequest:

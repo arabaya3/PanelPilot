@@ -1861,6 +1861,23 @@ def revise_project(
     tenant = _scope_to(session, user)
     try:
         project = _load(session, project_id, lock=True)
+        # Under the lock that numbers the new revision: an edit made from a
+        # revision that is no longer the latest is refused, when the client
+        # says which one it edited (older clients send nothing and keep the
+        # earlier contract).
+        if (
+            request.expected_revision is not None
+            and request.expected_revision != project.revision_count
+        ):
+            raise ConflictError(
+                f"this project now has revision {project.revision_count}; the edit was made "
+                f"from revision {request.expected_revision}",
+                code="revision_stale_base",
+                params={
+                    "expected": str(request.expected_revision),
+                    "latest": str(project.revision_count),
+                },
+            )
         # Malformed company settings, a typed feeder row and unknown guided input are
         # refused, not saved as a refused design (a preview runs the same checks).
         _check_save_input(request.request, request.requirements_input)

@@ -121,6 +121,9 @@ SIGNUP_POLICY = RateLimitPolicy("auth-signup", 10, 3600)
 # dozen of them behind one site address must not notice the limit. A script
 # rendering drawing sets in a loop is held to under one a second.
 DESIGN_POLICY = RateLimitPolicy("design", 240, 300)
+#: Server-backed draft reads and explicit saves, on their own budget so a busy
+#: drafts page never spends the design budget (and the other way round).
+DRAFT_POLICY = RateLimitPolicy("design-drafts", 60, 300)
 
 # Optimistic-transaction attempts before a contended key is treated as full.
 # Contention on one key means other requests from that source are being
@@ -548,6 +551,23 @@ def check_design_rate_limit(
         policy=DESIGN_POLICY,
         subject=_ip_subject(client_ip),
         message="too many design requests from this network; wait a few minutes",
+        now=now,
+    )
+
+
+def check_draft_rate_limit(
+    *, store: RateLimitStore, client_ip: str, now: float | None = None
+) -> int:
+    """Throttle the server-backed draft routes, per source address.
+
+    Raises:
+        RateLimitExceededError: If this source has made too many draft requests.
+    """
+    return check_rate_limit(
+        store=store,
+        policy=DRAFT_POLICY,
+        subject=_ip_subject(client_ip),
+        message="too many draft requests from this network; wait a few minutes",
         now=now,
     )
 
