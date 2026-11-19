@@ -126,6 +126,7 @@ import {
   formControlTags,
   formBoards,
   ownDrafts,
+  settleDrafts,
   writeDraft,
   DRAFT_COPIES,
   type ConfirmedReference,
@@ -951,7 +952,7 @@ function DesignWorkspace({
   // M14: the copy this page itself keeps the work in (its project, and copy 1
   // or 2). Only that copy is ever written, or cleared when the work is clean
   // again: a copy kept earlier, for this project or another, is never touched.
-  const owned = useRef<{ project: string | null; copy: DraftCopy } | null>(null);
+  const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
   const workspaceAt = useRef(0);
@@ -962,8 +963,8 @@ function DesignWorkspace({
   }
   useEffect(() => {
     if (draftOwner === null || draftChecked === draftOwner) return;
-    // Reading settles ownership: another identity's drafts go to quarantine.
-    ownDrafts(draftOwner, tokenTenant);
+    // Settled once: another identity's drafts and unreadable entries go to quarantine.
+    settleDrafts(draftOwner);
     setDraftChecked(draftOwner);
   }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
@@ -973,7 +974,7 @@ function DesignWorkspace({
     if (!dirty || discardedSnapshot.current === snapshot) {
       // Only the copy this page wrote, for this project (M14).
       const mine = owned.current;
-      if (mine !== null && mine.project === here) {
+      if (mine !== null && mine.owner === draftOwner && mine.project === here) {
         clearDraft(draftOwner, here, mine.copy);
         setRecoveryTick((tick) => tick + 1);
       }
@@ -984,7 +985,10 @@ function DesignWorkspace({
     }
     // The copy to keep this work in: the page's own, else a free one. A copy
     // kept earlier (offered, not yet restored or dismissed) is never overwritten.
-    let copy = owned.current !== null && owned.current.project === here ? owned.current.copy : null;
+    // Another identity's copy is never this one's (a trial signed in, say).
+    const mine = owned.current;
+    let copy =
+      mine !== null && mine.owner === draftOwner && mine.project === here ? mine.copy : null;
     if (copy === null) {
       const taken = new Set(ownDrafts(draftOwner, null, here).map((kept) => kept.copy));
       copy = DRAFT_COPIES.find((each) => !taken.has(each)) ?? null;
@@ -1028,12 +1032,13 @@ function DesignWorkspace({
     if (writeDraft(draft, tokenTenant, copy)) {
       const first = owned.current === null;
       lastWritten.current = text;
-      owned.current = { project: here, copy };
+      owned.current = { owner: draftOwner, project: here, copy };
       if (draftWarning !== null) setDraftWarning(null);
       if (first) setRecoveryTick((tick) => tick + 1);
     } else {
-      // Not kept: the page says so (never that the work is safe here).
-      lastWritten.current = '';
+      // Not kept: the page says so (never that the work is safe here). Tried
+      // again once the work changes, not on every render.
+      lastWritten.current = text;
       if (draftWarning !== 'failed') setDraftWarning('failed');
     }
   });
@@ -1101,8 +1106,12 @@ function DesignWorkspace({
     setDraftProjectGone(!reopened);
     setRestoring(false);
     setArrival(false);
-    // The restored copy is the page's own now: further edits update it.
-    owned.current = { project: draft.project?.id ?? null, copy: draft.copy };
+    // The restored copy is the page's own now (further edits update it), only
+    // when it is back in its project; a copy whose project could not be opened
+    // stays kept as it was, and the work on the page is kept in a copy of its own.
+    owned.current = reopened
+      ? { owner: draft.session, project: draft.project?.id ?? null, copy: draft.copy }
+      : null;
     setRecoveryTick((tick) => tick + 1);
     const keyed = formBoards(draft.boards, nextKey.current);
     nextKey.current += Math.max(1, keyed.used);
@@ -1147,7 +1156,7 @@ function DesignWorkspace({
   function discardForSwitch() {
     discardedSnapshot.current = snapshot;
     const mine = owned.current;
-    if (draftOwner !== null && mine !== null) clearDraft(draftOwner, mine.project, mine.copy);
+    if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;
     lastWritten.current = '';
     setRecoveryTick((tick) => tick + 1);
@@ -1156,7 +1165,7 @@ function DesignWorkspace({
   function discardChanges() {
     discardedSnapshot.current = snapshot;
     const mine = owned.current;
-    if (draftOwner !== null && mine !== null) clearDraft(draftOwner, mine.project, mine.copy);
+    if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;
     lastWritten.current = '';
     setRecoveryTick((tick) => tick + 1);
@@ -2112,6 +2121,11 @@ function DesignWorkspace({
             </ul>
           </Notice>
         )}
+        {!arrival && keptFor.some((id) => id !== (opened?.id ?? '')) && (
+          <p className="text-sm text-text-muted" data-testid="draft-elsewhere">
+            {tw('draft.elsewhere')}
+          </p>
+        )}
         {draftWarning !== null && dirty && (
           <Notice tone="critical" testId="draft-not-kept">
             {tw(draftWarning === 'full' ? 'draft.notKeptFull' : 'draft.notKeptFailed')}
@@ -2249,7 +2263,7 @@ function DesignWorkspace({
                   if (state === 'saved' && opened === null && draftOwner !== null) {
                     const mine = owned.current;
                     if (mine !== null && mine.project === null) {
-                      clearDraft(draftOwner, null, mine.copy);
+                      clearDraft(mine.owner, null, mine.copy);
                     }
                     owned.current = null;
                     setRecoveryTick((tick) => tick + 1);

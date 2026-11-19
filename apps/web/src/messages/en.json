@@ -657,7 +657,8 @@
       "keptAt": "Kept {time}.",
       "keptEarlier": "Kept earlier.",
       "notKeptFailed": "Your unsaved work could not be kept in this browser (storage is full or blocked). It is only on this page: save the project, or discard an older unsaved copy to make room.",
-      "notKeptFull": "This project already has two unsaved copies kept in this browser. Restore or discard one of them so the work you are typing now can be kept too; until then it is only on this page."
+      "notKeptFull": "This project already has two unsaved copies kept in this browser. Restore or discard one of them so the work you are typing now can be kept too; until then it is only on this page.",
+      "elsewhere": "Other projects have unsaved copies kept in this browser; they are marked in the project list and offered when you open them."
     },
     "leave": {
       "title": "Discard unsaved changes?",

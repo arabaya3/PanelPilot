@@ -285,7 +285,7 @@ function readRaw(store: Storage, key: string): string | null {
 }
 
 /** Keep `raw` out of sight: never shown or offered, never silently dropped. */
-function quarantine(store: Storage, raw: string, reason: string): void {
+function quarantine(store: Storage, raw: string, reason: string): boolean {
   let list: unknown[] = [];
   try {
     const parsed: unknown = JSON.parse(readRaw(store, QUARANTINE_KEY) ?? '[]');
@@ -293,18 +293,29 @@ function quarantine(store: Storage, raw: string, reason: string): void {
   } catch {
     list = [];
   }
+  // Kept once: the same data set aside again does not push anything else out.
+  if (list.some((entry) => isFields(entry) && entry.raw === raw)) return true;
   list.push({ reason, at: Date.now(), raw });
   try {
     store.setItem(QUARANTINE_KEY, JSON.stringify(list.slice(-QUARANTINE_LIMIT)));
+    return true;
   } catch {
-    // Over quota: it stays where it was until a write replaces it.
+    // Over quota: the caller leaves it where it is.
+    return false;
   }
 }
 
-/** Every kept draft by slot; an earlier single draft comes back in its own slot. */
-function load(store: Storage): Record<string, StoredDraft> {
+type Loaded = { drafts: Record<string, StoredDraft>; unread: Record<string, unknown> };
+
+/**
+ * Every kept draft by slot; an earlier single draft comes back in its own
+ * slot. Entries this page cannot read are returned apart (`unread`), so a
+ * write keeps them as they are. Reading changes nothing stored, except that a
+ * whole value that is not a draft store is copied aside to `UNREADABLE_KEY`.
+ */
+function loadAll(store: Storage): Loaded {
   const raw = readRaw(store, DRAFT_STORAGE_KEY);
-  if (raw === null) return {};
+  if (raw === null) return { drafts: {}, unread: {} };
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -313,21 +324,24 @@ function load(store: Storage): Record<string, StoredDraft> {
   }
   if (isFields(value) && value.v === STORE_VERSION && isFields(value.drafts)) {
     const out: Record<string, StoredDraft> = {};
+    const unread: Record<string, unknown> = {};
     for (const [slot, entry] of Object.entries(value.drafts)) {
       const copy: DraftCopy = slot.endsWith('|2') ? 2 : 1;
       const draft = parseStored({ ...(isFields(entry) ? entry : {}), v: DRAFT_VERSION }, copy);
       if (draft !== null && slot === draftSlot(draft.session, draft.project?.id ?? null, copy)) {
         out[slot] = draft;
       } else {
-        // An entry this page cannot read is set aside, not dropped with the next write.
-        quarantine(store, JSON.stringify(entry), 'unreadable-entry');
+        unread[slot] = entry;
       }
     }
-    return out;
+    return { drafts: out, unread };
   }
   const legacy = parseStored(value, 1);
   if (legacy !== null) {
-    return { [draftSlot(legacy.session, legacy.project?.id ?? null)]: legacy };
+    return {
+      drafts: { [draftSlot(legacy.session, legacy.project?.id ?? null)]: legacy },
+      unread: {},
+    };
   }
   // Not a draft this page can read: kept aside, never silently overwritten.
   try {
@@ -335,14 +349,21 @@ function load(store: Storage): Record<string, StoredDraft> {
   } catch {
     // Over quota: it stays where it is until a write replaces it.
   }
-  return {};
+  return { drafts: {}, unread: {} };
 }
 
+function load(store: Storage): Record<string, StoredDraft> {
+  return loadAll(store).drafts;
+}
+
+/** Store `drafts`, keeping every entry this page could not read as it was. */
 function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
+  const { unread } = loadAll(store);
   try {
-    if (Object.keys(drafts).length === 0) store.removeItem(DRAFT_STORAGE_KEY);
-    else {
-      const body: Record<string, unknown> = {};
+    if (Object.keys(drafts).length === 0 && Object.keys(unread).length === 0) {
+      store.removeItem(DRAFT_STORAGE_KEY);
+    } else {
+      const body: Record<string, unknown> = { ...unread };
       for (const [slot, { copy: _copy, ...draft }] of Object.entries(drafts)) body[slot] = draft;
       store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: body }));
     }
@@ -411,10 +432,44 @@ export function storedDrafts(): StoredEntry[] {
 }
 
 /**
+ * Settle what is kept for `session`, once (on arrival, before anything is
+ * offered or written): another identity's drafts and entries that cannot be
+ * read are moved to quarantine. Each leaves the store only once its copy in
+ * quarantine is written; when that fails (storage full) it stays where it is,
+ * never offered. Never shown, never silently deleted.
+ */
+export function settleDrafts(session: string): void {
+  const store = storage();
+  if (store === null) return;
+  const { drafts, unread } = loadAll(store);
+  const kept: Record<string, StoredDraft> = {};
+  let moved = false;
+  for (const [slot, draft] of Object.entries(drafts)) {
+    if (draft.session === session) kept[slot] = draft;
+    else if (quarantine(store, JSON.stringify({ slot, ...draft }), 'other-identity')) moved = true;
+    else kept[slot] = draft;
+  }
+  const stillUnread: Record<string, unknown> = {};
+  for (const [slot, entry] of Object.entries(unread)) {
+    if (quarantine(store, JSON.stringify({ slot, entry }), 'unreadable-entry')) moved = true;
+    else stillUnread[slot] = entry;
+  }
+  if (!moved) return;
+  try {
+    const body: Record<string, unknown> = { ...stillUnread };
+    for (const [slot, { copy: _copy, ...draft }] of Object.entries(kept)) body[slot] = draft;
+    if (Object.keys(body).length === 0) store.removeItem(DRAFT_STORAGE_KEY);
+    else store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: body }));
+  } catch {
+    // Not rewritten: everything stays where it was (and is in quarantine too).
+  }
+}
+
+/**
  * The drafts `session` may be offered, most recent first: its own, under the
- * tenant `tenant` when both are known. Another identity's drafts are moved to
- * quarantine (its ownership here is not proven): never offered, never shown,
- * never silently deleted. With `project` given, only that project's copies.
+ * tenant `tenant` when both are known; with `project` given, only that
+ * project's copies. Reads only: another identity's drafts are left out, never
+ * offered (`settleDrafts` moves them to quarantine).
  */
 export function ownDrafts(
   session: string,
@@ -423,19 +478,10 @@ export function ownDrafts(
 ): StoredDraft[] {
   const store = storage();
   if (store === null) return [];
-  const drafts = Object.entries(load(store));
-  const own = drafts.filter(([, draft]) => draft.session === session);
-  if (own.length < drafts.length) {
-    for (const [slot, draft] of drafts) {
-      if (draft.session !== session)
-        quarantine(store, JSON.stringify({ slot, ...draft }), 'other-identity');
-    }
-    save(store, Object.fromEntries(own));
-  }
-  return own
-    .map(([, draft]) => draft)
+  return Object.values(load(store))
     .filter(
       (draft) =>
+        draft.session === session &&
         (tenant == null || draft.tenant === undefined || draft.tenant === tenant) &&
         (project === undefined || (draft.project?.id ?? null) === project),
     )
@@ -452,6 +498,7 @@ export function readDraft(
   project?: string | null,
   tenant?: string | null,
 ): DesignDraft | null {
+  settleDrafts(session);
   const found = ownDrafts(session, tenant, project)[0];
   if (found === undefined) return null;
   const { savedAt: _savedAt, tenant: _tenant, copy: _copy, ...draft } = found;

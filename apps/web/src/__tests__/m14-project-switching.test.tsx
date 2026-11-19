@@ -791,4 +791,44 @@ describe('drafts kept per identity and project', () => {
     expect(storedDrafts()).toHaveLength(0);
     expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('other-identity');
   });
+
+  it('quarantine is settled once: repeated reads neither duplicate entries nor push others out', async () => {
+    window.sessionStorage.setItem(
+      QUARANTINE_KEY,
+      JSON.stringify([{ reason: 'other-identity', at: 1, raw: 'earlier quarantined entry' }]),
+    );
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ v: 2, drafts: { 's|p1': { broken: true } } }),
+    );
+    api.list.mockResolvedValue(TWO);
+    renderScreen();
+    await screen.findByTestId('projects-panel');
+    for (let i = 0; i < 12; i += 1) type(overviewField('Project name'), `Typed ${String(i)}`);
+    await waitFor(() => {
+      expect(readDraft('s', null)?.info.name).toBe('Typed 11');
+    });
+    const list = JSON.parse(window.sessionStorage.getItem(QUARANTINE_KEY) ?? '[]') as {
+      raw: string;
+    }[];
+    expect(list.some((entry) => entry.raw === 'earlier quarantined entry')).toBe(true);
+    expect(list.filter((entry) => entry.raw.includes('broken'))).toHaveLength(1);
+  });
+
+  it('when the quarantine cannot be written, nothing is removed from the drafts', () => {
+    writeDraft(body('account:someone-else', 'p1', 'Theirs'));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
+    try {
+      expect(readDraft('s', 'p1')).toBeNull();
+      expect(removeItem).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+      removeItem.mockRestore();
+    }
+    // Not offered to 's', and still kept (not deleted) since it could not be set aside.
+    expect(storedDrafts().map((kept) => kept.info.name)).toEqual(['Theirs']);
+  });
 });
