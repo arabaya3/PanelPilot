@@ -314,6 +314,10 @@ type Loaded = {
   unread: Record<string, unknown>;
   /** The whole value, when it is not a draft store at all. */
   whole?: string;
+  /** Reading failed: what is stored is unknown, so nothing may be written over it. */
+  unknown?: true;
+  /** Each readable entry exactly as stored, so a write leaves the others byte-for-byte. */
+  stored?: Record<string, unknown>;
 };
 
 /**
@@ -342,7 +346,12 @@ function setAside(store: Storage, raw: string): boolean {
  * whole value that is not a draft store is copied aside to `UNREADABLE_KEY`.
  */
 function loadAll(store: Storage): Loaded {
-  const raw = readRaw(store, DRAFT_STORAGE_KEY);
+  let raw: string | null;
+  try {
+    raw = store.getItem(DRAFT_STORAGE_KEY);
+  } catch {
+    return { drafts: {}, unread: {}, unknown: true };
+  }
   if (raw === null) return { drafts: {}, unread: {} };
   let value: unknown;
   try {
@@ -353,16 +362,18 @@ function loadAll(store: Storage): Loaded {
   if (isFields(value) && value.v === STORE_VERSION && isFields(value.drafts)) {
     const out: Record<string, StoredDraft> = {};
     const unread: Record<string, unknown> = {};
+    const stored: Record<string, unknown> = {};
     for (const [slot, entry] of Object.entries(value.drafts)) {
       const copy: DraftCopy = slot.endsWith('|2') ? 2 : 1;
       const draft = parseStored({ ...(isFields(entry) ? entry : {}), v: DRAFT_VERSION }, copy);
       if (draft !== null && slot === draftSlot(draft.session, draft.project?.id ?? null, copy)) {
         out[slot] = draft;
+        stored[slot] = entry;
       } else {
         unread[slot] = entry;
       }
     }
-    return { drafts: out, unread };
+    return { drafts: out, unread, stored };
   }
   const legacy = parseStored(value, 1);
   if (legacy !== null) {
@@ -381,8 +392,16 @@ function load(store: Storage): Record<string, StoredDraft> {
 }
 
 /** Store `drafts`, keeping every entry this page could not read as it was. */
-function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
-  const { unread, whole } = loadAll(store);
+function save(store: Storage, drafts: Record<string, StoredDraft>, written?: string): boolean {
+  const all = loadAll(store);
+  const { whole } = all;
+  // What is stored could not be read: writing would replace it unseen.
+  if (all.unknown) return false;
+  // Unreadable entries stay as they were; only the one just set aside (by
+  // `keepDraft`) gives way to the copy written in its slot.
+  const unread = Object.fromEntries(
+    Object.entries(all.unread).filter(([slot]) => slot !== written),
+  );
   // Never written over before it is set aside (storage full: nothing is written).
   if (whole !== undefined && !setAside(store, whole)) return false;
   try {
@@ -390,7 +409,13 @@ function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
       store.removeItem(DRAFT_STORAGE_KEY);
     } else {
       const body: Record<string, unknown> = { ...unread };
-      for (const [slot, { copy: _copy, ...draft }] of Object.entries(drafts)) body[slot] = draft;
+      for (const [slot, { copy: _copy, ...draft }] of Object.entries(drafts)) {
+        // Any copy not being written now goes back exactly as it was stored.
+        body[slot] =
+          slot !== written && all.stored !== undefined && slot in all.stored
+            ? all.stored[slot]
+            : draft;
+      }
       store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: body }));
     }
     return true;
@@ -401,24 +426,122 @@ function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
 }
 
 /**
- * Keep `draft` in its own slot (its identity, project and copy), leaving every
- * other draft as it is. False when it could not be kept (storage blocked or full).
+ * The outcome of keeping a draft: `kept`; `failed` (storage blocked or full);
+ * or `blocked`: its slot holds a copy this page cannot read, which could not
+ * be set aside, so nothing is written over it.
  */
-export function writeDraft(
+export type KeepOutcome = 'kept' | 'failed' | 'blocked';
+
+/**
+ * Keep `draft` in its own slot (its identity, project and copy), leaving every
+ * other draft as it is. A copy this page cannot read in that very slot is set
+ * aside first (quarantine); when that fails the slot is not written (M14).
+ */
+export function keepDraft(
   draft: DesignDraft,
   tenant?: string | null,
   copy: DraftCopy = 1,
-): boolean {
+): KeepOutcome {
   const store = storage();
-  if (store === null) return false;
-  const drafts = load(store);
-  drafts[draftSlot(draft.session, draft.project?.id ?? null, copy)] = {
+  if (store === null) return 'failed';
+  const slot = draftSlot(draft.session, draft.project?.id ?? null, copy);
+  const { drafts, unread, unknown } = loadAll(store);
+  if (unknown) return 'failed';
+  if (slot in unread) {
+    if (!quarantine(store, JSON.stringify({ slot, entry: unread[slot] }), 'unreadable-entry')) {
+      return 'blocked';
+    }
+  }
+  drafts[slot] = {
     ...draft,
     savedAt: Date.now(),
     copy,
     ...(tenant ? { tenant } : {}),
   };
-  return save(store, drafts);
+  return save(store, drafts, slot) ? 'kept' : 'failed';
+}
+
+/** `keepDraft`, as true when kept. */
+export function writeDraft(
+  draft: DesignDraft,
+  tenant?: string | null,
+  copy: DraftCopy = 1,
+): boolean {
+  return keepDraft(draft, tenant, copy) === 'kept';
+}
+
+/** The slots of `owner` that hold a copy this page cannot read (contents never returned). */
+export function unreadableCopies(owner: string): { project: string | null; copy: DraftCopy }[] {
+  const store = storage();
+  if (store === null) return [];
+  return Object.keys(loadAll(store).unread).flatMap((slot) => {
+    if (!slot.startsWith(`${owner}|`)) return [];
+    const rest = slot.slice(owner.length + 1);
+    const copy: DraftCopy = rest.endsWith('|2') ? 2 : 1;
+    const id = copy === 2 ? rest.slice(0, -2) : rest;
+    return [{ project: id === 'new' ? null : id, copy }];
+  });
+}
+
+/**
+ * Delete, at the engineer's explicit request, the unreadable copy in one slot
+ * of `owner` (its own: another identity's slot is never touched). Every other
+ * copy stays byte-for-byte. False when it could not be deleted.
+ */
+export function deleteUnreadableCopy(
+  owner: string,
+  project: string | null,
+  copy: DraftCopy,
+): boolean {
+  const store = storage();
+  if (store === null) return false;
+  const slot = draftSlot(owner, project, copy);
+  const raw = readRaw(store, DRAFT_STORAGE_KEY);
+  if (raw === null) return false;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (!isFields(value) || value.v !== STORE_VERSION || !isFields(value.drafts)) return false;
+  const { unread } = loadAll(store);
+  if (!(slot in unread)) return false;
+  const rest = Object.fromEntries(Object.entries(value.drafts).filter(([key]) => key !== slot));
+  try {
+    if (Object.keys(rest).length === 0) store.removeItem(DRAFT_STORAGE_KEY);
+    else store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: rest }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** How many items are set aside in this tab (quarantine, unreadable slot); contents never returned. */
+export function setAsideCount(): number {
+  const store = storage();
+  if (store === null) return 0;
+  let count = readRaw(store, UNREADABLE_KEY) === null ? 0 : 1;
+  try {
+    const list: unknown = JSON.parse(readRaw(store, QUARANTINE_KEY) ?? '[]');
+    if (Array.isArray(list)) count += list.length;
+  } catch {
+    count += 1;
+  }
+  return count;
+}
+
+/** Delete, at the engineer's explicit request, everything set aside in this tab, unread. */
+export function clearSetAside(): boolean {
+  const store = storage();
+  if (store === null) return false;
+  try {
+    store.removeItem(QUARANTINE_KEY);
+    store.removeItem(UNREADABLE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

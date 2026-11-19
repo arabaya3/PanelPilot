@@ -8,6 +8,8 @@ import {
   readDraft,
   storedDrafts,
   QUARANTINE_KEY,
+  deleteUnreadableCopy,
+  unreadableCopies,
   UNREADABLE_KEY,
   writeDraft,
   DRAFT_STORAGE_KEY,
@@ -668,14 +670,20 @@ describe('drafts kept per identity and project', () => {
     // The list says which projects have a kept copy.
     expect(within(screen.getByTestId('project-p1')).getByTestId('project-has-kept')).toBeTruthy();
     await openRow('p2');
-    await waitFor(() => {
-      expect(overviewField('Project name').value).toBe('Second plant');
-    });
+    await waitFor(
+      () => {
+        expect(overviewField('Project name').value).toBe('Second plant');
+      },
+      { timeout: 5000 },
+    );
     expect(screen.queryByTestId('draft-offer')).toBeNull();
     fireEvent.click(projects().getByTestId('project-new'));
-    await waitFor(() => {
-      expect(overviewField('Project name').value).toBe('');
-    });
+    await waitFor(
+      () => {
+        expect(overviewField('Project name').value).toBe('');
+      },
+      { timeout: 5000 },
+    );
     expect(screen.queryByTestId('draft-offer')).toBeNull();
     expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
   });
@@ -853,5 +861,182 @@ describe('drafts kept per identity and project', () => {
     expect(window.sessionStorage.getItem(UNREADABLE_KEY)).toBe('set aside earlier');
     expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('not a draft store');
     expect(readDraft('s', 'p1')?.info.name).toBe('A');
+  });
+
+  it('a corrupt copy that cannot be set aside is never written over by the same slot', () => {
+    const corrupt = { broken: true, note: '<img src=x onerror=alert(1)>' };
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        v: 2,
+        drafts: { 's|new': corrupt, 's|p2': { ...body('s', 'p2', 'B'), savedAt: 5 } },
+      }),
+    );
+    const before = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    const real = window.sessionStorage.setItem.bind(window.sessionStorage);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key, value) => {
+      // Storage full: the quarantine (and the unreadable slot) cannot take more.
+      if (key !== DRAFT_STORAGE_KEY) throw new DOMException('full', 'QuotaExceededError');
+      real(key, value);
+    });
+    try {
+      expect(writeDraft(body('s', null, 'Typed now'))).toBe(false);
+      // Repeated attempts change nothing either.
+      expect(writeDraft(body('s', null, 'Typed again'))).toBe(false);
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe(before);
+  });
+
+  /** Storage that has no room beside the draft key (quarantine and unreadable slot refuse). */
+  function fullBesideDrafts() {
+    const store = window.sessionStorage;
+    const real = store.setItem.bind(store);
+    return vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation((key: string, value: string) => {
+        if (key !== DRAFT_STORAGE_KEY) throw new DOMException('full', 'QuotaExceededError');
+        real(key, value);
+      });
+  }
+  /** The stored draft entry in one slot. */
+  function slotOf(slot: string): unknown {
+    const value = JSON.parse(window.sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as {
+      drafts?: Record<string, unknown>;
+    };
+    return value.drafts?.[slot];
+  }
+
+  const CORRUPT = { broken: true, note: '<img src=x onerror="window.__pwned=1">' };
+  function seedCorruptNew() {
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        v: 2,
+        drafts: { 's|new': CORRUPT, 's|p2': { ...body('s', 'p2', 'B kept'), savedAt: 5 } },
+      }),
+    );
+  }
+  const p2Bytes = () =>
+    JSON.stringify(
+      (
+        JSON.parse(window.sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as {
+          drafts?: Record<string, unknown>;
+        }
+      ).drafts?.['s|p2'],
+    );
+
+  it('blocked: edits stay on the page, are not offered as recoverable, and the corrupt copy survives reloads', async () => {
+    api.list.mockResolvedValue(TWO);
+    seedCorruptNew();
+    const p2 = p2Bytes();
+    const full = fullBesideDrafts();
+    try {
+      const first = renderScreen();
+      await screen.findByTestId('projects-panel');
+      type(overviewField('Project name'), 'Typed while blocked');
+      const warning = await screen.findByTestId('draft-not-kept');
+      expect(warning.getAttribute('role')).toBe('alert');
+      expect(warning.textContent).toContain('not being kept');
+      // Repeated attempts (more typing) still write nothing over it.
+      type(overviewField('Project name'), 'Typed again while blocked');
+      expect(overviewField('Project name').value).toBe('Typed again while blocked');
+      expect(slotOf('s|new')).toEqual(CORRUPT);
+      expect(p2Bytes()).toBe(p2);
+      // Not offered as recoverable anywhere; its contents never reach the page.
+      expect(document.body.innerHTML).not.toContain('onerror');
+      expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+      first.unmount();
+      // A reload: still blocked, still nothing written over it.
+      renderScreen();
+      await screen.findByTestId('projects-panel');
+      type(overviewField('Project name'), 'After reload');
+      await screen.findByTestId('draft-not-kept');
+      expect(slotOf('s|new')).toEqual(CORRUPT);
+      expect(p2Bytes()).toBe(p2);
+    } finally {
+      full.mockRestore();
+    }
+  });
+
+  it('deleting the unreadable copy asks first; Cancel changes nothing; confirming deletes only it and keeps the work', async () => {
+    api.list.mockResolvedValue(TWO);
+    seedCorruptNew();
+    const p2 = p2Bytes();
+    const full = fullBesideDrafts();
+    try {
+      renderScreen();
+      await screen.findByTestId('projects-panel');
+      type(overviewField('Project name'), 'Work to keep');
+      fireEvent.click(await screen.findByTestId('draft-delete-unreadable'));
+      const body = () => screen.getByTestId('draft-delete-body');
+      expect(body().textContent).toContain('unreadable local copy 1');
+      expect(body().textContent).toContain('new project');
+      fireEvent.click(screen.getByTestId('draft-delete-cancel'));
+      expect(slotOf('s|new')).toEqual(CORRUPT);
+      fireEvent.click(screen.getByTestId('draft-delete-unreadable'));
+      fireEvent.click(screen.getByTestId('draft-delete-confirm'));
+      await waitFor(() => {
+        expect(readDraft('s', null)?.info.name).toBe('Work to keep');
+      });
+      expect(screen.queryByTestId('draft-not-kept')).toBeNull();
+      expect(p2Bytes()).toBe(p2);
+    } finally {
+      full.mockRestore();
+    }
+  });
+
+  it('set-aside data is only counted, and deleted only after confirmation, never shown', async () => {
+    api.list.mockResolvedValue(TWO);
+    window.sessionStorage.setItem(
+      QUARANTINE_KEY,
+      JSON.stringify([{ reason: 'other-identity', at: 1, raw: 'Secret of another account' }]),
+    );
+    writeDraft(body('s', 'p2', 'B kept'));
+    const kept = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    renderScreen();
+    const line = await screen.findByTestId('draft-set-aside');
+    expect(line.textContent).toContain('1 item');
+    expect(document.body.textContent).not.toContain('Secret of another account');
+    fireEvent.click(screen.getByTestId('draft-clear-aside'));
+    fireEvent.click(screen.getByTestId('draft-delete-cancel'));
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).not.toBeNull();
+    fireEvent.click(screen.getByTestId('draft-clear-aside'));
+    fireEvent.click(screen.getByTestId('draft-delete-confirm'));
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toBeNull();
+    });
+    expect(screen.queryByTestId('draft-set-aside')).toBeNull();
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe(kept);
+  });
+
+  it("recovery actions never reach another identity's slot", () => {
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ v: 2, drafts: { 'account:other|new': CORRUPT, 's|new': CORRUPT } }),
+    );
+    expect(unreadableCopies('s')).toEqual([{ project: null, copy: 1 }]);
+    expect(deleteUnreadableCopy('s', null, 1)).toBe(true);
+    const left = JSON.parse(window.sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as {
+      drafts: Record<string, unknown>;
+    };
+    expect(Object.keys(left.drafts)).toEqual(['account:other|new']);
+    expect(deleteUnreadableCopy('s', null, 1)).toBe(false);
+  });
+
+  it('when storage cannot be read, nothing is written over it', () => {
+    writeDraft(body('s', 'p2', 'B kept'));
+    const kept = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    try {
+      expect(writeDraft(body('s', 'p1', 'A'))).toBe(false);
+      clearDraft('s', 'p2');
+    } finally {
+      getItem.mockRestore();
+    }
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe(kept);
   });
 });

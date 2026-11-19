@@ -658,7 +658,18 @@
       "keptEarlier": "Kept earlier.",
       "notKeptFailed": "Your unsaved work could not be kept in this browser (storage is full or blocked). It is only on this page: save the project, or discard an older unsaved copy to make room.",
       "notKeptFull": "This project already has two unsaved copies kept in this browser. Restore or discard one of them so the work you are typing now can be kept too; until then it is only on this page.",
-      "elsewhere": "Other projects have unsaved copies kept in this browser; they are marked in the project list and offered when you open them."
+      "elsewhere": "Other projects have unsaved copies kept in this browser; they are marked in the project list and offered when you open them.",
+      "notKeptBlocked": "Your current edits are not being kept in this browser: an earlier local copy for this project cannot be read, and there is no room to set it aside, so it is not written over. Your edits stay on this page only. Save the project, free browser storage, or delete that unreadable copy.",
+      "deleteUnreadable": "Delete the unreadable local copy…",
+      "deleteTitle": "Delete local data?",
+      "deleteUnreadableProject": "This permanently deletes the unreadable local copy {copy} kept in this browser for {name}. Its contents cannot be shown or recovered. Your saved revisions and other local copies are not affected.",
+      "deleteUnreadableNew": "This permanently deletes the unreadable local copy {copy} kept in this browser for a new project. Its contents cannot be shown or recovered. Your saved revisions and other local copies are not affected.",
+      "setAside": "{count} item(s) of local data in this browser cannot be used here and are set aside.",
+      "clearAside": "Delete them…",
+      "clearAsideBody": "This permanently deletes the {count} set-aside item(s) of local data in this browser tab, without showing them. Your saved revisions and your own unsaved copies are not affected.",
+      "deleteConfirm": "Delete permanently",
+      "deleteCancel": "Cancel",
+      "deleteFailed": "The local data could not be deleted. Nothing was changed."
     },
     "leave": {
       "title": "Discard unsaved changes?",

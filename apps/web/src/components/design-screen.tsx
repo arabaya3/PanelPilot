@@ -127,7 +127,10 @@ import {
   formBoards,
   ownDrafts,
   settleDrafts,
-  writeDraft,
+  keepDraft,
+  setAsideCount,
+  clearSetAside,
+  deleteUnreadableCopy,
   DRAFT_COPIES,
   type ConfirmedReference,
   type DesignDraft,
@@ -943,7 +946,13 @@ function DesignWorkspace({
   const [arrival, setArrival] = useState(true);
   if (arrival && dirty) setArrival(false);
   // M14: why the work being typed is not kept in this browser, when it is not.
-  const [draftWarning, setDraftWarning] = useState<'failed' | 'full' | null>(null);
+  const [draftWarning, setDraftWarning] = useState<'failed' | 'full' | 'blocked' | null>(null);
+  // M14: the local copy the engineer is asked to confirm deleting (an unreadable
+  // copy of this project's slot), or all set-aside data ('aside').
+  const [confirmDelete, setConfirmDelete] = useState<
+    { kind: 'copy'; project: string | null; copy: DraftCopy } | { kind: 'aside' } | null
+  >(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const [draftProjectGone, setDraftProjectGone] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
@@ -952,6 +961,7 @@ function DesignWorkspace({
   // M14: the copy this page itself keeps the work in (its project, and copy 1
   // or 2). Only that copy is ever written, or cleared when the work is clean
   // again: a copy kept earlier, for this project or another, is never touched.
+  const blockedSlot = useRef<{ project: string | null; copy: DraftCopy } | null>(null);
   const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
@@ -1029,7 +1039,8 @@ function DesignWorkspace({
     };
     const text = `${String(copy)}|${JSON.stringify(draft)}`;
     if (text === lastWritten.current) return;
-    if (writeDraft(draft, tokenTenant, copy)) {
+    const outcome = keepDraft(draft, tokenTenant, copy);
+    if (outcome === 'kept') {
       const first = owned.current === null;
       lastWritten.current = text;
       owned.current = { owner: draftOwner, project: here, copy };
@@ -1037,9 +1048,12 @@ function DesignWorkspace({
       if (first) setRecoveryTick((tick) => tick + 1);
     } else {
       // Not kept: the page says so (never that the work is safe here). Tried
-      // again once the work changes, not on every render.
+      // again once the work changes, not on every render. 'blocked': the slot
+      // holds an unreadable copy that could not be set aside, so it is not
+      // written over; the work stays on this page only.
       lastWritten.current = text;
-      if (draftWarning !== 'failed') setDraftWarning('failed');
+      blockedSlot.current = outcome === 'blocked' ? { project: here, copy } : null;
+      if (draftWarning !== outcome) setDraftWarning(outcome);
     }
   });
   // What can be recovered here: every kept copy on arrival (nothing open or
@@ -1060,6 +1074,27 @@ function DesignWorkspace({
               owned.current.copy === kept.copy
             ),
         );
+  // Data set aside in this tab (never shown; only counted, for a confirmed cleanup).
+  const asideCount = draftOwner === null || draftChecked !== draftOwner ? 0 : setAsideCount();
+
+  /** Delete what the engineer confirmed: one unreadable copy of their own, or all set-aside data. */
+  function confirmLocalDelete() {
+    const target = confirmDelete;
+    setConfirmDelete(null);
+    if (target === null) return;
+    const done =
+      target.kind === 'aside'
+        ? clearSetAside()
+        : draftOwner !== null && deleteUnreadableCopy(draftOwner, target.project, target.copy);
+    setDeleteFailed(!done);
+    if (done && target.kind === 'copy') {
+      blockedSlot.current = null;
+      // The slot is free now: the work on the page is tried again at once.
+      lastWritten.current = '';
+    }
+    setRecoveryTick((tick) => tick + 1);
+  }
+
   // Projects with copies kept in this browser, for the list to say so.
   const keptFor =
     draftOwner === null || draftChecked !== draftOwner
@@ -2128,7 +2163,46 @@ function DesignWorkspace({
         )}
         {draftWarning !== null && dirty && (
           <Notice tone="critical" testId="draft-not-kept">
-            {tw(draftWarning === 'full' ? 'draft.notKeptFull' : 'draft.notKeptFailed')}
+            {tw(
+              draftWarning === 'full'
+                ? 'draft.notKeptFull'
+                : draftWarning === 'blocked'
+                  ? 'draft.notKeptBlocked'
+                  : 'draft.notKeptFailed',
+            )}
+            {draftWarning === 'blocked' && blockedSlot.current !== null && (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary mt-2 block"
+                data-testid="draft-delete-unreadable"
+                onClick={() => {
+                  const slot = blockedSlot.current;
+                  if (slot !== null) setConfirmDelete({ kind: 'copy', ...slot });
+                }}
+              >
+                {tw('draft.deleteUnreadable')}
+              </button>
+            )}
+          </Notice>
+        )}
+        {asideCount > 0 && (
+          <p className="text-sm text-text-muted" data-testid="draft-set-aside">
+            {tw('draft.setAside', { count: String(asideCount) })}{' '}
+            <button
+              type="button"
+              className="link underline"
+              data-testid="draft-clear-aside"
+              onClick={() => {
+                setConfirmDelete({ kind: 'aside' });
+              }}
+            >
+              {tw('draft.clearAside')}
+            </button>
+          </p>
+        )}
+        {deleteFailed && (
+          <Notice tone="critical" testId="draft-delete-failed">
+            {tw('draft.deleteFailed')}
           </Notice>
         )}
         {draftProjectGone && (
@@ -3187,6 +3261,50 @@ function DesignWorkspace({
         )}
       </div>
 
+      <Dialog
+        open={confirmDelete !== null}
+        onClose={() => {
+          setConfirmDelete(null);
+        }}
+        title={tw('draft.deleteTitle')}
+        closeLabel={tUi('close')}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2" data-testid="draft-delete-dialog">
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              data-testid="draft-delete-cancel"
+              onClick={() => {
+                setConfirmDelete(null);
+              }}
+            >
+              {tw('draft.deleteCancel')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-danger"
+              data-testid="draft-delete-confirm"
+              onClick={confirmLocalDelete}
+            >
+              {tw('draft.deleteConfirm')}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm" dir="auto" data-testid="draft-delete-body">
+          {confirmDelete?.kind === 'aside'
+            ? tw('draft.clearAsideBody', { count: String(asideCount) })
+            : confirmDelete?.kind === 'copy'
+              ? confirmDelete.project === null
+                ? tw('draft.deleteUnreadableNew', { copy: String(confirmDelete.copy) })
+                : tw('draft.deleteUnreadableProject', {
+                    name:
+                      opened?.id === confirmDelete.project ? opened.name : confirmDelete.project,
+                    copy: String(confirmDelete.copy),
+                  })
+              : ''}
+        </p>
+      </Dialog>
       <Dialog
         open={unsaved.asking}
         onClose={unsaved.stay}
