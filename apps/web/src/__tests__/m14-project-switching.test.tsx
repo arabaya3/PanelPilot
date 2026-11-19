@@ -831,4 +831,27 @@ describe('drafts kept per identity and project', () => {
     // Not offered to 's', and still kept (not deleted) since it could not be set aside.
     expect(storedDrafts().map((kept) => kept.info.name)).toEqual(['Theirs']);
   });
+
+  it('an unreadable value is never written over before it is set aside', () => {
+    window.sessionStorage.setItem(UNREADABLE_KEY, 'set aside earlier');
+    window.sessionStorage.setItem(DRAFT_STORAGE_KEY, 'not a draft store');
+    // Reading changes nothing stored.
+    expect(readDraft('s', 'p1')).toBeNull();
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe('not a draft store');
+    // A write cannot set it aside (storage full): nothing is written over it.
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    try {
+      expect(writeDraft(body('s', 'p1', 'A'))).toBe(false);
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe('not a draft store');
+    // With room, it goes to quarantine (the unreadable slot already holds other data).
+    expect(writeDraft(body('s', 'p1', 'A'))).toBe(true);
+    expect(window.sessionStorage.getItem(UNREADABLE_KEY)).toBe('set aside earlier');
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('not a draft store');
+    expect(readDraft('s', 'p1')?.info.name).toBe('A');
+  });
 });

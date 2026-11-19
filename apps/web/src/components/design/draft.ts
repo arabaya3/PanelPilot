@@ -251,7 +251,11 @@ function storage(): Storage | null {
 const STORE_VERSION = 2;
 export const UNREADABLE_KEY = `${DRAFT_STORAGE_KEY}.unreadable`;
 export const QUARANTINE_KEY = `${DRAFT_STORAGE_KEY}.quarantine`;
-/** At most this many quarantined entries are kept (the oldest goes first). */
+/**
+ * At most this many quarantined entries are kept in this tab; beyond that the
+ * oldest goes first. Quarantine holds only other identities' and unreadable
+ * data, which signing out clears anyway.
+ */
 const QUARANTINE_LIMIT = 10;
 
 /** Which copy of a project's draft: the one kept earlier, or the working copy beside it. */
@@ -305,7 +309,31 @@ function quarantine(store: Storage, raw: string, reason: string): boolean {
   }
 }
 
-type Loaded = { drafts: Record<string, StoredDraft>; unread: Record<string, unknown> };
+type Loaded = {
+  drafts: Record<string, StoredDraft>;
+  unread: Record<string, unknown>;
+  /** The whole value, when it is not a draft store at all. */
+  whole?: string;
+};
+
+/**
+ * Move a whole unreadable value aside before anything is written over it:
+ * to `UNREADABLE_KEY` when that is free (or holds the same), else to the
+ * quarantine. False when it could not be moved: then nothing may replace it.
+ */
+function setAside(store: Storage, raw: string): boolean {
+  const there = readRaw(store, UNREADABLE_KEY);
+  if (there === raw) return true;
+  if (there === null) {
+    try {
+      store.setItem(UNREADABLE_KEY, raw);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return quarantine(store, raw, 'unreadable-value');
+}
 
 /**
  * Every kept draft by slot; an earlier single draft comes back in its own
@@ -343,13 +371,9 @@ function loadAll(store: Storage): Loaded {
       unread: {},
     };
   }
-  // Not a draft this page can read: kept aside, never silently overwritten.
-  try {
-    store.setItem(UNREADABLE_KEY, raw);
-  } catch {
-    // Over quota: it stays where it is until a write replaces it.
-  }
-  return { drafts: {}, unread: {} };
+  // Not a draft store this page can read: offered as nothing, changed by
+  // nothing here (a write sets it aside first, see `setAside`).
+  return { drafts: {}, unread: {}, whole: raw };
 }
 
 function load(store: Storage): Record<string, StoredDraft> {
@@ -358,7 +382,9 @@ function load(store: Storage): Record<string, StoredDraft> {
 
 /** Store `drafts`, keeping every entry this page could not read as it was. */
 function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
-  const { unread } = loadAll(store);
+  const { unread, whole } = loadAll(store);
+  // Never written over before it is set aside (storage full: nothing is written).
+  if (whole !== undefined && !setAside(store, whole)) return false;
   try {
     if (Object.keys(drafts).length === 0 && Object.keys(unread).length === 0) {
       store.removeItem(DRAFT_STORAGE_KEY);
@@ -441,7 +467,11 @@ export function storedDrafts(): StoredEntry[] {
 export function settleDrafts(session: string): void {
   const store = storage();
   if (store === null) return;
-  const { drafts, unread } = loadAll(store);
+  const { drafts, unread, whole } = loadAll(store);
+  if (whole !== undefined) {
+    setAside(store, whole);
+    return;
+  }
   const kept: Record<string, StoredDraft> = {};
   let moved = false;
   for (const [slot, draft] of Object.entries(drafts)) {
