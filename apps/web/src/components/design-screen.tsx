@@ -317,7 +317,7 @@ export function designDiffers(snapshot: string, clean: string): boolean {
 
 /** When a copy was kept, in the page's language (date and time). */
 function keptTime(at: number, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(
     new Date(at),
   );
 }
