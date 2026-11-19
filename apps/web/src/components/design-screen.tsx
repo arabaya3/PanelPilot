@@ -959,6 +959,11 @@ function DesignWorkspace({
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
+  // The whole work on the page (schedule, configuration, drop choice): what a
+  // discard is compared with. The schedule snapshot alone left configuration
+  // work (a restored copy, later edits) taken for the discarded work, so its
+  // copy was cleared and nothing more was kept.
+  const discardMark = `${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}`;
   const lastWritten = useRef<string | null>(null);
   // M14: the copy this page itself keeps the work in (its project, and copy 1
   // or 2). Only that copy is ever written, or cleared when the work is clean
@@ -986,7 +991,7 @@ function DesignWorkspace({
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner) return;
     const here = opened?.id ?? null;
-    if (!dirty || discardedSnapshot.current === snapshot) {
+    if (!dirty || discardedSnapshot.current === discardMark) {
       // Only the copy this page wrote, for this project (M14).
       const mine = owned.current;
       if (mine !== null && mine.owner === draftOwner && mine.project === here) {
@@ -1168,6 +1173,13 @@ function DesignWorkspace({
       // workspace, so an answer started before (a save in flight) is let go.
       nextWorkspace();
       submitted.current = null;
+      // The project it belongs to is still the one on the page: its unsaved
+      // configuration comes back too, over that project's baseline.
+      if (draft.configuration && opened !== null && opened.id === draft.project.id) {
+        setConfigDoc(draft.configuration.doc);
+        setDropUnrecoverable(draft.configuration.dropUnrecoverable);
+        setConfirmed([]);
+      }
     }
     const restoredAt = workspaceAt.current;
     setDraftProjectGone(!reopened);
@@ -1221,7 +1233,7 @@ function DesignWorkspace({
    * draft goes; the page itself is replaced by the caller.
    */
   function discardForSwitch() {
-    discardedSnapshot.current = snapshot;
+    discardedSnapshot.current = discardMark;
     const mine = owned.current;
     if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;
@@ -1230,7 +1242,7 @@ function DesignWorkspace({
   }
 
   function discardChanges() {
-    discardedSnapshot.current = snapshot;
+    discardedSnapshot.current = discardMark;
     const mine = owned.current;
     if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;

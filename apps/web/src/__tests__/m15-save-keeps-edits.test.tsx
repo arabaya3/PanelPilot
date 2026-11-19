@@ -488,6 +488,15 @@ describe('edits made while Save is running', () => {
       profileText: '',
       language: null,
       market: '',
+      configuration: {
+        doc: {
+          ...STORED,
+          strips: [
+            { ...STORED.strips[0], designation: { function: null, location: null, product: 'XD' } },
+          ],
+        },
+        dropUnrecoverable: false,
+      },
     });
     const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
     renderScreen();
@@ -517,6 +526,47 @@ describe('edits made while Save is running', () => {
     // The late answer neither reopens the project nor marks the restored work saved.
     expect(screen.getByTestId('draft-project-gone')).toBeTruthy();
     expect(nameField().value).toBe('Restored name');
+    // Its unsaved configuration came back too (the project is still the one open).
+    expect(designation().value).toBe('XD');
     expect(screen.getAllByText('Unsaved changes').length).toBeGreaterThan(0);
+  });
+
+  it('restoring a copy over discarded configuration edits keeps that copy, and later edits are kept too', async () => {
+    // XD typed and left by a reload: the app writes the copy (same schedule).
+    const first = renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'XD' } });
+    await waitFor(() => {
+      expect(JSON.stringify(storedDrafts())).toContain('XD');
+    });
+    first.unmount();
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    const offer = await screen.findByTestId('draft-offer');
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    await waitFor(() => {
+      expect(storedDrafts()).toHaveLength(2);
+    });
+    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    fireEvent.click(within(screen.getByTestId('unsaved-dialog')).getByText('Discard changes'));
+    await waitFor(() => {
+      expect(designation().value).toBe('XD');
+    });
+    // The restored copy is kept (only the discarded one went).
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(JSON.stringify(storedDrafts())).toContain('XD');
+    expect(JSON.stringify(storedDrafts())).not.toContain('X7');
+    // Later configuration edits are kept as well.
+    fireEvent.change(designation(), { target: { value: 'XE' } });
+    await waitFor(() => {
+      expect(JSON.stringify(storedDrafts())).toContain('XE');
+    });
   });
 });
