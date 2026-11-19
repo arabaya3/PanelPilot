@@ -360,7 +360,7 @@ describe('edits made while Save is running', () => {
     api.open.mockResolvedValueOnce({ kind: 'saved', project: project() });
     api.open.mockResolvedValueOnce({
       kind: 'saved',
-      project: { ...project(), id: 'p2', name: 'Second plant' } as SavedProject,
+      project: { ...project(), id: 'p2', name: 'Second plant' },
     });
     renderScreen();
     fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
