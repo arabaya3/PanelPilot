@@ -5,7 +5,7 @@ import { decided, DESCRIPTION, proposal } from './ai-intake-fixtures';
 import { renderApp } from './helpers';
 
 import { DesignScreen } from '@/components/design-screen';
-import { DRAFT_STORAGE_KEY } from '@/components/design/draft';
+import { DRAFT_STORAGE_KEY, storedDrafts } from '@/components/design/draft';
 import type {
   AiProposal,
   decideAiItem,
@@ -246,8 +246,8 @@ describe('AI proposals on the design screen', () => {
     });
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
     await waitFor(() => {
-      const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? 'null';
-      expect(JSON.parse(raw)).toMatchObject({
+      // M14: drafts are kept per project; this is the most recently written one.
+      expect(storedDrafts()[0]).toMatchObject({
         ai: { description: 'Only a description', proposalId: null },
       });
     });

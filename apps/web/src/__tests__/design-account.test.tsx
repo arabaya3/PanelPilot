@@ -9,7 +9,7 @@ import {
   type AccountState,
 } from '@/components/account-session';
 import { DesignScreen } from '@/components/design-screen';
-import { DRAFT_STORAGE_KEY } from '@/components/design/draft';
+import { DRAFT_STORAGE_KEY, storedDrafts } from '@/components/design/draft';
 import { approvalOf, ProjectsPanel } from '@/components/design/projects-panel';
 import type {
   listProjects,
@@ -176,8 +176,8 @@ async function completeForm() {
 }
 
 function storedDraft(): Record<string, unknown> | null {
-  const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
-  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+  // M14: drafts are kept per project; this is the most recently written one.
+  return (storedDrafts()[0] as Record<string, unknown> | undefined) ?? null;
 }
 
 async function signInThroughForm(accessToken: string) {

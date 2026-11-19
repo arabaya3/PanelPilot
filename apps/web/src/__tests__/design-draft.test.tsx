@@ -8,6 +8,7 @@ import {
   formBoards,
   parseDraft,
   readDraft,
+  storedDrafts,
 } from '@/components/design/draft';
 import { blankBoard } from '@/components/design/schedule';
 import type {
@@ -72,8 +73,8 @@ function type(input: HTMLElement, value: string) {
 }
 
 function stored(): Record<string, unknown> | null {
-  const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
-  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+  // M14: drafts are kept per project; this is the most recently written one.
+  return (storedDrafts()[0] as Record<string, unknown> | undefined) ?? null;
 }
 
 /** Type into a fresh page, then leave it without the guard (unmount). */

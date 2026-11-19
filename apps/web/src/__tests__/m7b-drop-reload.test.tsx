@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
-import { DRAFT_STORAGE_KEY, parseDraft } from '@/components/design/draft';
+import { parseDraft, storedDrafts } from '@/components/design/draft';
 import type * as DesignModule from '@/lib/design';
 import type {
   listProjects,
@@ -113,8 +113,8 @@ const drop = () => config().getByTestId<HTMLInputElement>('configuration-drop-un
 const unsaved = () => screen.queryAllByText('Unsaved changes').length;
 
 function stored(): Record<string, unknown> | null {
-  const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
-  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+  // M14: drafts are kept per project; this is the most recently written one.
+  return (storedDrafts()[0] as Record<string, unknown> | undefined) ?? null;
 }
 
 async function openAndTick() {
@@ -211,15 +211,16 @@ describe('"save without that configuration" across a reload', () => {
       if (found === undefined) throw new Error('no revision select');
       return found;
     };
-    const dialog = () => within(screen.getByTestId('unsaved-dialog'));
-    const asking = () => screen.getByTestId('unsaved-dialog').closest('dialog')?.open ?? false;
+    // M14: switching revision asks in the projects panel (Save / Discard / Cancel).
+    const dialog = () => within(screen.getByTestId('switch-dialog'));
+    const asking = () => screen.getByTestId('switch-dialog').closest('dialog')?.open ?? false;
     const opens = api.open.mock.calls.length;
 
     fireEvent.change(select(), { target: { value: '1' } });
     await waitFor(() => {
       expect(asking()).toBe(true);
     });
-    fireEvent.click(dialog().getByText('Keep editing'));
+    fireEvent.click(dialog().getByTestId('switch-cancel'));
     expect(api.open.mock.calls.length).toBe(opens);
     expect(drop().checked).toBe(true);
 
@@ -227,7 +228,7 @@ describe('"save without that configuration" across a reload', () => {
     await waitFor(() => {
       expect(asking()).toBe(true);
     });
-    fireEvent.click(dialog().getByText('Discard changes'));
+    fireEvent.click(dialog().getByTestId('switch-discard'));
     await waitFor(() => {
       expect(api.open).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 1 }));
     });

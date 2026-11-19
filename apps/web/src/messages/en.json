@@ -1238,7 +1238,29 @@
           "none": "The request draws no candidate load: nothing to confirm.",
           "load": "{board} › {description} ({power} kW) is not that equipment"
         }
-      }
+      },
+      "newProject": "New project",
+      "current": "Current project: {name}",
+      "currentUnsaved": "Current project: {name}, with unsaved changes",
+      "currentNew": "Current project: a new project, not saved yet",
+      "currentNewUnsaved": "Current project: a new project with unsaved work, not saved yet",
+      "loading": "Loading saved projects…",
+      "listFailed": "The saved projects could not be loaded. What is open stays as it is.",
+      "retry": "Try again",
+      "isCurrent": "Open now",
+      "updated": "Saved {date}",
+      "more": "Show more projects",
+      "draftsLocal": "Unsaved work is kept only in this browser tab, for each project separately, until it is saved. It is not stored on the server.",
+      "switchTitle": "Save changes before switching?",
+      "switchBody": "{name} has unsaved changes. Save them before opening {target}, or discard them?",
+      "switchBodyNoSave": "{name} has unsaved changes that cannot be saved yet. Discard them to open {target}, or cancel to keep working?",
+      "switchCancel": "Cancel",
+      "switchDiscard": "Discard changes to {name}",
+      "switchSave": "Save and continue",
+      "targetNew": "a new project",
+      "newUnsavedName": "The new, unsaved project",
+      "openGone": "That project is no longer available, so it was not opened. The list has been refreshed; what is open stays as it is.",
+      "switchDiscardNew": "Discard the new project's unsaved work"
     },
     "readiness": {
       "title": "Status",

@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
-import { DRAFT_STORAGE_KEY, parseDraft } from '@/components/design/draft';
+import { parseDraft, storedDrafts } from '@/components/design/draft';
 import type * as DesignModule from '@/lib/design';
 import type {
   listProjects,
@@ -159,8 +159,8 @@ function showBoard(name: string) {
 }
 
 function storedDraft(): Record<string, unknown> | null {
-  const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
-  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+  // M14: drafts are kept per project; this is the most recently written one.
+  return (storedDrafts()[0] as Record<string, unknown> | undefined) ?? null;
 }
 
 beforeEach(() => {

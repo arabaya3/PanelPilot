@@ -234,12 +234,85 @@ function storage(): Storage | null {
   }
 }
 
-/** Keep the draft; false when the browser would not store it. */
-export function writeDraft(draft: DesignDraft): boolean {
-  const store = storage();
-  if (store === null) return false;
+/**
+ * M14: drafts are kept per identity and project, side by side, under the one
+ * key: `{ v: 2, drafts: { "<owner>|<project id or new>": draft } }`. Writing
+ * one project's draft never touches another's, and a project never saved has
+ * its own slot (`new`). Still this tab's session storage: browser-local, never
+ * sent to the server.
+ *
+ * A draft in the earlier format (a single v1 draft at the key) is read as the
+ * draft of its own identity and project, never dropped; anything at the key
+ * that cannot be read is moved aside to `UNREADABLE_KEY` rather than
+ * overwritten.
+ */
+const STORE_VERSION = 2;
+export const UNREADABLE_KEY = `${DRAFT_STORAGE_KEY}.unreadable`;
+
+/** A kept draft, with when it was written (0 for one migrated from the earlier format). */
+export type StoredDraft = DesignDraft & { savedAt: number; tenant?: string };
+
+/** A kept draft as stored, with its body version (so `parseDraft` reads it as written). */
+export type StoredEntry = StoredDraft & { v: number };
+
+export function draftSlot(owner: string, project: string | null): string {
+  return `${owner}|${project ?? 'new'}`;
+}
+
+function parseStored(value: unknown): StoredDraft | null {
+  const draft = parseDraft(value);
+  if (draft === null || !isFields(value)) return null;
+  const savedAt = typeof value.savedAt === 'number' ? value.savedAt : 0;
+  const tenant = typeof value.tenant === 'string' && value.tenant !== '' ? value.tenant : undefined;
+  return { ...draft, savedAt, ...(tenant ? { tenant } : {}) };
+}
+
+/** Every kept draft by slot; an earlier single draft comes back in its own slot. */
+function load(store: Storage): Record<string, StoredDraft> {
+  let raw: string | null;
   try {
-    store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: DRAFT_VERSION, ...draft }));
+    raw = store.getItem(DRAFT_STORAGE_KEY);
+  } catch {
+    return {};
+  }
+  if (raw === null) return {};
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    value = undefined;
+  }
+  if (isFields(value) && value.v === STORE_VERSION && isFields(value.drafts)) {
+    const out: Record<string, StoredDraft> = {};
+    for (const [slot, entry] of Object.entries(value.drafts)) {
+      const draft = parseStored({ ...(isFields(entry) ? entry : {}), v: DRAFT_VERSION });
+      if (draft !== null && slot === draftSlot(draft.session, draft.project?.id ?? null)) {
+        out[slot] = draft;
+      }
+    }
+    return out;
+  }
+  const legacy = parseStored(value);
+  if (legacy !== null) {
+    return { [draftSlot(legacy.session, legacy.project?.id ?? null)]: legacy };
+  }
+  // Not a draft this page can read: kept aside, never silently overwritten.
+  try {
+    store.setItem(UNREADABLE_KEY, raw);
+  } catch {
+    // Over quota: it stays where it is until a write replaces it.
+  }
+  return {};
+}
+
+function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
+  try {
+    if (Object.keys(drafts).length === 0) store.removeItem(DRAFT_STORAGE_KEY);
+    else {
+      const body: Record<string, unknown> = {};
+      for (const [slot, draft] of Object.entries(drafts)) body[slot] = draft;
+      store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: body }));
+    }
     return true;
   } catch {
     // Over quota: the guard's warnings still stand, but nothing is kept.
@@ -247,39 +320,74 @@ export function writeDraft(draft: DesignDraft): boolean {
   }
 }
 
-export function clearDraft(): void {
-  try {
-    storage()?.removeItem(DRAFT_STORAGE_KEY);
-  } catch {
-    // Nothing stored can be reached, so nothing is left to offer either.
-  }
+/** Keep `draft` in its own slot (its identity and project), leaving every other draft as it is. */
+export function writeDraft(draft: DesignDraft, tenant?: string | null): boolean {
+  const store = storage();
+  if (store === null) return false;
+  const drafts = load(store);
+  drafts[draftSlot(draft.session, draft.project?.id ?? null)] = {
+    ...draft,
+    savedAt: Date.now(),
+    ...(tenant ? { tenant } : {}),
+  };
+  return save(store, drafts);
 }
 
 /**
- * The draft typed in `session`, or null. Anything else stored -- another
- * session's draft, an older format, malformed data -- is removed.
+ * Remove kept drafts: with no arguments, every one (signing out, another
+ * account); with an owner, that identity's; with a project too, only that
+ * project's slot (`null` for the project never saved).
  */
-export function readDraft(session: string): DesignDraft | null {
+export function clearDraft(owner?: string, project?: string | null): void {
+  const store = storage();
+  if (store === null) return;
+  if (owner === undefined) {
+    try {
+      store.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // Nothing stored can be reached, so nothing is left to offer either.
+    }
+    return;
+  }
+  const gone = (slot: string) =>
+    project === undefined ? slot.startsWith(`${owner}|`) : slot === draftSlot(owner, project);
+  save(store, Object.fromEntries(Object.entries(load(store)).filter(([slot]) => !gone(slot))));
+}
+
+/** Every kept draft, most recently written first (for tests and the arrival offer). */
+export function storedDrafts(): StoredEntry[] {
+  const store = storage();
+  if (store === null) return [];
+  return Object.values(load(store))
+    .sort((a, b) => b.savedAt - a.savedAt)
+    .map((draft) => ({ v: DRAFT_VERSION, ...draft }));
+}
+
+/**
+ * The draft typed by `session` for `project` (`null`: the project never
+ * saved), or with `project` left out its most recent one; null when none. A
+ * draft written under another tenant than `tenant` is not offered. Drafts of
+ * other identities are removed, never offered.
+ */
+export function readDraft(
+  session: string,
+  project?: string | null,
+  tenant?: string | null,
+): DesignDraft | null {
   const store = storage();
   if (store === null) return null;
-  let raw: string | null;
-  try {
-    raw = store.getItem(DRAFT_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-  if (raw === null) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    value = null;
-  }
-  const draft = parseDraft(value);
-  if (draft === null || draft.session !== session) {
-    clearDraft();
-    return null;
-  }
+  // Another identity's drafts are never offered here, and are removed (as before M14).
+  const drafts = Object.entries(load(store));
+  const own = drafts.filter(([, draft]) => draft.session === session);
+  if (own.length < drafts.length) save(store, Object.fromEntries(own));
+  const found = storedDrafts().find(
+    (draft) =>
+      draft.session === session &&
+      (project === undefined || (draft.project?.id ?? null) === project) &&
+      (tenant == null || draft.tenant === undefined || draft.tenant === tenant),
+  );
+  if (found === undefined) return null;
+  const { savedAt: _savedAt, tenant: _tenant, v: _v, ...draft } = found;
   return draft;
 }
 

@@ -823,12 +823,19 @@ function DesignWorkspace({
   // Whose work a request was started for. An open or a save that answers
   // after the page has moved to another identity (a trial signed in, the
   // account signed out) is not this one's, and is let go.
-  const ownerKey =
+  const identityKey =
     identity === 'account'
       ? (accountOwner ?? 'account')
       : identity === 'trial'
         ? `trial:${trialId ?? ''}`
         : 'signed-out';
+  // M14: each switch of project (another one opened, another revision of it,
+  // or a new project) starts a new workspace number. It is part of `ownerKey`,
+  // so an answer started for the project before (an open, a save, a design,
+  // an export, a panel's own request) is let go, and the panels holding that
+  // project's previews, findings and confirmations start afresh.
+  const [workspace, setWorkspace] = useState(0);
+  const ownerKey = `${identityKey}#${String(workspace)}`;
   // A way back belongs to the project it was made in: another project clears it.
   const projectKey = `${ownerKey}|${opened?.id ?? ''}`;
   if (designReturnFor !== projectKey) {
@@ -924,14 +931,15 @@ function DesignWorkspace({
   const lastWritten = useRef<string | null>(null);
   useEffect(() => {
     if (draftOwner === null || draftChecked === draftOwner) return;
-    setDraftOffer(readDraft(draftOwner));
+    setDraftOffer(readDraft(draftOwner, undefined, tokenTenant));
     setDraftChecked(draftOwner);
   }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner || draftOffer !== null) return;
     if (!dirty || discardedSnapshot.current === snapshot) {
-      if (lastWritten.current !== '') clearDraft();
+      // Only this project's draft: another project's is never touched (M14).
+      if (lastWritten.current !== '') clearDraft(draftOwner, opened?.id ?? null);
       lastWritten.current = '';
       return;
     }
@@ -967,7 +975,7 @@ function DesignWorkspace({
     };
     const text = JSON.stringify(draft);
     if (text === lastWritten.current) return;
-    if (writeDraft(draft)) lastWritten.current = text;
+    if (writeDraft(draft, tokenTenant)) lastWritten.current = text;
     else console.warn('Unsaved work could not be kept in session storage.');
   });
 
@@ -1030,13 +1038,25 @@ function DesignWorkspace({
   }
 
   function dismissDraft() {
+    const offered = draftOffer;
     setDraftOffer(null);
-    clearDraft();
+    if (offered !== null) clearDraft(offered.session, offered.project?.id ?? null);
+  }
+
+  /**
+   * M14: the engineer chose to discard the unsaved work on the page because
+   * another project (or a new one) replaces it now. Only this project's kept
+   * draft goes; the page itself is replaced by the caller.
+   */
+  function discardForSwitch() {
+    discardedSnapshot.current = snapshot;
+    if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
+    lastWritten.current = '';
   }
 
   function discardChanges() {
     discardedSnapshot.current = snapshot;
-    clearDraft();
+    if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
     lastWritten.current = '';
     unsaved.discard();
   }
@@ -1150,6 +1170,16 @@ function DesignWorkspace({
   const incomplete = token !== null && !complete;
 
   function onOpened(project: SavedProject, fill: boolean) {
+    if (fill) {
+      // M14: the form now holds another project (or another revision of it):
+      // a new workspace, so nothing started for the one before is applied.
+      setWorkspace((current) => current + 1);
+      // The draft kept for this project, if any, is offered; never another's.
+      if (draftOwner !== null && draftOffer === null) {
+        const kept = readDraft(draftOwner, project.id, tokenTenant);
+        if (kept !== null) setDraftOffer(kept);
+      }
+    }
     setOpened({
       id: project.id,
       name: project.name,
@@ -1253,6 +1283,64 @@ function DesignWorkspace({
     setExportError(null);
   }
 
+  /**
+   * M14: start a new, unsaved project. Asked for through the projects panel,
+   * which settles unsaved work first (save, discard or cancel). Everything
+   * that belonged to the project before goes: its revision, configuration,
+   * validation, refusals, confirmations, proposal, design and exports; the
+   * market (a preference of the page, not of the project) stays.
+   */
+  function startNewProject() {
+    setWorkspace((current) => current + 1);
+    setOpened(null);
+    setHistory([]);
+    setOpenedModel(null);
+    setSavedRequirements(null);
+    const empty = emptyConfiguration();
+    setConfigDoc(empty);
+    setConfigBaseline(sortedJson(empty));
+    setConfigStatus('none');
+    setDropUnrecoverable(false);
+    setConfigRefusal(null);
+    setConfirmed([]);
+    setOpenedSchema(undefined);
+    setLinksWritten(false);
+    setOpenedLinks([]);
+    setOpenedLinkFindings([]);
+    setLinkRefusal(null);
+    setValidation(null);
+    setRevisionStale(false);
+    setRevisionError(null);
+    setExecutionRefusal(null);
+    setDraftProjectGone(false);
+    setTitleRevisions([]);
+    setRevisionNote('');
+    setTooLong([]);
+    const first = takeKeys(2);
+    const board = { ...blankBoard(first, first + 1, 'DB1'), ...supply };
+    setInfo(INITIAL_INFO);
+    setBoards([board]);
+    setActiveKey(board.key);
+    setControlNeeds({});
+    setAiDescription('');
+    setAiProposal(null);
+    setAiControlTags({});
+    setProfileText('');
+    setDrawingLanguage(null);
+    setClean(snapshotOf(INITIAL_INFO, [board], '', null, latestMarket.current, {}));
+    pristine.current = true;
+    discardedSnapshot.current = null;
+    lastWritten.current = null;
+    setLastSave(null);
+    setResult({ kind: 'idle' });
+    setExportError(null);
+    // The draft kept for a new project, if any, is offered back; never another's.
+    if (draftOwner !== null && draftOffer === null) {
+      const kept = readDraft(draftOwner, null, tokenTenant);
+      if (kept !== null) setDraftOffer(kept);
+    }
+  }
+
   async function run() {
     if (token === null || !complete) return;
     if (parsed === 'invalid') {
@@ -1263,7 +1351,10 @@ function DesignWorkspace({
     setExportError(null);
     const request = toRequest(info, boards, profile);
     request.info.revisions = titleRevisions;
+    const owner = ownerKey;
     const outcome = await designImpl({ token, request });
+    // Designed for a project the page has since left (or another identity): not this one's.
+    if (currentOwner.current !== owner) return;
     setTooLong(outcome.kind === 'refused' ? (outcome.tooLong ?? []) : []);
     if (outcome.kind === 'designed') {
       setResult({ kind: 'designed', response: outcome.response, profile, basis, inputs });
@@ -1972,7 +2063,7 @@ function DesignWorkspace({
                 // A fresh panel for each identity and tenant, so nothing it
                 // said for the last one (a "Saved as revision N", a refusal)
                 // is shown for this one.
-                key={`${ownerKey}|${tokenTenant ?? ''}`}
+                key={`${identityKey}|${tokenTenant ?? ''}`}
                 token={token}
                 current={
                   complete && parsed !== 'invalid'
@@ -1999,6 +2090,8 @@ function DesignWorkspace({
                 accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
+                onNewProject={startNewProject}
+                onDiscard={discardForSwitch}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
                 blockingCount={readiness.blockingCount}
@@ -2029,6 +2122,11 @@ function DesignWorkspace({
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
                   rebaseOnSave.current = state === 'saved';
+                  // A new project's first save: its work now belongs to the saved
+                  // project, so the draft kept for "new" goes (M14).
+                  if (state === 'saved' && opened === null && draftOwner !== null) {
+                    clearDraft(draftOwner, null);
+                  }
                   // A saved proposal is used: it can place nothing more, so its
                   // tags come off the rows (they are not part of the snapshot)
                   // and its open items now come from the stored record.
@@ -2092,6 +2190,7 @@ function DesignWorkspace({
           // Mounted only while shown: its rows repeat the schedule's fields.
           view === 'requirements' && (
             <RequirementsView
+              key={ownerKey}
               token={token}
               boards={boards}
               onBoardChange={updateBoard}
@@ -2134,6 +2233,7 @@ function DesignWorkspace({
               boardsTargetId={`${id}-boards-step`}
               ai={
                 <AiIntake
+                  key={ownerKey}
                   token={token}
                   description={aiDescription}
                   onDescriptionChange={setAiDescription}
@@ -2467,6 +2567,7 @@ function DesignWorkspace({
           'materials',
           designed && token !== null && !stale ? (
             <QuotationPanel
+              key={ownerKey}
               token={token}
               project={designed}
               profile={designedProfile}
@@ -2622,6 +2723,7 @@ function DesignWorkspace({
             )}
             {designed && token !== null ? (
               <MarkupsPanel
+                key={ownerKey}
                 token={token}
                 project={designed}
                 profile={designedProfile}
