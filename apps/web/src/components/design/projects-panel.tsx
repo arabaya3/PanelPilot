@@ -438,7 +438,7 @@ export function ProjectsPanel({
     const active = document.activeElement;
     const untouched = active === null || active === document.body || active === focusFrom.current;
     focusFrom.current = null;
-    if (untouched) document.getElementById(`${id}-opened`)?.focus();
+    if (untouched) focusVisible(document.getElementById(`${id}-opened`));
   }, [opened, id]);
 
   /**
@@ -535,6 +535,12 @@ export function ProjectsPanel({
         setApprovalNote('');
         setScopeConfirmed(false);
         onOpened(arrived, true);
+        // Chosen in the dialog from another view: the field it returned focus
+        // to went with the project replaced; focus is not left on the page.
+        window.setTimeout(() => {
+          const active = document.activeElement;
+          if (active === null || active === document.body) focusVisible(null);
+        }, 0);
       };
       // Work typed while it was opening (the page was clean when Open was
       // pressed): never replaced without asking.
@@ -1096,4 +1102,17 @@ function shortDate(iso: string, locale: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+}
+
+/**
+ * Focus `target` when it can be seen; when it sits in a hidden view (another
+ * tab is shown) or is gone, the selected tab instead, so focus is never left
+ * on the page.
+ */
+function focusVisible(target: HTMLElement | null): void {
+  if (target !== null && target.closest('[hidden]') === null) {
+    target.focus();
+    return;
+  }
+  document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 }

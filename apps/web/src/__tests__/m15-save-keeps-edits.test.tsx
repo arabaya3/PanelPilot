@@ -344,4 +344,56 @@ describe('edits made while Save is running', () => {
     expect(dialog.closest('[data-testid="view-overview"]')).toBeNull();
     expect(dialog.closest('[data-testid="projects-panel"]')).toBeNull();
   });
+
+  it('from another tab, Discard in the dialog asked again leaves focus on the selected tab', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    api.list.mockResolvedValue({
+      kind: 'listed',
+      page: {
+        permissions: [],
+        projects: [
+          { id: 'p1', name: 'Stored tower', revisions: 1, updated_at: '2026-11-01T10:00:00Z' },
+          { id: 'p2', name: 'Second plant', revisions: 1, updated_at: '2026-11-02T10:00:00Z' },
+        ],
+      },
+    });
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project() });
+    api.open.mockResolvedValueOnce({
+      kind: 'saved',
+      project: { ...project(), id: 'p2', name: 'Second plant' } as SavedProject,
+    });
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    api.revise.mockReturnValueOnce(pending.promise);
+    fireEvent.click(within(screen.getByTestId('project-p2')).getByText('Open'));
+    const dialog = () =>
+      within(screen.getByTestId('switch-dialog').closest('dialog') as HTMLElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.open).toBe(true);
+    });
+    fireEvent.click(dialog().getByTestId('switch-save'));
+    // On the Configuration tab now, editing while the save runs.
+    const tab = screen.getByRole('tab', { name: 'Configuration' });
+    fireEvent.click(tab);
+    designation().focus();
+    fireEvent.change(designation(), { target: { value: 'X9' } });
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: savedAs('Stored tower', 'X7') });
+      await pending.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.open).toBe(true);
+    });
+    fireEvent.click(dialog().getByTestId('switch-discard'));
+    await waitFor(() => {
+      expect(screen.getByTestId('project-opened-name').textContent).toContain('Second plant');
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Configuration' }));
+    });
+  });
 });
