@@ -879,6 +879,7 @@ function DesignWorkspace({
     const before = heldTenant.current;
     heldTenant.current = tokenTenant;
     if (before === null || before === tokenTenant || opened === null) return;
+    submitted.current = null;
     setOpened(null);
     setHistory([]);
     setValidation(null);
@@ -1146,6 +1147,8 @@ function DesignWorkspace({
       if (outcome.kind === 'saved') {
         // M14: the restored work is its own workspace: nothing started before applies.
         nextWorkspace();
+        // A save that never answered is not matched against the restored revision.
+        submitted.current = null;
         onOpened(outcome.project, false);
         reopened = true;
         // The unsaved edits replace the stored configuration in the editor;
@@ -1246,7 +1249,7 @@ function DesignWorkspace({
   // Set by a save that just succeeded, for the `onOpened` that follows it.
   const rebaseOnSave = useRef(false);
   // The configuration part of the save in flight, as submitted (M15).
-  const submitted = useRef<{ doc: string; drop: boolean; confirmed: string } | null>(null);
+  const submitted = useRef<{ doc: string; drop: boolean } | null>(null);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -1384,9 +1387,9 @@ function DesignWorkspace({
     } else {
       setConfigDoc((current) => (sortedJson(current) === submittedNow.doc ? stored : current));
       setDropUnrecoverable((current) => (current === submittedNow.drop ? false : current));
-      setConfirmed((current) =>
-        JSON.stringify(current) === submittedNow.confirmed ? [] : current,
-      );
+      // Confirmations answer the revision they were made against, which the
+      // save just superseded: they never carry over (even one made meanwhile).
+      setConfirmed([]);
     }
     setConfigBaseline(sortedJson(stored));
     setConfigStatus(project.configuration_status);
@@ -2384,7 +2387,6 @@ function DesignWorkspace({
                     submitted.current = {
                       doc: sortedJson(configDoc),
                       drop: dropUnrecoverable,
-                      confirmed: JSON.stringify(confirmed),
                     };
                   }
                   if (state === 'failed') submitted.current = null;
