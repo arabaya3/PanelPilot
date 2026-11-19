@@ -1,0 +1,320 @@
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { DesignScreen } from '@/components/design-screen';
+import { storedDrafts } from '@/components/design/draft';
+import type * as DesignModule from '@/lib/design';
+import type {
+  listProjects,
+  openProject,
+  reviseProject,
+  SavedProject,
+  SavedRequest,
+} from '@/lib/design';
+import en from '@/messages/en.json';
+
+import { renderApp } from './helpers';
+
+/**
+ * A reload with unsaved configuration edits. The page was dirty (the edits
+ * count as unsaved) and wrote a draft, but the draft did not hold the
+ * configuration: restoring reopened the revision with its STORED
+ * configuration and the edits were gone without a word. SYNTHETIC data.
+ */
+
+const api = vi.hoisted(() => ({
+  list: vi.fn<typeof listProjects>(),
+  open: vi.fn<typeof openProject>(),
+  revise: vi.fn<typeof reviseProject>(),
+}));
+
+vi.mock('@/lib/design', async (importOriginal) => {
+  const actual = await importOriginal<typeof DesignModule>();
+  return { ...actual, listProjects: api.list, openProject: api.open, reviseProject: api.revise };
+});
+
+const STORED = {
+  templates: [],
+  patterns: [],
+  strips: [
+    {
+      id: 'strip-a',
+      board: 'MDB',
+      designation: { function: null, location: null, product: 'X1' },
+      template: null,
+      points: [{ id: 'p-a', marking: '1' }],
+    },
+  ],
+  components: [],
+  bindings: [],
+};
+
+const REQUEST = {
+  info: { name: 'Stored tower', number: '', customer: '', consultant: '', contractor: '' },
+  boards: [
+    {
+      name: 'MDB',
+      location: null,
+      fed_from: null,
+      feeder_length_m: null,
+      supply: { voltage_v: '400', phases: 3, fault_level_ka: null },
+      loads: [
+        {
+          description: 'Lights',
+          load: 'lighting',
+          power_kw: '1',
+          phases: 1,
+          power_factor: null,
+          controlled: false,
+          starter: null,
+          length_m: null,
+        },
+      ],
+    },
+  ],
+  profile: null,
+} as unknown as SavedRequest;
+
+function project(): SavedProject {
+  return {
+    id: 'p1',
+    name: 'Stored tower',
+    revision: 1,
+    validated: true,
+    export_status: 'draft',
+    permissions: ['approve_revision'],
+    revisions: [
+      {
+        number: 1,
+        note: '',
+        author: 'e',
+        approver_account_recorded: false,
+        created_at: '2026-11-10T10:00:00Z',
+        validated: true,
+        export_status: 'draft',
+      },
+    ],
+    request: REQUEST,
+    findings: [],
+    model_v2: null,
+    snapshot_schema: 'pp-design/2',
+    configuration: STORED,
+    configuration_status: 'stored',
+  } as unknown as SavedProject;
+}
+
+const READY = {
+  kind: 'ready' as const,
+  accessToken: 'tok',
+  trial: { sessionId: 's', claimSecret: 'c' },
+  questionsRemaining: 5,
+  conversationId: null,
+};
+
+function renderScreen() {
+  return renderApp(
+    <DesignScreen
+      acquireImpl={vi.fn().mockResolvedValue(READY)}
+      marketsImpl={vi.fn().mockResolvedValue(null)}
+      saveImpl={vi.fn()}
+    />,
+  );
+}
+
+const config = () => within(screen.getByTestId('view-configuration'));
+const designation = () => config().getByTestId<HTMLInputElement>('strip-designation');
+
+beforeEach(() => {
+  api.list.mockResolvedValue({
+    kind: 'listed',
+    page: {
+      permissions: ['approve_revision'],
+      projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }],
+    },
+  } as never);
+  api.open.mockResolvedValue({ kind: 'saved', project: project() });
+  api.revise.mockResolvedValue({ kind: 'saved', project: project() });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+  window.sessionStorage.clear();
+});
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+const overview = () => within(screen.getByTestId('view-overview'));
+const nameField = () => overview().getByLabelText<HTMLInputElement>('Project name');
+const unsaved = () =>
+  screen.getByTestId('project-current').textContent.includes('with unsaved changes');
+const saveButton = () => overview().getByRole('button', { name: en.design.projects.saveRevision });
+
+/** Revision 2 as the server stores it: exactly what was submitted. */
+function savedAs(name: string, designationValue: string): SavedProject {
+  const base = project();
+  return {
+    ...base,
+    revision: 2,
+    revisions: [...base.revisions, { ...base.revisions[0], number: 2 }],
+    request: { ...REQUEST, info: { ...REQUEST.info, name } },
+    configuration: {
+      ...STORED,
+      strips: [
+        {
+          ...STORED.strips[0],
+          designation: { function: null, location: null, product: designationValue },
+        },
+      ],
+    },
+  } as unknown as SavedProject;
+}
+
+async function openEditAndSave(pending: Promise<Awaited<ReturnType<typeof reviseProject>>>) {
+  fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+  await waitFor(() => {
+    expect(designation().value).toBe('X1');
+  });
+  fireEvent.change(designation(), { target: { value: 'X7' } });
+  fireEvent.change(nameField(), { target: { value: 'Submitted name' } });
+  api.revise.mockReturnValueOnce(pending);
+  fireEvent.click(saveButton());
+  await waitFor(() => {
+    expect(api.revise).toHaveBeenCalledTimes(1);
+  });
+  // Edits made while the save is running.
+  fireEvent.change(designation(), { target: { value: 'X9' } });
+  fireEvent.change(nameField(), { target: { value: 'Newer name' } });
+}
+
+describe('edits made while Save is running', () => {
+  it('are kept, visible and unsaved when the save succeeds; the server got the submitted version', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    renderScreen();
+    await openEditAndSave(pending.promise);
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: savedAs('Submitted name', 'X7') });
+      await pending.promise;
+    });
+    const sent = api.revise.mock.calls[0]?.[0];
+    expect(JSON.stringify(sent?.configuration)).toContain('X7');
+    expect(sent?.request.info.name).toBe('Submitted name');
+    // The newer work is still on the page, and unsaved.
+    expect(designation().value).toBe('X9');
+    expect(nameField().value).toBe('Newer name');
+    expect(unsaved()).toBe(true);
+    // It is kept for recovery after a reload.
+    await waitFor(() => {
+      expect(JSON.stringify(storedDrafts()[0]?.configuration?.doc)).toContain('X9');
+    });
+    // Undoing back to exactly what was saved reads clean.
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    fireEvent.change(nameField(), { target: { value: 'Submitted name' } });
+    await waitFor(() => {
+      expect(unsaved()).toBe(false);
+    });
+  });
+
+  it('are kept when the save fails', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    renderScreen();
+    await openEditAndSave(pending.promise);
+    await act(async () => {
+      pending.resolve({ kind: 'failed' });
+      await pending.promise;
+    });
+    expect(designation().value).toBe('X9');
+    expect(nameField().value).toBe('Newer name');
+    expect(unsaved()).toBe(true);
+  });
+
+  it('with nothing edited during the save, the page reads clean on the stored revision', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    api.revise.mockReturnValueOnce(pending.promise);
+    fireEvent.click(saveButton());
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: savedAs('Stored tower', 'X7') });
+      await pending.promise;
+    });
+    expect(designation().value).toBe('X7');
+    await waitFor(() => {
+      expect(unsaved()).toBe(false);
+    });
+  });
+
+  it('consecutive saves each store what was submitted, keeping what came after', async () => {
+    const first = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    renderScreen();
+    await openEditAndSave(first.promise);
+    await act(async () => {
+      first.resolve({ kind: 'saved', project: savedAs('Submitted name', 'X7') });
+      await first.promise;
+    });
+    expect(designation().value).toBe('X9');
+    api.revise.mockResolvedValueOnce({ kind: 'saved', project: savedAs('Newer name', 'X9') });
+    fireEvent.click(saveButton());
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(2);
+    });
+    expect(JSON.stringify(api.revise.mock.calls[1]?.[0]?.configuration)).toContain('X9');
+    await waitFor(() => {
+      expect(unsaved()).toBe(false);
+    });
+    expect(designation().value).toBe('X9');
+  });
+
+  it('during Save before a switch, edits made while saving are kept and asked about again', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    api.list.mockResolvedValue({
+      kind: 'listed',
+      page: {
+        permissions: [],
+        projects: [
+          { id: 'p1', name: 'Stored tower', revisions: 1, updated_at: '2026-11-01T10:00:00Z' },
+          { id: 'p2', name: 'Second plant', revisions: 1, updated_at: '2026-11-02T10:00:00Z' },
+        ],
+      },
+    });
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    api.revise.mockReturnValueOnce(pending.promise);
+    fireEvent.click(within(screen.getByTestId('project-p2')).getByText('Open'));
+    const dialog = () =>
+      within(screen.getByTestId('switch-dialog').closest('dialog') as HTMLElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.open).toBe(true);
+    });
+    fireEvent.click(dialog().getByTestId('switch-save'));
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.change(designation(), { target: { value: 'X9' } });
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: savedAs('Stored tower', 'X7') });
+      await pending.promise;
+    });
+    // Asked again: the newer edit is neither replaced nor switched away from.
+    await waitFor(() => {
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.open).toBe(true);
+    });
+    expect(designation().value).toBe('X9');
+    fireEvent.click(dialog().getByTestId('switch-cancel'));
+    expect(designation().value).toBe('X9');
+    expect(JSON.stringify(api.revise.mock.calls[0]?.[0]?.configuration)).toContain('X7');
+  });
+});

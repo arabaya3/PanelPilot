@@ -1245,6 +1245,8 @@ function DesignWorkspace({
   const basis = `${inputs}|${titleBasis(titleRevisions)}`;
   // Set by a save that just succeeded, for the `onOpened` that follows it.
   const rebaseOnSave = useRef(false);
+  // The configuration part of the save in flight, as submitted (M15).
+  const submitted = useRef<{ doc: string; drop: boolean; confirmed: string } | null>(null);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -1369,13 +1371,26 @@ function DesignWorkspace({
     // Reopening a revision (or a save answering with the one stored) loads
     // its own stored configuration into the editor.
     const stored = normalized(project.configuration ?? emptyConfiguration());
-    setConfigDoc(stored);
+    // A save's answer: the stored revision becomes the baseline, but what was
+    // edited since the save was submitted stays on the page (unsaved): only
+    // what still equals the submitted copy is replaced by the stored one.
+    const submittedNow = fill ? null : submitted.current;
+    submitted.current = null;
+    if (submittedNow === null) {
+      setConfigDoc(stored);
+      setDropUnrecoverable(false);
+      // Confirmations answer the revision they were made against: a newly opened one starts clean.
+      setConfirmed([]);
+    } else {
+      setConfigDoc((current) => (sortedJson(current) === submittedNow.doc ? stored : current));
+      setDropUnrecoverable((current) => (current === submittedNow.drop ? false : current));
+      setConfirmed((current) =>
+        JSON.stringify(current) === submittedNow.confirmed ? [] : current,
+      );
+    }
     setConfigBaseline(sortedJson(stored));
     setConfigStatus(project.configuration_status);
-    setDropUnrecoverable(false);
     setConfigRefusal(null);
-    // Confirmations answer the revision they were made against: a newly opened one starts clean.
-    setConfirmed([]);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
     setOpenedLinks(storedLinksOf(project));
@@ -1460,6 +1475,8 @@ function DesignWorkspace({
    */
   function startNewProject() {
     nextWorkspace();
+    // A save still answering is for the project left: nothing is matched against it.
+    submitted.current = null;
     setOpened(null);
     setHistory([]);
     setOpenedModel(null);
@@ -2361,6 +2378,16 @@ function DesignWorkspace({
                 })}
                 onSaveState={forOwner((state: 'saving' | 'saved' | 'failed') => {
                   setLastSave(state);
+                  // The copy submitted, as this closure (the save's) holds it:
+                  // its answer replaces only what still equals it (see onOpened).
+                  if (state === 'saving') {
+                    submitted.current = {
+                      doc: sortedJson(configDoc),
+                      drop: dropUnrecoverable,
+                      confirmed: JSON.stringify(confirmed),
+                    };
+                  }
+                  if (state === 'failed') submitted.current = null;
                   if (state === 'saved') setTooLong([]);
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.

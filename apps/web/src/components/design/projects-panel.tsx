@@ -461,11 +461,14 @@ export function ProjectsPanel({
     // A save that is refused or fails keeps this project and everything typed:
     // the switch does not go on.
     if (!(await store())) return;
+    // A click made since (another project, a new one) is newer than this switch.
+    const at = sequence.current;
     // Once the page has rendered against the saved baseline: work typed while
     // it saved is still unsaved, and is asked about before anything replaces
     // it. What the save itself reset (confirmations, the stored configuration)
     // is not an edit.
     await new Promise((resolve) => window.setTimeout(resolve, 0));
+    if (sequence.current !== at) return;
     if (dirtyNow.current) {
       setSwitching(pending);
       return;
