@@ -412,6 +412,9 @@ export function ProjectsPanel({
   // only while it is still there (or on the page itself): never away from
   // somewhere the engineer went while the project was opening.
   const focusFrom = useRef<Element | null>(null);
+  // Whether the page holds unsaved work now (read when an open answers).
+  const dirtyNow = useRef(dirty);
+  dirtyNow.current = dirty;
   // In the commit that shows the opened project (a layout effect), so focus is
   // never left on the page between the project appearing and a later effect.
   useLayoutEffect(() => {
@@ -485,11 +488,24 @@ export function ProjectsPanel({
     if (ticket !== sequence.current) return;
     setWorking(false);
     if (outcome.kind === 'saved') {
-      // Discarded only now that the other project is here: a failed open keeps it all.
-      if (discard) onDiscard?.();
-      setApprovalNote('');
-      setScopeConfirmed(false);
-      onOpened(outcome.project, true);
+      const arrived = outcome.project;
+      const apply = (drop: boolean) => {
+        // Discarded only now that the other project is here: a failed open keeps it all.
+        if (drop) onDiscard?.();
+        setApprovalNote('');
+        setScopeConfirmed(false);
+        onOpened(arrived, true);
+      };
+      // Work typed while it was opening (the page was clean when Open was
+      // pressed): never replaced without asking.
+      if (!discard && dirtyNow.current && onDiscard !== undefined) {
+        // The engineer is working elsewhere on the page: focus is not moved for it.
+        focusOpened.current = false;
+        focusFrom.current = null;
+        setSwitching({ target: arrived.name, go: apply });
+        return;
+      }
+      apply(discard);
     } else {
       // Nothing opened: no later change (a save, a revision) moves focus for it.
       focusOpened.current = false;
@@ -644,8 +660,11 @@ export function ProjectsPanel({
               <select
                 id={`${id}-revision`}
                 value={opened.revision}
-                disabled={working}
+                // Not disabled while loading (that would drop focus to the page):
+                // a change made meanwhile is ignored instead.
+                aria-disabled={working}
                 onChange={(event) => {
+                  if (working) return;
                   const revision = Number(event.target.value);
                   load(opened.id, revision, false, t('opened', { name: opened.name, revision }));
                 }}

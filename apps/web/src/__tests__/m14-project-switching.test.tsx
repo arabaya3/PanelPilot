@@ -563,6 +563,52 @@ describe('focus after opening', () => {
     });
   });
 
+  it('work typed while a project is opening is never replaced without asking', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockReturnValueOnce(late.promise);
+    renderScreen();
+    await openRow('p2');
+    // The page was clean when Open was pressed; the engineer types meanwhile.
+    type(overviewField('Customer'), 'Typed while opening');
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await late.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    expect(overviewField('Customer').value).toBe('Typed while opening');
+    fireEvent.click(switchDialog().getByTestId('switch-cancel'));
+    expect(overviewField('Customer').value).toBe('Typed while opening');
+    expect(screen.queryByTestId('project-opened')).toBeNull();
+  });
+
+  it('the revision select keeps focus while a revision loads', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower', 2) });
+    renderScreen();
+    await openRow('p1');
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Stored tower');
+    });
+    api.open.mockReturnValueOnce(late.promise);
+    const select = within(screen.getByTestId('project-opened')).getByRole<HTMLSelectElement>(
+      'combobox',
+    );
+    select.focus();
+    fireEvent.change(select, { target: { value: '1' } });
+    expect(select.disabled).toBe(false);
+    expect(select.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(select);
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: saved('Stored tower', 2) });
+      await late.promise;
+    });
+    expect(document.activeElement).toBe(
+      within(screen.getByTestId('project-opened')).getByRole('combobox'),
+    );
+  });
+
   it('a failed open leaves no focus move pending for a later change', async () => {
     api.open.mockResolvedValueOnce({ kind: 'failed' });
     api.save.mockResolvedValue({ kind: 'saved', project: project('p9', 'Saved later') });
