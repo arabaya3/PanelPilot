@@ -280,6 +280,15 @@ function parseStored(value: unknown, copy: DraftCopy): StoredDraft | null {
   return { ...draft, savedAt, copy, ...(tenant ? { tenant } : {}) };
 }
 
+/** A key's value, or `undefined` when reading it failed (unknown: never taken as empty). */
+function readKey(store: Storage, key: string): string | null | undefined {
+  try {
+    return store.getItem(key);
+  } catch {
+    return undefined;
+  }
+}
+
 function readRaw(store: Storage, key: string): string | null {
   try {
     return store.getItem(key);
@@ -290,9 +299,12 @@ function readRaw(store: Storage, key: string): string | null {
 
 /** Keep `raw` out of sight: never shown or offered, never silently dropped. */
 function quarantine(store: Storage, raw: string, reason: string): boolean {
+  const before = readKey(store, QUARANTINE_KEY);
+  // What is in quarantine could not be read: writing would replace it unseen.
+  if (before === undefined) return false;
   let list: unknown[] = [];
   try {
-    const parsed: unknown = JSON.parse(readRaw(store, QUARANTINE_KEY) ?? '[]');
+    const parsed: unknown = JSON.parse(before ?? '[]');
     if (Array.isArray(parsed)) list = parsed;
   } catch {
     list = [];
@@ -326,7 +338,9 @@ type Loaded = {
  * quarantine. False when it could not be moved: then nothing may replace it.
  */
 function setAside(store: Storage, raw: string): boolean {
-  const there = readRaw(store, UNREADABLE_KEY);
+  const there = readKey(store, UNREADABLE_KEY);
+  // Unknown (the read failed): it is never taken as free to write over.
+  if (there === undefined) return false;
   if (there === raw) return true;
   if (there === null) {
     try {

@@ -1070,4 +1070,34 @@ describe('drafts kept per identity and project', () => {
       full.mockRestore();
     }
   });
+
+  it('a failed read of the set-aside keys never authorizes overwriting them', () => {
+    window.sessionStorage.setItem(UNREADABLE_KEY, 'earlier unreadable data');
+    window.sessionStorage.setItem(
+      QUARANTINE_KEY,
+      JSON.stringify([{ reason: 'x', at: 1, raw: 'earlier entry' }]),
+    );
+    const realGet = window.sessionStorage.getItem.bind(window.sessionStorage);
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
+      if (key === UNREADABLE_KEY || key === QUARANTINE_KEY)
+        throw new DOMException('blocked', 'SecurityError');
+      return realGet(key);
+    });
+    try {
+      // A whole unreadable value cannot be set aside: the write is refused.
+      window.sessionStorage.setItem(DRAFT_STORAGE_KEY, 'not a draft store');
+      expect(writeDraft(body('s', 'p1', 'A'))).toBe(false);
+      // An unreadable entry in the slot cannot be quarantined: the slot is not written.
+      window.sessionStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({ v: 2, drafts: { 's|p1': { broken: true } } }),
+      );
+      expect(writeDraft(body('s', 'p1', 'A'))).toBe(false);
+    } finally {
+      getItem.mockRestore();
+    }
+    expect(window.sessionStorage.getItem(UNREADABLE_KEY)).toBe('earlier unreadable data');
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('earlier entry');
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toContain('broken');
+  });
 });
