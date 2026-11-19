@@ -293,18 +293,25 @@ describe('saving', () => {
 
 describe('the unsaved changes guard', () => {
   it('asks before opening a saved project over unsaved edits', async () => {
+    // M14: opening another project asks Save / Discard / Cancel in the projects panel.
     renderScreen();
     await completeForm('Edited tower');
     const row = await screen.findByTestId('project-p1');
     fireEvent.click(within(row).getByText('Open'));
-    await waitForAsking();
+    const ask = () => within(screen.getByTestId('switch-dialog').closest('dialog') as HTMLElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.hasAttribute('open')).toBe(
+        true,
+      );
+    });
     expect(api.open).not.toHaveBeenCalled();
 
-    fireEvent.click(dialog().getByText('Keep editing'));
+    fireEvent.click(ask().getByText('Cancel'));
     expect(overviewField('Project name').value).toBe('Edited tower');
+    expect(api.open).not.toHaveBeenCalled();
 
     fireEvent.click(within(row).getByText('Open'));
-    fireEvent.click(dialog().getByText('Discard changes'));
+    fireEvent.click(ask().getByText("Discard the new project's unsaved work"));
     await waitFor(() => {
       expect(overviewField('Project name').value).toBe('Stored tower');
     });

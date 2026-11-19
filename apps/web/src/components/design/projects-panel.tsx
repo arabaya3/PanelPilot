@@ -4,6 +4,7 @@ import { useLocale } from 'next-intl';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
+import { Dialog } from '@/components/ui';
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
@@ -144,7 +145,23 @@ export function ProjectsPanel({
   onNoteChange,
   impls = {},
   accountEmail = null,
+  onNewProject,
+  onDiscard,
+  keptFor = [],
 }: {
+  /** M14: projects with unsaved copies kept in this browser (said on their rows). */
+  keptFor?: readonly string[];
+  /**
+   * M14: start a new, unsaved project (offered when given). Unsaved work is
+   * settled first: saved, discarded or kept by cancelling.
+   */
+  onNewProject?: () => void;
+  /**
+   * M14: forget the unsaved work on the page (its kept draft included), just
+   * before another project replaces it. When given, switching asks Save /
+   * Discard / Cancel here instead of `beforeOpen`.
+   */
+  onDiscard?: () => void;
   token: string;
   /** The signed-in account's email, naming it where it has no display name (this page only). */
   accountEmail?: string | null;
@@ -230,6 +247,15 @@ export function ProjectsPanel({
     resolve = resolveSafetyConcern,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
+  // M14: the list's own state, apart from save and approval messages.
+  const [listError, setListError] = useState(false);
+  const [listing, setListing] = useState(false);
+  // Unsaved work to settle before `go` replaces it (another project, or a new one).
+  const [switching, setSwitching] = useState<{
+    target: string;
+    go: (discard: boolean) => void;
+  } | null>(null);
+  const tUi = useIsolatingTranslations('ui');
   const [ownNote, setOwnNote] = useState('');
   const note = heldNote ?? ownNote;
   const setNote = onNoteChange ?? setOwnNote;
@@ -267,6 +293,9 @@ export function ProjectsPanel({
     reasons.includes('notValidated');
   // The revision open, unchanged and current: saving it again would only store a copy.
   const unchanged = opened !== null && !dirty && !saveAgainHelps;
+  // M14: who the switch dialog's discard is about, and whether saving first is possible.
+  const currentName = opened?.name ?? t('newUnsavedName');
+  const canSaveFirst = current !== null && !unchanged;
 
   // Read through refs: the page hands a new `onUnauthorized` (and the
   // translator a new `say`) on every render, and listing again on each one
@@ -284,27 +313,43 @@ export function ProjectsPanel({
   // otherwise attach the form now on the page to the project it saved.
   const sequence = useRef(0);
 
-  const refresh = useCallback(async () => {
-    if (Date.now() < quietUntil.current) return;
-    const outcome = await list({ token });
-    if (outcome.kind === 'listed') {
-      setPage(outcome.page);
-      return;
-    }
-    if (outcome.kind === 'unauthorized') latestOnUnauthorized.current?.();
-    if (outcome.kind === 'refused' && outcome.code === 'rate_limited') {
-      quietUntil.current = Date.now() + (outcome.retryAfterSeconds ?? 60) * 1000;
-    }
-    setMessage(latestSay.current(outcome));
-  }, [list, token]);
+  // Only the latest list request's answer is applied (a retry, a refresh after a save).
+  const listTicket = useRef(0);
+  const refresh = useCallback(
+    async (cursor?: string) => {
+      if (Date.now() < quietUntil.current) return;
+      const ticket = ++listTicket.current;
+      setListing(true);
+      const outcome = await list(cursor ? { token, cursor } : { token });
+      if (ticket !== listTicket.current) return;
+      setListing(false);
+      if (outcome.kind === 'listed') {
+        setListError(false);
+        setPage((before) =>
+          cursor && before
+            ? { ...outcome.page, projects: [...before.projects, ...outcome.page.projects] }
+            : outcome.page,
+        );
+        return;
+      }
+      if (outcome.kind === 'unauthorized') latestOnUnauthorized.current?.();
+      if (outcome.kind === 'refused' && outcome.code === 'rate_limited') {
+        quietUntil.current = Date.now() + (outcome.retryAfterSeconds ?? 60) * 1000;
+      }
+      // The list could not be read: what is open in the editor stays as it is.
+      setListError(true);
+      setMessage(latestSay.current(outcome));
+    },
+    [list, token],
+  );
 
   // Once per identity (token): not per render.
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  async function store() {
-    if (current === null || working || unchanged) return;
+  async function store(): Promise<boolean> {
+    if (current === null || working || unchanged) return false;
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
@@ -332,7 +377,7 @@ export function ProjectsPanel({
     // saved, so neither the page's baseline nor its project is touched.
     if (ticket !== sequence.current) {
       if (outcome.kind === 'saved') void refresh();
-      return;
+      return false;
     }
     setWorking(false);
     onSaveState?.(outcome.kind === 'saved' ? 'saved' : 'failed');
@@ -341,6 +386,7 @@ export function ProjectsPanel({
       setMessage(t('saved', { revision: outcome.project.revision }));
       onOpened(outcome.project, false);
       void refresh();
+      return true;
     } else {
       // A refusal says what the API objected to; anything else is a save that
       // did not happen, not a design that failed. What was entered stays.
@@ -355,6 +401,7 @@ export function ProjectsPanel({
             ? ta('saveUnauthorized')
             : t('saveFailed'),
       );
+      return false;
     }
   }
 
@@ -367,24 +414,82 @@ export function ProjectsPanel({
     document.getElementById(`${id}-opened`)?.focus();
   }, [opened, id]);
 
-  function load(projectId: string, revision?: number, focus = false) {
-    beforeOpen(() => {
+  /**
+   * M14: run `go` once unsaved work is settled. Nothing unsaved: at once.
+   * Otherwise the switch dialog asks to save, discard or cancel; a discard is
+   * applied only once the other project is actually there (`go(true)`).
+   */
+  function requestSwitch(target: string, go: (discard: boolean) => void) {
+    if (onDiscard === undefined) {
+      beforeOpen(() => {
+        go(false);
+      });
+      return;
+    }
+    if (!dirty) {
+      go(false);
+      return;
+    }
+    setSwitching({ target, go });
+  }
+
+  async function saveThenSwitch() {
+    const pending = switching;
+    setSwitching(null);
+    if (pending === null) return;
+    // A save that is refused or fails keeps this project and everything typed:
+    // the switch does not go on.
+    if (await store()) pending.go(false);
+  }
+
+  function load(projectId: string, revision?: number, focus = false, target?: string) {
+    requestSwitch(target ?? opened?.name ?? '', (discard) => {
       focusOpened.current = focus;
-      void fetchAndOpen(projectId, revision);
+      void fetchAndOpen(projectId, revision, discard);
     });
   }
 
-  async function fetchAndOpen(projectId: string, revision?: number) {
+  function startNew() {
+    if (onNewProject === undefined) return;
+    requestSwitch(t('targetNew'), (discard) => {
+      // Any open, save or approval still answering is for the project left.
+      sequence.current++;
+      setWorking(false);
+      setMessage(null);
+      setApprovalNote('');
+      setScopeConfirmed(false);
+      if (discard) onDiscard?.();
+      onNewProject();
+      focusOpened.current = false;
+      window.setTimeout(() => {
+        document.getElementById(`${id}-current`)?.focus();
+      }, 0);
+    });
+  }
+
+  async function fetchAndOpen(projectId: string, revision?: number, discard = false) {
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
     const outcome = await open({ token, id: projectId, revision: revision ?? null });
     if (ticket !== sequence.current) return;
     setWorking(false);
-    if (outcome.kind === 'saved') onOpened(outcome.project, true);
-    else {
+    if (outcome.kind === 'saved') {
+      // Discarded only now that the other project is here: a failed open keeps it all.
+      if (discard) onDiscard?.();
+      setApprovalNote('');
+      setScopeConfirmed(false);
+      onOpened(outcome.project, true);
+    } else {
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
-      setMessage(say(outcome));
+      if (outcome.kind === 'refused' && outcome.code === 'project_not_found') {
+        // Deleted, or no longer the caller's, since the list was read.
+        setMessage(t('openGone'));
+        void refresh();
+        return;
+      }
+      // Not opened: what is open stays as it is (a refusal says why in its own words).
+      setMessage(outcome.kind === 'refused' ? say(outcome) : t('openFailed'));
     }
   }
 
@@ -429,6 +534,8 @@ export function ProjectsPanel({
     notThisEquipment?: LoadRef[],
   ): Promise<string | null> {
     if (opened === null) return null;
+    // A switch since (another project, a new one) makes this answer the old project's.
+    const at = sequence.current;
     const outcome = await resolve({
       token,
       id: opened.id,
@@ -439,8 +546,10 @@ export function ProjectsPanel({
       ...(notThisEquipment ? { notThisEquipment } : {}),
     });
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    if (at !== sequence.current) return null;
     if (outcome.kind !== 'recorded') return say(outcome);
     const reopened = await open({ token, id: opened.id, revision: opened.revision });
+    if (at !== sequence.current) return null;
     if (reopened.kind === 'saved') onOpened(reopened.project, false);
     return null;
   }
@@ -485,7 +594,33 @@ export function ProjectsPanel({
 
   return (
     <section className="card flex flex-col gap-4 p-4 md:p-5" data-testid="projects-panel">
-      <h2 className="text-lg font-semibold">{t('title')}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">{t('title')}</h2>
+        {onNewProject && (
+          <button
+            type="button"
+            disabled={working}
+            onClick={startNew}
+            className="btn btn-secondary btn-sm"
+            data-testid="project-new"
+          >
+            {t('newProject')}
+          </button>
+        )}
+      </div>
+      {onNewProject && (
+        <p
+          id={`${id}-current`}
+          tabIndex={-1}
+          className="text-sm"
+          dir="auto"
+          data-testid="project-current"
+        >
+          {opened
+            ? t(dirty ? 'currentUnsaved' : 'current', { name: opened.name })
+            : t(dirty ? 'currentNewUnsaved' : 'currentNew')}
+        </p>
+      )}
       {opened && (
         <div className="flex flex-wrap items-end gap-3 text-sm" data-testid="project-opened">
           <span id={`${id}-opened`} tabIndex={-1} data-testid="project-opened-name">
@@ -498,7 +633,8 @@ export function ProjectsPanel({
                 value={opened.revision}
                 disabled={working}
                 onChange={(event) => {
-                  load(opened.id, Number(event.target.value));
+                  const revision = Number(event.target.value);
+                  load(opened.id, revision, false, t('opened', { name: opened.name, revision }));
                 }}
                 className="input w-full sm:w-64"
               >
@@ -712,26 +848,72 @@ export function ProjectsPanel({
           {message}
         </p>
       )}
-      {page && page.projects.length === 0 && <p className="text-sm text-text-muted">{t('none')}</p>}
+      {page === null && !listError && (
+        <p role="status" className="text-sm text-text-muted" data-testid="projects-loading">
+          {t('loading')}
+        </p>
+      )}
+      {listError && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="projects-list-error">
+          <p role="alert" className="text-sm">
+            {t('listFailed')}
+          </p>
+          <button
+            type="button"
+            aria-disabled={listing}
+            onClick={() => {
+              if (!listing) void refresh();
+            }}
+            className="btn btn-secondary btn-sm"
+            data-testid="projects-retry"
+          >
+            {t('retry')}
+          </button>
+        </div>
+      )}
+      {page && page.projects.length === 0 && (
+        <p className="text-sm text-text-muted" data-testid="projects-empty">
+          {t('none')}
+        </p>
+      )}
       {page && page.projects.length > 0 && (
         <ul className="flex flex-col divide-y divide-border-subtle text-sm">
           {page.projects.map((project) => (
             <li
               key={project.id}
               data-testid={`project-${project.id}`}
+              aria-current={opened?.id === project.id ? 'true' : undefined}
               className="flex flex-wrap items-center gap-2 py-2"
             >
-              <span className="min-w-0 flex-1 truncate font-medium" dir="auto">
+              <span
+                id={`${id}-name-${project.id}`}
+                className="min-w-0 flex-1 break-words font-medium"
+                dir="auto"
+              >
                 {project.name}
               </span>
+              {keptFor.includes(project.id) && (
+                <span className="text-xs text-text-muted" data-testid="project-has-kept">
+                  {t('hasKept')}
+                </span>
+              )}
+              {opened?.id === project.id && (
+                <span className="text-xs font-semibold" data-testid="project-is-current">
+                  {t('isCurrent')}
+                </span>
+              )}
               <span className="text-text-muted">
                 {t('revisions', { count: project.revisions })}
+              </span>
+              <span className="text-text-muted" data-testid="project-updated">
+                {t('updated', { date: shortDate(project.updated_at, locale) })}
               </span>
               <button
                 type="button"
                 disabled={working}
+                aria-describedby={`${id}-name-${project.id}`}
                 onClick={() => {
-                  load(project.id, undefined, true);
+                  load(project.id, undefined, true, project.name);
                 }}
                 className="btn btn-sm btn-secondary"
               >
@@ -755,6 +937,84 @@ export function ProjectsPanel({
           ))}
         </ul>
       )}
+      {page?.next_cursor && (
+        <button
+          type="button"
+          aria-disabled={listing}
+          onClick={() => {
+            if (!listing && page.next_cursor) void refresh(page.next_cursor);
+          }}
+          className="btn btn-secondary btn-sm self-start"
+          data-testid="projects-more"
+        >
+          {t('more')}
+        </button>
+      )}
+      {onDiscard && (
+        <p className="text-xs text-text-muted" data-testid="projects-drafts-local">
+          {t('draftsLocal')}
+        </p>
+      )}
+      <Dialog
+        open={switching !== null}
+        onClose={() => {
+          setSwitching(null);
+        }}
+        title={t('switchTitle')}
+        closeLabel={tUi('close')}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2" data-testid="switch-dialog">
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setSwitching(null);
+              }}
+              data-testid="switch-cancel"
+            >
+              {t('switchCancel')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-danger"
+              onClick={() => {
+                const pending = switching;
+                setSwitching(null);
+                pending?.go(true);
+              }}
+              data-testid="switch-discard"
+            >
+              {opened ? t('switchDiscard', { name: opened.name }) : t('switchDiscardNew')}
+            </button>
+            {canSaveFirst && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  void saveThenSwitch();
+                }}
+                data-testid="switch-save"
+              >
+                {t('switchSave')}
+              </button>
+            )}
+          </div>
+        }
+      >
+        <p className="text-sm" dir="auto" data-testid="switch-body">
+          {t(canSaveFirst ? 'switchBody' : 'switchBodyNoSave', {
+            name: currentName,
+            target: switching?.target ?? '',
+          })}
+        </p>
+      </Dialog>
     </section>
   );
+}
+
+/** A list entry's save date, in the page's language (the date only). */
+function shortDate(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }

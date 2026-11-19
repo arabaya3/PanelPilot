@@ -242,7 +242,8 @@ describe('control needs on the design screen', () => {
     const row = await screen.findByTestId('project-p1');
     fireEvent.click(within(row).getByText('Open'));
     await waitFor(() => {
-      expect(screen.getByTestId('unsaved-dialog').closest('dialog')?.open).toBe(true);
+      // M14: opening another project asks in the projects panel (Save / Discard / Cancel).
+      expect(screen.getByTestId('switch-dialog').closest('dialog')?.open).toBe(true);
     });
     expect(api.open).not.toHaveBeenCalled();
   });
