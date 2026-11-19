@@ -39,6 +39,7 @@ import {
   type Configuration,
 } from '@/components/design/configuration-model';
 import { explainRefusal, refusalSentence } from '@/components/design/refusal-explain';
+import { goToTarget } from '@/components/design/configuration-contents';
 import type { BoardChoices } from '@/components/design/binding-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
@@ -613,6 +614,14 @@ function DesignWorkspace({
   }
   // M9b1: the overview's "show it" action asks the configuration panel to focus the refused entry.
   const [conflictJump, setConflictJump] = useState(0);
+  // After a binding need led to Design: the binding field to come back to (never run here).
+  const [designReturnFor, setDesignReturnFor] = useState('');
+  const [designReturn, setDesignReturn] = useState<{
+    binding: string;
+    field: string;
+    row: string;
+    section: string;
+  } | null>(null);
   // Where the Configuration editor puts its Contents (the top of the Configuration view).
   const [contentsSlot, setContentsSlot] = useState<HTMLElement | null>(null);
   /**
@@ -820,6 +829,12 @@ function DesignWorkspace({
       : identity === 'trial'
         ? `trial:${trialId ?? ''}`
         : 'signed-out';
+  // A way back belongs to the project it was made in: another project clears it.
+  const projectKey = `${ownerKey}|${opened?.id ?? ''}`;
+  if (designReturnFor !== projectKey) {
+    setDesignReturnFor(projectKey);
+    if (designReturn !== null) setDesignReturn(null);
+  }
   const currentOwner = useRef(ownerKey);
   // An export in flight: its buttons wait for it, so a double click sends one.
   const [exporting, setExporting] = useState(false);
@@ -1782,8 +1797,14 @@ function DesignWorkspace({
           />
         }
         actions={
-          <div className="flex flex-col items-start gap-1">
+          <div
+            id={`${id}-design-actions`}
+            tabIndex={-1}
+            aria-label={t('submit')}
+            className="flex flex-col items-start gap-1"
+          >
             <button
+              id={`${id}-design`}
               type="submit"
               form={formId}
               disabled={token === null || !complete || result.kind === 'working'}
@@ -1792,11 +1813,33 @@ function DesignWorkspace({
             >
               {result.kind === 'working' ? t('working') : t('submit')}
             </button>
+            {designReturn !== null && (
+              <a
+                href={`#${designReturn.field}`}
+                className="link max-w-xs whitespace-normal break-words text-sm underline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  const back = designReturn;
+                  selectView('configuration');
+                  // After the Configuration view shows: the field, else the binding, else the
+                  // bindings section (whatever still exists).
+                  window.setTimeout(() => {
+                    const reached =
+                      goToTarget(back.field) || goToTarget(back.row) || goToTarget(back.section);
+                    if (reached) setDesignReturn(null);
+                  }, 0);
+                }}
+                data-testid="design-back-to-binding"
+              >
+                {tc('needs.back', { binding: designReturn.binding })}
+              </a>
+            )}
             {/* A disabled button says nothing about why. Said only for what the
                 engineer can fix: a session still starting is not their doing. */}
             {incomplete && (
               <p
                 id={`${id}-incomplete`}
+                tabIndex={-1}
                 className="max-w-xs text-sm text-text-muted"
                 data-testid="design-incomplete"
               >
@@ -2634,6 +2677,14 @@ function DesignWorkspace({
               {opened && token !== null ? (
                 <ConfigurationPanel
                   contentsSlot={contentsSlot}
+                  onGoDesign={(target) => {
+                    setDesignReturn(target);
+                    // Design itself, or what explains why it cannot run yet, or (while it cannot
+                    // run for another reason, e.g. a design running) where it is; never run here.
+                    if (!goToTarget(`${id}-design`, `${id}-incomplete`)) {
+                      goToTarget(`${id}-design-actions`);
+                    }
+                  }}
                   key={`${ownerKey}|${opened.id}`}
                   token={token}
                   projectId={opened.id}

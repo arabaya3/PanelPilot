@@ -10,6 +10,14 @@
  * read-only validate endpoint and shows this binding's rows by the ids the
  * composer derives; the browser computes no wiring.
  */
+import { bindingNeeds } from '@/components/design/binding-needs';
+import {
+  BindingNeeds,
+  type DesignReturn,
+  type NeedForm,
+  type NeedReturn,
+  type NeedTargets,
+} from '@/components/design/binding-needs-view';
 import {
   explainRefusal,
   isRefusedField,
@@ -376,7 +384,17 @@ function BindingRow({
   onConfirm,
   refusedField = null,
   onPreviewRefusal,
+  needTargets = null,
+  refreshable = false,
+  onFollowCreate,
+  onGoDesign,
 }: {
+  /** Where "Needed on this board" leads (null: the list is not shown). */
+  needTargets?: NeedTargets | null;
+  /** Whether the choices can be refreshed now (the inputs changed since the design). */
+  refreshable?: boolean;
+  onFollowCreate?: ((back: NeedReturn, board: string, form: NeedForm) => void) | undefined;
+  onGoDesign?: ((back: NeedReturn) => void) | undefined;
   /** The field of this binding a save or preview refusal names, and whether its choice was refused. */
   refusedField?: { field: RefusalField; refused: boolean } | null;
   onPreviewRefusal: (explained: Explained | null, forValue: string) => void;
@@ -527,6 +545,19 @@ function BindingRow({
         </span>
         <span>{t('bindings.applies', { pattern: binding.pattern })}</span>
       </p>
+      {needTargets !== null && pattern !== undefined && (
+        <BindingNeeds
+          needs={bindingNeeds(value, binding, boardChoices, refreshable)}
+          bindingId={binding.id}
+          board={binding.board}
+          rowId={rowId}
+          targets={needTargets}
+          onFollowCreate={(back, board, form) => {
+            onFollowCreate?.(back, board, form);
+          }}
+          onGoDesign={onGoDesign}
+        />
+      )}
       {conflicted && (
         // A pointer, not a second announcement: the explanation is the one at the top.
         <p className="text-xs font-semibold" data-testid="binding-refused">
@@ -1130,7 +1161,13 @@ export function BindingsEditor({
   addFormId,
   issuesId,
   headerTools = null,
+  needTargets = null,
+  onFollowCreate,
+  onGoDesign,
 }: {
+  needTargets?: NeedTargets | null;
+  onFollowCreate?: ((back: NeedReturn, board: string, form: NeedForm) => void) | undefined;
+  onGoDesign?: ((back: DesignReturn) => void) | undefined;
   /** The add form's id and the issue overview's heading id (the Contents link to them). */
   addFormId?: string;
   issuesId?: string;
@@ -1238,6 +1275,7 @@ export function BindingsEditor({
             <button
               type="button"
               className={wrapButton('secondary')}
+              id={needTargets?.refresh}
               onClick={onRefreshChoices}
               data-testid="bindings-refresh-choices"
             >
@@ -1284,6 +1322,18 @@ export function BindingsEditor({
               onUnauthorized={onUnauthorized}
               savedRevision={savedRevision}
               refusedField={refusedFieldOf(binding.id)}
+              needTargets={needTargets}
+              refreshable={onRefreshChoices !== undefined}
+              onFollowCreate={onFollowCreate}
+              onGoDesign={(back) => {
+                const row = rowIdOf(back.binding);
+                onGoDesign?.({
+                  binding: back.binding,
+                  field: `${row}-${back.field}`,
+                  row,
+                  section: headingId,
+                });
+              }}
               onPreviewRefusal={(explained, forValue) => {
                 setPreviewRefusals((prev) => {
                   const others = Object.fromEntries(

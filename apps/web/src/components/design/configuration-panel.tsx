@@ -24,6 +24,7 @@ import {
   type MovedReference,
 } from '@/components/design/binding-model';
 import type { ConfirmedReference } from '@/components/design/draft';
+import type { DesignReturn } from '@/components/design/binding-needs-view';
 import {
   explainRefusal,
   refusalFieldId,
@@ -155,7 +156,10 @@ export function ConfigurationPanel({
   onConfirm,
   jumpToConflict = 0,
   contentsSlot = null,
+  onGoDesign,
 }: {
+  /** Go to the page's Design action from a binding need (never running it). */
+  onGoDesign?: ((back: DesignReturn) => void) | undefined;
   /** Where the editor's Contents is rendered (the top of the page's view); in place if null. */
   contentsSlot?: HTMLElement | null;
   token: string;
@@ -562,6 +566,7 @@ export function ConfigurationPanel({
       )}
       <ConfigurationEditor
         contentsSlot={contentsSlot}
+        onGoDesign={onGoDesign}
         value={doc}
         onChange={onChange}
         boards={boards}
