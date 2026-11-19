@@ -531,6 +531,38 @@ describe('answers for the project left', () => {
   });
 });
 
+describe('focus after opening', () => {
+  beforeEach(() => {
+    api.list.mockResolvedValue(TWO);
+  });
+
+  it('moves to the opened project, but never away from where the engineer went meanwhile', async () => {
+    const first = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockReturnValueOnce(first.promise);
+    renderScreen();
+    await openRow('p2');
+    // While it opens, the engineer moves on to another field.
+    const customer = overviewField('Customer');
+    customer.focus();
+    await act(async () => {
+      first.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await first.promise;
+    });
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    expect(document.activeElement).toBe(customer);
+
+    // Opening with focus left where it was: focus goes to the opened project.
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
+    customer.blur();
+    await openRow('p1');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+});
+
 describe('drafts kept per identity and project', () => {
   const body = (session: string, projectId: string | null, name: string) => ({
     session,

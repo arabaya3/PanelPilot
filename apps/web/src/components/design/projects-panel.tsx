@@ -408,12 +408,19 @@ export function ProjectsPanel({
   // Set by the Open button: once the project is open, focus moves to what
   // was opened, rather than falling to the page when the button is disabled.
   const focusOpened = useRef(false);
+  // What had focus when Open was pressed. Focus moves to the opened project
+  // only while it is still there (or on the page itself): never away from
+  // somewhere the engineer went while the project was opening.
+  const focusFrom = useRef<Element | null>(null);
   // In the commit that shows the opened project (a layout effect), so focus is
   // never left on the page between the project appearing and a later effect.
   useLayoutEffect(() => {
     if (!focusOpened.current || opened === null) return;
     focusOpened.current = false;
-    document.getElementById(`${id}-opened`)?.focus();
+    const active = document.activeElement;
+    const untouched = active === null || active === document.body || active === focusFrom.current;
+    focusFrom.current = null;
+    if (untouched) document.getElementById(`${id}-opened`)?.focus();
   }, [opened, id]);
 
   /**
@@ -445,6 +452,7 @@ export function ProjectsPanel({
   }
 
   function load(projectId: string, revision?: number, focus = false, target?: string) {
+    focusFrom.current = document.activeElement;
     requestSwitch(target ?? opened?.name ?? '', (discard) => {
       focusOpened.current = focus;
       void fetchAndOpen(projectId, revision, discard);
