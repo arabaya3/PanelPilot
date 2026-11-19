@@ -2334,6 +2334,7 @@ function DesignWorkspace({
                 beforeOpen={unsaved.guard}
                 onNewProject={startNewProject}
                 keptFor={keptFor}
+                workMark={`${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}|${String(confirmed.length)}`}
                 onDiscard={discardForSwitch}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
