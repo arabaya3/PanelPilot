@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale } from 'next-intl';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { Dialog } from '@/components/ui';
@@ -408,7 +408,9 @@ export function ProjectsPanel({
   // Set by the Open button: once the project is open, focus moves to what
   // was opened, rather than falling to the page when the button is disabled.
   const focusOpened = useRef(false);
-  useEffect(() => {
+  // In the commit that shows the opened project (a layout effect), so focus is
+  // never left on the page between the project appearing and a later effect.
+  useLayoutEffect(() => {
     if (!focusOpened.current || opened === null) return;
     focusOpened.current = false;
     document.getElementById(`${id}-opened`)?.focus();
