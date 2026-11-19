@@ -477,4 +477,46 @@ describe('edits made while Save is running', () => {
       });
     });
   }
+
+  it('a restore whose project cannot be reopened, during a save, is not overwritten by the save answer', async () => {
+    writeDraft({
+      session: 's',
+      project: { id: 'p1', revision: 1 },
+      clean: '',
+      info: { name: 'Restored name', number: '', customer: '', consultant: '', contractor: '' },
+      boards: draftBoards([blankBoard(0, 1, 'MDB')]),
+      profileText: '',
+      language: null,
+      market: '',
+    });
+    const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    const offer = await screen.findByTestId('draft-offer');
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    api.revise.mockReturnValueOnce(pending.promise);
+    fireEvent.click(saveButton());
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(1);
+    });
+    // The restore's reopen fails (the project is gone, say).
+    api.open.mockResolvedValueOnce({ kind: 'failed' });
+    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    fireEvent.click(within(screen.getByTestId('unsaved-dialog')).getByText('Discard changes'));
+    await screen.findByTestId('draft-project-gone');
+    await waitFor(() => {
+      expect(nameField().value).toBe('Restored name');
+    });
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: savedAs('Stored tower', 'X7') });
+      await pending.promise;
+    });
+    // The late answer neither reopens the project nor marks the restored work saved.
+    expect(screen.getByTestId('draft-project-gone')).toBeTruthy();
+    expect(nameField().value).toBe('Restored name');
+    expect(screen.getAllByText('Unsaved changes').length).toBeGreaterThan(0);
+  });
 });

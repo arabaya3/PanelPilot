@@ -1163,6 +1163,12 @@ function DesignWorkspace({
     // A new project's draft restored over an open project: that project goes first.
     if (draft.project === null && opened !== null) startNewProject();
     else if (draft.project === null) nextWorkspace();
+    else if (!reopened) {
+      // Its project could not be reopened: the restored work is still a new
+      // workspace, so an answer started before (a save in flight) is let go.
+      nextWorkspace();
+      submitted.current = null;
+    }
     const restoredAt = workspaceAt.current;
     setDraftProjectGone(!reopened);
     setRestoring(false);
