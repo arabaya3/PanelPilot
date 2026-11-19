@@ -491,6 +491,9 @@ export function ProjectsPanel({
       setScopeConfirmed(false);
       onOpened(outcome.project, true);
     } else {
+      // Nothing opened: no later change (a save, a revision) moves focus for it.
+      focusOpened.current = false;
+      focusFrom.current = null;
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       if (outcome.kind === 'refused' && outcome.code === 'project_not_found') {
         // Deleted, or no longer the caller's, since the list was read.

@@ -536,6 +536,52 @@ describe('focus after opening', () => {
     api.list.mockResolvedValue(TWO);
   });
 
+  it('moves to the opened project from the Open button that still has focus', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    renderScreen();
+    const open = within(await screen.findByTestId('project-p2')).getByText('Open');
+    open.focus();
+    fireEvent.click(open);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+
+  it('moves to the opened project after Discard in the switch dialog', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    renderScreen();
+    await completeForm('Typed tower');
+    const open = within(await screen.findByTestId('project-p2')).getByText('Open');
+    open.focus();
+    fireEvent.click(open);
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-discard'));
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+
+  it('a failed open leaves no focus move pending for a later change', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'failed' });
+    api.save.mockResolvedValue({ kind: 'saved', project: project('p9', 'Saved later') });
+    renderScreen();
+    await openRow('p2');
+    await projects().findByTestId('projects-message');
+    await completeForm('Saved later');
+    // Focus left on the page: only a pending move from the failed open would take it.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(projects().getByText('Save project'));
+    await waitFor(() => {
+      expect(api.save).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-opened-name')).not.toBeNull();
+    });
+    expect(document.activeElement).not.toBe(screen.getByTestId('project-opened-name'));
+  });
+
   it('moves to the opened project, but never away from where the engineer went meanwhile', async () => {
     const first = deferred<Awaited<ReturnType<typeof openProject>>>();
     api.open.mockReturnValueOnce(first.promise);
