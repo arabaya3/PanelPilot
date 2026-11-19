@@ -485,7 +485,8 @@ export function ProjectsPanel({
         void refresh();
         return;
       }
-      setMessage(say(outcome));
+      // Not opened: what is open stays as it is (a refusal says why in its own words).
+      setMessage(outcome.kind === 'refused' ? say(outcome) : t('openFailed'));
     }
   }
 

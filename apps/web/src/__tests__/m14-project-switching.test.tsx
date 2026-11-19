@@ -618,31 +618,40 @@ describe('drafts kept per identity and project', () => {
     });
   });
 
-  it("restoring another project's draft lets a design started before it go", async () => {
+  it("opening another project replaces an offer of a different project's draft, keeping it", async () => {
     api.list.mockResolvedValue(TWO);
-    const pending = deferred<Awaited<ReturnType<typeof designProject>>>();
-    const designImpl = vi.fn<typeof designProject>().mockReturnValue(pending.promise);
     api.open
       .mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') })
       .mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
-    writeDraft(body('s', 'p1', 'Restored p1 work'));
-    renderScreen({ designImpl });
+    writeDraft(body('s', 'p1', 'Kept p1 work'));
+    renderScreen();
     const offer = await screen.findByTestId('draft-offer');
-    // The offer is left for now: p2 is opened and designed first.
+    // The offer names the project it belongs to.
+    expect(within(offer).getByTestId('draft-offer-project').textContent).toContain('Kept p1 work');
     await openRow('p2');
     await waitFor(() => {
       expect(overviewField('Project name').value).toBe('Second plant');
     });
-    fireEvent.click(designButton());
-    expect(designImpl).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    // p2 has no draft: nothing is offered on it, and p1's draft stays kept.
+    expect(screen.queryByTestId('draft-offer')).toBeNull();
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+    // Edits to p2 are kept in p2's own slot meanwhile.
+    type(overviewField('Project name'), 'Second plant edited');
     await waitFor(() => {
-      expect(overviewField('Project name').value).toBe('Restored p1 work');
+      expect(readDraft('s', 'p2')?.info.name).toBe('Second plant edited');
     });
-    await act(async () => {
-      pending.resolve({ kind: 'designed', response: DESIGNED });
-      await pending.promise;
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+  });
+
+  it("work typed while another project's draft is offered is kept in its own slot", async () => {
+    api.list.mockResolvedValue(TWO);
+    writeDraft(body('s', 'p1', 'Kept p1 work'));
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    type(overviewField('Project name'), 'Typed while offered');
+    await waitFor(() => {
+      expect(readDraft('s', null)?.info.name).toBe('Typed while offered');
     });
-    expect(screen.queryByTestId('design-result')).toBeNull();
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
   });
 });

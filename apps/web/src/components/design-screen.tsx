@@ -948,7 +948,10 @@ function DesignWorkspace({
   }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
-    if (draftOwner === null || draftChecked !== draftOwner || draftOffer !== null) return;
+    if (draftOwner === null || draftChecked !== draftOwner) return;
+    // While a draft of this very project is offered, it is not overwritten;
+    // work on another project is kept in its own slot meanwhile (M14).
+    if (draftOffer !== null && (draftOffer.project?.id ?? null) === (opened?.id ?? null)) return;
     if (!dirty || discardedSnapshot.current === snapshot) {
       // Only this project's draft: another project's is never touched (M14).
       if (writtenSlot.current !== null && writtenSlot.current === (opened?.id ?? 'new')) {
@@ -1210,10 +1213,10 @@ function DesignWorkspace({
       // M14: the form now holds another project (or another revision of it):
       // a new workspace, so nothing started for the one before is applied.
       nextWorkspace();
-      // The draft kept for this project, if any, is offered; never another's.
-      if (draftOwner !== null && draftOffer === null) {
-        const kept = readDraft(draftOwner, project.id, tokenTenant);
-        if (kept !== null) setDraftOffer(kept);
+      // Only the draft kept for this project is offered, never another's; one
+      // offered for another project stays kept, to be offered with that project.
+      if (draftOwner !== null) {
+        setDraftOffer(readDraft(draftOwner, project.id, tokenTenant));
       }
     }
     setOpened({
@@ -1371,11 +1374,8 @@ function DesignWorkspace({
     setLastSave(null);
     setResult({ kind: 'idle' });
     setExportError(null);
-    // The draft kept for a new project, if any, is offered back; never another's.
-    if (draftOwner !== null && draftOffer === null) {
-      const kept = readDraft(draftOwner, null, tokenTenant);
-      if (kept !== null) setDraftOffer(kept);
-    }
+    // Only the draft kept for a new project is offered, never another's.
+    if (draftOwner !== null) setDraftOffer(readDraft(draftOwner, null, tokenTenant));
   }
 
   async function run() {
@@ -2030,6 +2030,14 @@ function DesignWorkspace({
               </div>
             }
           >
+            <span dir="auto" data-testid="draft-offer-project">
+              {draftOffer.project === null
+                ? tw('draft.forNew')
+                : tw('draft.forProject', {
+                    name: draftOffer.info.name || draftOffer.project.id,
+                    revision: draftOffer.project.revision,
+                  })}
+            </span>{' '}
             {tw('draft.body')}
           </Notice>
         )}
