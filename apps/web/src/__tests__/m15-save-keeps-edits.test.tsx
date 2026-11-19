@@ -139,6 +139,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
+  // A view chosen in one test (a tab click sets ?view=) must not open the next.
+  window.history.replaceState(null, '', '/');
 });
 
 function deferred<T>() {
@@ -395,5 +397,19 @@ describe('edits made while Save is running', () => {
     await waitFor(() => {
       expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Configuration' }));
     });
+  });
+
+  it('an ordinary Open from Overview still puts focus on the opened project, even if focus fell to the page', async () => {
+    renderScreen();
+    const open = within(await screen.findByTestId('project-p1')).getByText('Open');
+    // As in a browser, the pressed button is disabled while opening and focus falls to the page.
+    open.focus();
+    fireEvent.click(open);
+    (document.activeElement as HTMLElement | null)?.blur();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
   });
 });

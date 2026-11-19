@@ -529,18 +529,22 @@ export function ProjectsPanel({
     setWorking(false);
     if (outcome.kind === 'saved') {
       const arrived = outcome.project;
-      const apply = (drop: boolean) => {
+      const apply = (drop: boolean, fromDialog = false) => {
         // Discarded only now that the other project is here: a failed open keeps it all.
         if (drop) onDiscard?.();
         setApprovalNote('');
         setScopeConfirmed(false);
         onOpened(arrived, true);
-        // Chosen in the dialog from another view: the field it returned focus
-        // to went with the project replaced; focus is not left on the page.
-        window.setTimeout(() => {
-          const active = document.activeElement;
-          if (active === null || active === document.body) focusVisible(null);
-        }, 0);
+        // Only when chosen in the dialog shown on arrival (the engineer was
+        // working elsewhere, maybe in another view): the field the dialog
+        // returned focus to went with the project replaced, so focus is not
+        // left on the page. Any other open is focused by the layout effect.
+        if (fromDialog) {
+          window.setTimeout(() => {
+            const active = document.activeElement;
+            if (active === null || active === document.body) focusVisible(null);
+          }, 0);
+        }
       };
       // Work typed while it was opening (the page was clean when Open was
       // pressed): never replaced without asking.
@@ -548,7 +552,12 @@ export function ProjectsPanel({
         // The engineer is working elsewhere on the page: focus is not moved for it.
         focusOpened.current = false;
         focusFrom.current = null;
-        setSwitching({ target: arrived.name, go: apply });
+        setSwitching({
+          target: arrived.name,
+          go: (drop) => {
+            apply(drop, true);
+          },
+        });
         return;
       }
       apply(discard);
