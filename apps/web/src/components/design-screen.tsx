@@ -929,6 +929,18 @@ function DesignWorkspace({
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
   const lastWritten = useRef<string | null>(null);
+  // M14: the draft slot this page itself wrote (its project id, or 'new'). Only
+  // that slot is ever cleared when the work is clean again: a draft kept for
+  // another project, or one not yet offered, is never removed by this page.
+  const writtenSlot = useRef<string | null>(null);
+  // M14: bumped with each switch, synchronously (the state follows), so an
+  // answer started before one can tell it is no longer this workspace's.
+  const workspaceAt = useRef(0);
+  function nextWorkspace(): number {
+    workspaceAt.current += 1;
+    setWorkspace(workspaceAt.current);
+    return workspaceAt.current;
+  }
   useEffect(() => {
     if (draftOwner === null || draftChecked === draftOwner) return;
     setDraftOffer(readDraft(draftOwner, undefined, tokenTenant));
@@ -939,7 +951,10 @@ function DesignWorkspace({
     if (draftOwner === null || draftChecked !== draftOwner || draftOffer !== null) return;
     if (!dirty || discardedSnapshot.current === snapshot) {
       // Only this project's draft: another project's is never touched (M14).
-      if (lastWritten.current !== '') clearDraft(draftOwner, opened?.id ?? null);
+      if (writtenSlot.current !== null && writtenSlot.current === (opened?.id ?? 'new')) {
+        clearDraft(draftOwner, opened?.id ?? null);
+      }
+      writtenSlot.current = null;
       lastWritten.current = '';
       return;
     }
@@ -975,8 +990,10 @@ function DesignWorkspace({
     };
     const text = JSON.stringify(draft);
     if (text === lastWritten.current) return;
-    if (writeDraft(draft, tokenTenant)) lastWritten.current = text;
-    else console.warn('Unsaved work could not be kept in session storage.');
+    if (writeDraft(draft, tokenTenant)) {
+      lastWritten.current = text;
+      writtenSlot.current = opened?.id ?? 'new';
+    } else console.warn('Unsaved work could not be kept in session storage.');
   });
 
   async function restoreDraft(draft: DesignDraft) {
@@ -997,6 +1014,8 @@ function DesignWorkspace({
         return;
       }
       if (outcome.kind === 'saved') {
+        // M14: the restored work is its own workspace: nothing started before applies.
+        nextWorkspace();
         onOpened(outcome.project, false);
         reopened = true;
         // The unsaved edits replace the stored configuration in the editor;
@@ -1008,6 +1027,10 @@ function DesignWorkspace({
         }
       }
     }
+    // A new project's draft restored over an open project: that project goes first.
+    if (draft.project === null && opened !== null) startNewProject();
+    else if (draft.project === null) nextWorkspace();
+    const restoredAt = workspaceAt.current;
     setDraftProjectGone(!reopened);
     setRestoring(false);
     setDraftOffer(null);
@@ -1023,7 +1046,10 @@ function DesignWorkspace({
     if (proposalId !== null && token !== null) {
       // Read again from the server: the draft keeps only its id, never its decisions.
       void getAiProposalImpl({ token, id: proposalId }).then((outcome) => {
-        if (outcome.kind === 'proposed') setAiProposal(outcome.proposal);
+        // Only while the page is still this restored work (no switch since).
+        if (outcome.kind === 'proposed' && workspaceAt.current === restoredAt) {
+          setAiProposal(outcome.proposal);
+        }
       });
     }
     if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
@@ -1041,6 +1067,14 @@ function DesignWorkspace({
     const offered = draftOffer;
     setDraftOffer(null);
     if (offered !== null) clearDraft(offered.session, offered.project?.id ?? null);
+    // The project on the page may have a draft of its own, held back while
+    // this offer showed: it is offered now, never removed unseen (M14).
+    if (draftOwner !== null) {
+      const own = readDraft(draftOwner, opened?.id ?? null, tokenTenant);
+      if (own !== null && (own.project?.id ?? null) !== (offered?.project?.id ?? null)) {
+        setDraftOffer(own);
+      }
+    }
   }
 
   /**
@@ -1052,12 +1086,14 @@ function DesignWorkspace({
     discardedSnapshot.current = snapshot;
     if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
     lastWritten.current = '';
+    writtenSlot.current = null;
   }
 
   function discardChanges() {
     discardedSnapshot.current = snapshot;
     if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
     lastWritten.current = '';
+    writtenSlot.current = null;
     unsaved.discard();
   }
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
@@ -1173,7 +1209,7 @@ function DesignWorkspace({
     if (fill) {
       // M14: the form now holds another project (or another revision of it):
       // a new workspace, so nothing started for the one before is applied.
-      setWorkspace((current) => current + 1);
+      nextWorkspace();
       // The draft kept for this project, if any, is offered; never another's.
       if (draftOwner !== null && draftOffer === null) {
         const kept = readDraft(draftOwner, project.id, tokenTenant);
@@ -1291,7 +1327,7 @@ function DesignWorkspace({
    * market (a preference of the page, not of the project) stays.
    */
   function startNewProject() {
-    setWorkspace((current) => current + 1);
+    nextWorkspace();
     setOpened(null);
     setHistory([]);
     setOpenedModel(null);
@@ -1330,7 +1366,8 @@ function DesignWorkspace({
     setClean(snapshotOf(INITIAL_INFO, [board], '', null, latestMarket.current, {}));
     pristine.current = true;
     discardedSnapshot.current = null;
-    lastWritten.current = null;
+    lastWritten.current = '';
+    writtenSlot.current = null;
     setLastSave(null);
     setResult({ kind: 'idle' });
     setExportError(null);

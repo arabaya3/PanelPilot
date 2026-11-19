@@ -851,12 +851,14 @@ export function ProjectsPanel({
       )}
       {listError && (
         <div className="flex flex-wrap items-center gap-2" data-testid="projects-list-error">
-          <p className="text-sm">{t('listFailed')}</p>
+          <p role="alert" className="text-sm">
+            {t('listFailed')}
+          </p>
           <button
             type="button"
-            disabled={listing}
+            aria-disabled={listing}
             onClick={() => {
-              void refresh();
+              if (!listing) void refresh();
             }}
             className="btn btn-secondary btn-sm"
             data-testid="projects-retry"
@@ -929,9 +931,9 @@ export function ProjectsPanel({
       {page?.next_cursor && (
         <button
           type="button"
-          disabled={listing}
+          aria-disabled={listing}
           onClick={() => {
-            if (page.next_cursor) void refresh(page.next_cursor);
+            if (!listing && page.next_cursor) void refresh(page.next_cursor);
           }}
           className="btn btn-secondary btn-sm self-start"
           data-testid="projects-more"

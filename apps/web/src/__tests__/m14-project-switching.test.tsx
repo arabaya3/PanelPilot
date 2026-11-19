@@ -598,4 +598,51 @@ describe('drafts kept per identity and project', () => {
     });
     expect(readDraft('s', 'p1')).toBeNull();
   });
+
+  it('dismissing the arrival offer never removes another draft, which is offered next', async () => {
+    api.list.mockResolvedValue(TWO);
+    writeDraft(body('s', null, 'Kept for a new project'));
+    // Written last, so offered first on arrival.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    writeDraft(body('s', 'p1', 'Kept for p1'));
+    renderScreen();
+    const offer = await screen.findByTestId('draft-offer');
+    fireEvent.click(within(offer).getByText('Discard it'));
+    // The new project's draft (the page shows a new project) is kept and offered now.
+    expect(readDraft('s', null)?.info.name).toBe('Kept for a new project');
+    expect(readDraft('s', 'p1')).toBeNull();
+    const next = await screen.findByTestId('draft-offer');
+    fireEvent.click(within(next).getByText('Restore unsaved work'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Kept for a new project');
+    });
+  });
+
+  it("restoring another project's draft lets a design started before it go", async () => {
+    api.list.mockResolvedValue(TWO);
+    const pending = deferred<Awaited<ReturnType<typeof designProject>>>();
+    const designImpl = vi.fn<typeof designProject>().mockReturnValue(pending.promise);
+    api.open
+      .mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') })
+      .mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
+    writeDraft(body('s', 'p1', 'Restored p1 work'));
+    renderScreen({ designImpl });
+    const offer = await screen.findByTestId('draft-offer');
+    // The offer is left for now: p2 is opened and designed first.
+    await openRow('p2');
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    fireEvent.click(designButton());
+    expect(designImpl).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Restored p1 work');
+    });
+    await act(async () => {
+      pending.resolve({ kind: 'designed', response: DESIGNED });
+      await pending.promise;
+    });
+    expect(screen.queryByTestId('design-result')).toBeNull();
+  });
 });
