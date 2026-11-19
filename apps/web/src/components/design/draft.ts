@@ -302,12 +302,14 @@ function quarantine(store: Storage, raw: string, reason: string): boolean {
   const before = readKey(store, QUARANTINE_KEY);
   // What is in quarantine could not be read: writing would replace it unseen.
   if (before === undefined) return false;
-  let list: unknown[] = [];
+  let list: unknown[];
   try {
     const parsed: unknown = JSON.parse(before ?? '[]');
-    if (Array.isArray(parsed)) list = parsed;
+    // A quarantine this page cannot read is never replaced unseen.
+    if (!Array.isArray(parsed)) return false;
+    list = parsed;
   } catch {
-    list = [];
+    return false;
   }
   // Kept once: the same data set aside again does not push anything else out.
   if (list.some((entry) => isFields(entry) && entry.raw === raw)) return true;

@@ -1100,4 +1100,15 @@ describe('drafts kept per identity and project', () => {
     expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('earlier entry');
     expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toContain('broken');
   });
+
+  it('a quarantine that cannot be parsed is never replaced', () => {
+    window.sessionStorage.setItem(QUARANTINE_KEY, '{not json');
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ v: 2, drafts: { 's|p1': { broken: true } } }),
+    );
+    expect(writeDraft(body('s', 'p1', 'A'))).toBe(false);
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toBe('{not json');
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toContain('broken');
+  });
 });
