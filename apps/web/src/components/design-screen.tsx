@@ -352,9 +352,17 @@ export function snapshotOf(
   return canonicalJson(work);
 }
 
-/** JSON with every object's keys in a stable order, row keys and AI item ids left out. */
+/**
+ * JSON with every object's keys in a stable order, row keys and AI item ids
+ * left out, and text without the spaces around it: a save sends (and the
+ * revision stores) text trimmed, so text differing only by those spaces is
+ * the same work, and setting a field back to its stored value reads clean.
+ */
 function canonicalJson(work: unknown): string {
-  return sortedJson(work, (key) => key === 'key' || key === 'aiItem');
+  return JSON.stringify(
+    JSON.parse(sortedJson(work, (key) => key === 'key' || key === 'aiItem')),
+    (_key, value: unknown) => (typeof value === 'string' ? value.trim() : value),
+  );
 }
 
 /**
@@ -879,6 +887,7 @@ function DesignWorkspace({
     const before = heldTenant.current;
     heldTenant.current = tokenTenant;
     if (before === null || before === tokenTenant || opened === null) return;
+    submitted.current = null;
     setOpened(null);
     setHistory([]);
     setValidation(null);
@@ -958,6 +967,11 @@ function DesignWorkspace({
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
+  // The whole work on the page (schedule, configuration, drop choice): what a
+  // discard is compared with. The schedule snapshot alone left configuration
+  // work (a restored copy, later edits) taken for the discarded work, so its
+  // copy was cleared and nothing more was kept.
+  const discardMark = `${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}`;
   const lastWritten = useRef<string | null>(null);
   // M14: the copy this page itself keeps the work in (its project, and copy 1
   // or 2). Only that copy is ever written, or cleared when the work is clean
@@ -985,7 +999,7 @@ function DesignWorkspace({
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner) return;
     const here = opened?.id ?? null;
-    if (!dirty || discardedSnapshot.current === snapshot) {
+    if (!dirty || discardedSnapshot.current === discardMark) {
       // Only the copy this page wrote, for this project (M14).
       const mine = owned.current;
       if (mine !== null && mine.owner === draftOwner && mine.project === here) {
@@ -1146,6 +1160,8 @@ function DesignWorkspace({
       if (outcome.kind === 'saved') {
         // M14: the restored work is its own workspace: nothing started before applies.
         nextWorkspace();
+        // A save that never answered is not matched against the restored revision.
+        submitted.current = null;
         onOpened(outcome.project, false);
         reopened = true;
         // The unsaved edits replace the stored configuration in the editor;
@@ -1160,6 +1176,25 @@ function DesignWorkspace({
     // A new project's draft restored over an open project: that project goes first.
     if (draft.project === null && opened !== null) startNewProject();
     else if (draft.project === null) nextWorkspace();
+    else if (!reopened) {
+      // Its project could not be reopened: the restored work is still a new
+      // workspace, so an answer started before (a save in flight) is let go.
+      nextWorkspace();
+      submitted.current = null;
+      // The revision it belongs to is still the one on the page: its unsaved
+      // configuration comes back too, over that revision's baseline.
+      // Only onto the very revision it was made against: never onto another.
+      if (
+        draft.configuration &&
+        opened !== null &&
+        opened.id === draft.project.id &&
+        opened.revision === draft.project.revision
+      ) {
+        setConfigDoc(draft.configuration.doc);
+        setDropUnrecoverable(draft.configuration.dropUnrecoverable);
+        setConfirmed([]);
+      }
+    }
     const restoredAt = workspaceAt.current;
     setDraftProjectGone(!reopened);
     setRestoring(false);
@@ -1212,7 +1247,7 @@ function DesignWorkspace({
    * draft goes; the page itself is replaced by the caller.
    */
   function discardForSwitch() {
-    discardedSnapshot.current = snapshot;
+    discardedSnapshot.current = discardMark;
     const mine = owned.current;
     if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;
@@ -1221,7 +1256,7 @@ function DesignWorkspace({
   }
 
   function discardChanges() {
-    discardedSnapshot.current = snapshot;
+    discardedSnapshot.current = discardMark;
     const mine = owned.current;
     if (mine !== null) clearDraft(mine.owner, mine.project, mine.copy);
     owned.current = null;
@@ -1245,6 +1280,8 @@ function DesignWorkspace({
   const basis = `${inputs}|${titleBasis(titleRevisions)}`;
   // Set by a save that just succeeded, for the `onOpened` that follows it.
   const rebaseOnSave = useRef(false);
+  // The configuration part of the save in flight, as submitted (M15).
+  const submitted = useRef<{ doc: string; drop: boolean } | null>(null);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -1369,13 +1406,26 @@ function DesignWorkspace({
     // Reopening a revision (or a save answering with the one stored) loads
     // its own stored configuration into the editor.
     const stored = normalized(project.configuration ?? emptyConfiguration());
-    setConfigDoc(stored);
+    // A save's answer: the stored revision becomes the baseline, but what was
+    // edited since the save was submitted stays on the page (unsaved): only
+    // what still equals the submitted copy is replaced by the stored one.
+    const submittedNow = fill ? null : submitted.current;
+    submitted.current = null;
+    if (submittedNow === null) {
+      setConfigDoc(stored);
+      setDropUnrecoverable(false);
+      // Confirmations answer the revision they were made against: a newly opened one starts clean.
+      setConfirmed([]);
+    } else {
+      setConfigDoc((current) => (sortedJson(current) === submittedNow.doc ? stored : current));
+      setDropUnrecoverable((current) => (current === submittedNow.drop ? false : current));
+      // Confirmations answer the revision they were made against, which the
+      // save just superseded: they never carry over (even one made meanwhile).
+      setConfirmed([]);
+    }
     setConfigBaseline(sortedJson(stored));
     setConfigStatus(project.configuration_status);
-    setDropUnrecoverable(false);
     setConfigRefusal(null);
-    // Confirmations answer the revision they were made against: a newly opened one starts clean.
-    setConfirmed([]);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
     setOpenedLinks(storedLinksOf(project));
@@ -1460,6 +1510,8 @@ function DesignWorkspace({
    */
   function startNewProject() {
     nextWorkspace();
+    // A save still answering is for the project left: nothing is matched against it.
+    submitted.current = null;
     setOpened(null);
     setHistory([]);
     setOpenedModel(null);
@@ -2361,6 +2413,15 @@ function DesignWorkspace({
                 })}
                 onSaveState={forOwner((state: 'saving' | 'saved' | 'failed') => {
                   setLastSave(state);
+                  // The copy submitted, as this closure (the save's) holds it:
+                  // its answer replaces only what still equals it (see onOpened).
+                  if (state === 'saving') {
+                    submitted.current = {
+                      doc: sortedJson(configDoc),
+                      drop: dropUnrecoverable,
+                    };
+                  }
+                  if (state === 'failed') submitted.current = null;
                   if (state === 'saved') setTooLong([]);
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.

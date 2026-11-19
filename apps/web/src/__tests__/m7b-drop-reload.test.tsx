@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -267,5 +267,80 @@ describe('"save without that configuration" across a reload', () => {
       expect(unsaved()).toBe(0);
     });
     expect(stored()).toBeNull();
+  });
+
+  describe('"save without that configuration" changed while Save is in flight', () => {
+    function deferred<T>() {
+      let resolve: (value: T) => void = () => undefined;
+      const promise = new Promise<T>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    }
+    const saveButton = () =>
+      within(screen.getByTestId('view-overview')).getByRole('button', {
+        name: en.design.projects.saveRevision,
+      });
+
+    const sent = () => (api.revise.mock.calls[0]?.[0] ?? {}) as { configurationRemoved?: true };
+
+    for (const outcome of ['saved', 'failed'] as const) {
+      it(`ticked while Save runs (${outcome}): the server got the submitted choice; the newer stays ticked and unsaved`, async () => {
+        const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+        renderScreen();
+        fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+        await waitFor(() => {
+          expect(drop().checked).toBe(false);
+        });
+        // Something else unsaved, so Save is offered; the choice is left unticked.
+        fireEvent.change(within(screen.getByTestId('view-overview')).getByLabelText('Customer'), {
+          target: { value: 'Synthetic customer' },
+        });
+        api.revise.mockReturnValueOnce(pending.promise);
+        fireEvent.click(saveButton());
+        await waitFor(() => {
+          expect(api.revise).toHaveBeenCalledTimes(1);
+        });
+        fireEvent.click(drop());
+        await act(async () => {
+          pending.resolve(
+            outcome === 'saved'
+              ? { kind: 'saved', project: project(3, 'not_recoverable') }
+              : { kind: 'failed' },
+          );
+          await pending.promise;
+        });
+        expect(sent().configurationRemoved).toBeUndefined();
+        expect(drop().checked).toBe(true);
+        // Unsaved, whichever way the save answered.
+        expect(screen.getByTestId('project-current').textContent).toContain('with unsaved changes');
+        await waitFor(() => {
+          expect(parseDraft(stored())?.configuration?.dropUnrecoverable).toBe(true);
+        });
+      });
+    }
+
+    it('unticked while a removal is being saved: the removal is stored (server state); no choice is left', async () => {
+      const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+      renderScreen();
+      await openAndTick();
+      api.revise.mockReturnValueOnce(pending.promise);
+      fireEvent.click(saveButton());
+      await waitFor(() => {
+        expect(api.revise).toHaveBeenCalledTimes(1);
+      });
+      fireEvent.click(drop());
+      await act(async () => {
+        pending.resolve({ kind: 'saved', project: project(3, 'none') });
+        await pending.promise;
+      });
+      // What the server stored: the removal that was submitted.
+      expect(sent().configurationRemoved).toBe(true);
+      // Revision 3 has no configuration: there is nothing left to keep, so no choice
+      // is shown and the page reads as the stored revision (the configuration
+      // remains in revision 2).
+      expect(config().queryByTestId('configuration-drop-unrecoverable')).toBeNull();
+      expect(unsaved()).toBe(0);
+    });
   });
 });

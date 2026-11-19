@@ -1,6 +1,7 @@
 'use client';
 
 import { useLocale } from 'next-intl';
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
@@ -259,6 +260,11 @@ export function ProjectsPanel({
     go: (discard: boolean, mark?: string) => void;
   } | null>(null);
   const tUi = useIsolatingTranslations('ui');
+  // The switch dialog is portalled to the page once on the client (no server markup to match).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [ownNote, setOwnNote] = useState('');
   const note = heldNote ?? ownNote;
   const setNote = onNoteChange ?? setOwnNote;
@@ -432,7 +438,7 @@ export function ProjectsPanel({
     const active = document.activeElement;
     const untouched = active === null || active === document.body || active === focusFrom.current;
     focusFrom.current = null;
-    if (untouched) document.getElementById(`${id}-opened`)?.focus();
+    if (untouched) focusVisible(document.getElementById(`${id}-opened`));
   }, [opened, id]);
 
   /**
@@ -461,11 +467,14 @@ export function ProjectsPanel({
     // A save that is refused or fails keeps this project and everything typed:
     // the switch does not go on.
     if (!(await store())) return;
+    // A click made since (another project, a new one) is newer than this switch.
+    const at = sequence.current;
     // Once the page has rendered against the saved baseline: work typed while
     // it saved is still unsaved, and is asked about before anything replaces
     // it. What the save itself reset (confirmations, the stored configuration)
     // is not an edit.
     await new Promise((resolve) => window.setTimeout(resolve, 0));
+    if (sequence.current !== at) return;
     if (dirtyNow.current) {
       setSwitching(pending);
       return;
@@ -520,12 +529,22 @@ export function ProjectsPanel({
     setWorking(false);
     if (outcome.kind === 'saved') {
       const arrived = outcome.project;
-      const apply = (drop: boolean) => {
+      const apply = (drop: boolean, fromDialog = false) => {
         // Discarded only now that the other project is here: a failed open keeps it all.
         if (drop) onDiscard?.();
         setApprovalNote('');
         setScopeConfirmed(false);
         onOpened(arrived, true);
+        // Only when chosen in the dialog shown on arrival (the engineer was
+        // working elsewhere, maybe in another view): the field the dialog
+        // returned focus to went with the project replaced, so focus is not
+        // left on the page. Any other open is focused by the layout effect.
+        if (fromDialog) {
+          window.setTimeout(() => {
+            const active = document.activeElement;
+            if (active === null || active === document.body) focusVisible(null);
+          }, 0);
+        }
       };
       // Work typed while it was opening (the page was clean when Open was
       // pressed): never replaced without asking.
@@ -533,7 +552,12 @@ export function ProjectsPanel({
         // The engineer is working elsewhere on the page: focus is not moved for it.
         focusOpened.current = false;
         focusFrom.current = null;
-        setSwitching({ target: arrived.name, go: apply });
+        setSwitching({
+          target: arrived.name,
+          go: (drop) => {
+            apply(drop, true);
+          },
+        });
         return;
       }
       apply(discard);
@@ -1018,59 +1042,66 @@ export function ProjectsPanel({
           {t('draftsLocal')}
         </p>
       )}
-      <Dialog
-        open={switching !== null}
-        onClose={() => {
-          setSwitching(null);
-        }}
-        title={t('switchTitle')}
-        closeLabel={tUi('close')}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2" data-testid="switch-dialog">
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => {
-                setSwitching(null);
-              }}
-              data-testid="switch-cancel"
-            >
-              {t('switchCancel')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-danger"
-              onClick={() => {
-                const pending = switching;
-                setSwitching(null);
-                pending?.go(true);
-              }}
-              data-testid="switch-discard"
-            >
-              {opened ? t('switchDiscard', { name: opened.name }) : t('switchDiscardNew')}
-            </button>
-            {canSaveFirst && (
-              <button
-                type="button"
-                className="btn btn-sm btn-primary"
-                onClick={() => {
-                  void saveThenSwitch();
-                }}
-                data-testid="switch-save"
-              >
-                {t('switchSave')}
-              </button>
-            )}
-          </div>
-        }
-      >
-        <p className="text-sm" dir="auto" data-testid="switch-body">
-          {t(canSaveFirst ? 'switchBody' : 'switchBodyNoSave', {
-            name: currentName,
-            target: switching?.target ?? '',
-          })}
-        </p>
-      </Dialog>
+      {/* Rendered at the page level: the panel sits in a view that is hidden
+          while another tab is shown, and a modal inside a hidden view would
+          block the page without being seen. */}
+      {mounted &&
+        createPortal(
+          <Dialog
+            open={switching !== null}
+            onClose={() => {
+              setSwitching(null);
+            }}
+            title={t('switchTitle')}
+            closeLabel={tUi('close')}
+            footer={
+              <div className="flex flex-wrap justify-end gap-2" data-testid="switch-dialog">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => {
+                    setSwitching(null);
+                  }}
+                  data-testid="switch-cancel"
+                >
+                  {t('switchCancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => {
+                    const pending = switching;
+                    setSwitching(null);
+                    pending?.go(true);
+                  }}
+                  data-testid="switch-discard"
+                >
+                  {opened ? t('switchDiscard', { name: opened.name }) : t('switchDiscardNew')}
+                </button>
+                {canSaveFirst && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      void saveThenSwitch();
+                    }}
+                    data-testid="switch-save"
+                  >
+                    {t('switchSave')}
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <p className="text-sm" dir="auto" data-testid="switch-body">
+              {t(canSaveFirst ? 'switchBody' : 'switchBodyNoSave', {
+                name: currentName,
+                target: switching?.target ?? '',
+              })}
+            </p>
+          </Dialog>,
+          document.body,
+        )}
     </section>
   );
 }
@@ -1080,4 +1111,17 @@ function shortDate(iso: string, locale: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+}
+
+/**
+ * Focus `target` when it can be seen; when it sits in a hidden view (another
+ * tab is shown) or is gone, the selected tab instead, so focus is never left
+ * on the page.
+ */
+function focusVisible(target: HTMLElement | null): void {
+  if (target !== null && target.closest('[hidden]') === null) {
+    target.focus();
+    return;
+  }
+  document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
 }
