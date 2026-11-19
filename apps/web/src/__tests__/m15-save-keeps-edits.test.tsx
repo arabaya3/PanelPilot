@@ -569,4 +569,40 @@ describe('edits made while Save is running', () => {
       expect(JSON.stringify(storedDrafts())).toContain('XE');
     });
   });
+
+  it('a failed-reopen restore never applies its configuration onto another revision', async () => {
+    writeDraft({
+      session: 's',
+      project: { id: 'p1', revision: 7 },
+      clean: '',
+      info: { ...REQUEST.info, name: 'Restored name' },
+      boards: draftBoards([blankBoard(0, 1, 'MDB')]),
+      profileText: '',
+      language: null,
+      market: '',
+      configuration: {
+        doc: {
+          ...STORED,
+          strips: [
+            {
+              ...STORED.strips[0],
+              designation: { function: null, location: null, product: 'XR7' },
+            },
+          ],
+        },
+        dropUnrecoverable: false,
+      },
+    });
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    const offer = await screen.findByTestId('draft-offer');
+    api.open.mockResolvedValueOnce({ kind: 'failed' });
+    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    await screen.findByTestId('draft-project-gone');
+    // Revision 1 is open; the copy was made against revision 7: not applied.
+    expect(designation().value).toBe('X1');
+  });
 });

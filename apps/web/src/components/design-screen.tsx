@@ -1173,9 +1173,15 @@ function DesignWorkspace({
       // workspace, so an answer started before (a save in flight) is let go.
       nextWorkspace();
       submitted.current = null;
-      // The project it belongs to is still the one on the page: its unsaved
-      // configuration comes back too, over that project's baseline.
-      if (draft.configuration && opened !== null && opened.id === draft.project.id) {
+      // The revision it belongs to is still the one on the page: its unsaved
+      // configuration comes back too, over that revision's baseline.
+      // Only onto the very revision it was made against: never onto another.
+      if (
+        draft.configuration &&
+        opened !== null &&
+        opened.id === draft.project.id &&
+        opened.revision === draft.project.revision
+      ) {
         setConfigDoc(draft.configuration.doc);
         setDropUnrecoverable(draft.configuration.dropUnrecoverable);
         setConfirmed([]);
