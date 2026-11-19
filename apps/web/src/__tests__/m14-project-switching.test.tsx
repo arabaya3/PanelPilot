@@ -531,6 +531,214 @@ describe('answers for the project left', () => {
   });
 });
 
+describe('focus after opening', () => {
+  beforeEach(() => {
+    api.list.mockResolvedValue(TWO);
+  });
+
+  it('moves to the opened project from the Open button that still has focus', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    renderScreen();
+    const open = within(await screen.findByTestId('project-p2')).getByText('Open');
+    open.focus();
+    fireEvent.click(open);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+
+  it('moves to the opened project after Discard in the switch dialog', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    renderScreen();
+    await completeForm('Typed tower');
+    const open = within(await screen.findByTestId('project-p2')).getByText('Open');
+    open.focus();
+    fireEvent.click(open);
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-discard'));
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+
+  it('work typed while a project is opening is never replaced without asking', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockReturnValueOnce(late.promise);
+    renderScreen();
+    await openRow('p2');
+    // The page was clean when Open was pressed; the engineer types meanwhile.
+    type(overviewField('Customer'), 'Typed while opening');
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await late.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    expect(overviewField('Customer').value).toBe('Typed while opening');
+    fireEvent.click(switchDialog().getByTestId('switch-cancel'));
+    expect(overviewField('Customer').value).toBe('Typed while opening');
+    expect(screen.queryByTestId('project-opened')).toBeNull();
+  });
+
+  for (const choice of ['switch-save', 'switch-discard'] as const) {
+    it(`work typed during the open after ${choice === 'switch-save' ? 'Save' : 'Discard'} is asked about again`, async () => {
+      const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+      api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
+      api.revise.mockResolvedValue({ kind: 'saved', project: saved('Edited tower', 2) });
+      renderScreen();
+      await openRow('p1');
+      await waitFor(() => {
+        expect(overviewField('Project name').value).toBe('Stored tower');
+      });
+      type(overviewField('Project name'), 'Edited tower');
+      api.open.mockReturnValueOnce(late.promise);
+      await openRow('p2');
+      await waitFor(() => {
+        expect(switchAsking()).toBe(true);
+      });
+      fireEvent.click(switchDialog().getByTestId(choice));
+      await waitFor(() => {
+        expect(api.open).toHaveBeenCalledTimes(2);
+      });
+      // Typed after the choice, while B is opening.
+      type(overviewField('Customer'), 'Typed after the choice');
+      await act(async () => {
+        late.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+        await late.promise;
+      });
+      await waitFor(() => {
+        expect(switchAsking()).toBe(true);
+      });
+      fireEvent.click(switchDialog().getByTestId('switch-cancel'));
+      expect(overviewField('Customer').value).toBe('Typed after the choice');
+    });
+  }
+
+  it('work typed during Save in the dialog shown on arrival is asked about again', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    const saving = deferred<Awaited<ReturnType<typeof saveProject>>>();
+    api.open.mockReturnValueOnce(late.promise);
+    api.save.mockReturnValueOnce(saving.promise);
+    renderScreen();
+    await openRow('p2');
+    await completeForm('Typed while opening');
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await late.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-save'));
+    // Typed while the save is in flight.
+    type(overviewField('Customer'), 'Typed during the save');
+    await act(async () => {
+      saving.resolve({ kind: 'saved', project: project('p9', 'Typed while opening') });
+      await saving.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-cancel'));
+    expect(overviewField('Customer').value).toBe('Typed during the save');
+  });
+
+  it('Save and continue with nothing typed meanwhile opens without asking twice', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    api.revise.mockResolvedValue({ kind: 'saved', project: saved('Edited tower', 2) });
+    renderScreen();
+    await openRow('p1');
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Stored tower');
+    });
+    type(overviewField('Project name'), 'Edited tower');
+    await openRow('p2');
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-save'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    expect(switchAsking()).toBe(false);
+  });
+
+  it('the revision select keeps focus while a revision loads', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower', 2) });
+    renderScreen();
+    await openRow('p1');
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Stored tower');
+    });
+    api.open.mockReturnValueOnce(late.promise);
+    const select = within(screen.getByTestId('project-opened')).getByRole<HTMLSelectElement>(
+      'combobox',
+    );
+    select.focus();
+    fireEvent.change(select, { target: { value: '1' } });
+    expect(select.disabled).toBe(false);
+    expect(select.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(select);
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: saved('Stored tower', 2) });
+      await late.promise;
+    });
+    expect(document.activeElement).toBe(
+      within(screen.getByTestId('project-opened')).getByRole('combobox'),
+    );
+  });
+
+  it('a failed open leaves no focus move pending for a later change', async () => {
+    api.open.mockResolvedValueOnce({ kind: 'failed' });
+    api.save.mockResolvedValue({ kind: 'saved', project: project('p9', 'Saved later') });
+    renderScreen();
+    await openRow('p2');
+    await projects().findByTestId('projects-message');
+    await completeForm('Saved later');
+    // Focus left on the page: only a pending move from the failed open would take it.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(projects().getByText('Save project'));
+    await waitFor(() => {
+      expect(api.save).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-opened-name')).not.toBeNull();
+    });
+    expect(document.activeElement).not.toBe(screen.getByTestId('project-opened-name'));
+  });
+
+  it('moves to the opened project, but never away from where the engineer went meanwhile', async () => {
+    const first = deferred<Awaited<ReturnType<typeof openProject>>>();
+    api.open.mockReturnValueOnce(first.promise);
+    renderScreen();
+    await openRow('p2');
+    // While it opens, the engineer moves on to another field.
+    const customer = overviewField('Customer');
+    customer.focus();
+    await act(async () => {
+      first.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await first.promise;
+    });
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    expect(document.activeElement).toBe(customer);
+
+    // Opening with focus left where it was: focus goes to the opened project.
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
+    customer.blur();
+    await openRow('p1');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
+    });
+  });
+});
+
 describe('drafts kept per identity and project', () => {
   const body = (session: string, projectId: string | null, name: string) => ({
     session,
@@ -667,8 +875,11 @@ describe('drafts kept per identity and project', () => {
     writeDraft(body('s', 'p1', 'Kept p1 work'));
     renderScreen();
     await screen.findByTestId('draft-offer');
-    // The list says which projects have a kept copy.
-    expect(within(screen.getByTestId('project-p1')).getByTestId('project-has-kept')).toBeTruthy();
+    // The list says which projects have a kept copy. (The list and the offer
+    // arrive independently: the row is waited for, not assumed.)
+    expect(
+      within(await screen.findByTestId('project-p1')).getByTestId('project-has-kept'),
+    ).toBeTruthy();
     await openRow('p2');
     await waitFor(
       () => {

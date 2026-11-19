@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale } from 'next-intl';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { Dialog } from '@/components/ui';
@@ -148,7 +148,10 @@ export function ProjectsPanel({
   onNewProject,
   onDiscard,
   keptFor = [],
+  workMark,
 }: {
+  /** M14: a mark of the work on the page (changes with every edit), to tell work typed during an open. */
+  workMark?: string;
   /** M14: projects with unsaved copies kept in this browser (said on their rows). */
   keptFor?: readonly string[];
   /**
@@ -253,7 +256,7 @@ export function ProjectsPanel({
   // Unsaved work to settle before `go` replaces it (another project, or a new one).
   const [switching, setSwitching] = useState<{
     target: string;
-    go: (discard: boolean) => void;
+    go: (discard: boolean, mark?: string) => void;
   } | null>(null);
   const tUi = useIsolatingTranslations('ui');
   const [ownNote, setOwnNote] = useState('');
@@ -408,10 +411,28 @@ export function ProjectsPanel({
   // Set by the Open button: once the project is open, focus moves to what
   // was opened, rather than falling to the page when the button is disabled.
   const focusOpened = useRef(false);
-  useEffect(() => {
+  // What had focus when Open was pressed. Focus moves to the opened project
+  // only while it is still there (or on the page itself): never away from
+  // somewhere the engineer went while the project was opening.
+  const focusFrom = useRef<Element | null>(null);
+  // Whether the page holds unsaved work now (read when an open answers).
+  // What the page holds now (the screen's `workMark`), kept current after each
+  // commit; an open compares it with what it held when its work was settled.
+  const markNow = useRef(workMark);
+  const dirtyNow = useRef(dirty);
+  useLayoutEffect(() => {
+    markNow.current = workMark;
+    dirtyNow.current = dirty;
+  });
+  // In the commit that shows the opened project (a layout effect), so focus is
+  // never left on the page between the project appearing and a later effect.
+  useLayoutEffect(() => {
     if (!focusOpened.current || opened === null) return;
     focusOpened.current = false;
-    document.getElementById(`${id}-opened`)?.focus();
+    const active = document.activeElement;
+    const untouched = active === null || active === document.body || active === focusFrom.current;
+    focusFrom.current = null;
+    if (untouched) document.getElementById(`${id}-opened`)?.focus();
   }, [opened, id]);
 
   /**
@@ -419,7 +440,7 @@ export function ProjectsPanel({
    * Otherwise the switch dialog asks to save, discard or cancel; a discard is
    * applied only once the other project is actually there (`go(true)`).
    */
-  function requestSwitch(target: string, go: (discard: boolean) => void) {
+  function requestSwitch(target: string, go: (discard: boolean, mark?: string) => void) {
     if (onDiscard === undefined) {
       beforeOpen(() => {
         go(false);
@@ -439,13 +460,26 @@ export function ProjectsPanel({
     if (pending === null) return;
     // A save that is refused or fails keeps this project and everything typed:
     // the switch does not go on.
-    if (await store()) pending.go(false);
+    if (!(await store())) return;
+    // Once the page has rendered against the saved baseline: work typed while
+    // it saved is still unsaved, and is asked about before anything replaces
+    // it. What the save itself reset (confirmations, the stored configuration)
+    // is not an edit.
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    if (dirtyNow.current) {
+      setSwitching(pending);
+      return;
+    }
+    pending.go(false, markNow.current);
   }
 
   function load(projectId: string, revision?: number, focus = false, target?: string) {
-    requestSwitch(target ?? opened?.name ?? '', (discard) => {
+    focusFrom.current = document.activeElement;
+    requestSwitch(target ?? opened?.name ?? '', (discard, mark) => {
       focusOpened.current = focus;
-      void fetchAndOpen(projectId, revision, discard);
+      // The work as it was when it was settled (nothing unsaved, saved, or
+      // chosen to discard): only that may be replaced without asking again.
+      void fetchAndOpen(projectId, revision, discard, mark ?? markNow.current);
     });
   }
 
@@ -467,7 +501,17 @@ export function ProjectsPanel({
     });
   }
 
-  async function fetchAndOpen(projectId: string, revision?: number, discard = false) {
+  /**
+   * @param settledMark The page's work when it was settled for this open
+   *   (nothing unsaved, saved, or chosen to discard). Work changed since (typed
+   *   while it opened) is asked about before it is replaced.
+   */
+  async function fetchAndOpen(
+    projectId: string,
+    revision?: number,
+    discard = false,
+    settledMark?: string,
+  ) {
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
@@ -475,12 +519,28 @@ export function ProjectsPanel({
     if (ticket !== sequence.current) return;
     setWorking(false);
     if (outcome.kind === 'saved') {
-      // Discarded only now that the other project is here: a failed open keeps it all.
-      if (discard) onDiscard?.();
-      setApprovalNote('');
-      setScopeConfirmed(false);
-      onOpened(outcome.project, true);
+      const arrived = outcome.project;
+      const apply = (drop: boolean) => {
+        // Discarded only now that the other project is here: a failed open keeps it all.
+        if (drop) onDiscard?.();
+        setApprovalNote('');
+        setScopeConfirmed(false);
+        onOpened(arrived, true);
+      };
+      // Work typed while it was opening (the page was clean when Open was
+      // pressed): never replaced without asking.
+      if (onDiscard !== undefined && workMark !== undefined && markNow.current !== settledMark) {
+        // The engineer is working elsewhere on the page: focus is not moved for it.
+        focusOpened.current = false;
+        focusFrom.current = null;
+        setSwitching({ target: arrived.name, go: apply });
+        return;
+      }
+      apply(discard);
     } else {
+      // Nothing opened: no later change (a save, a revision) moves focus for it.
+      focusOpened.current = false;
+      focusFrom.current = null;
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       if (outcome.kind === 'refused' && outcome.code === 'project_not_found') {
         // Deleted, or no longer the caller's, since the list was read.
@@ -631,8 +691,11 @@ export function ProjectsPanel({
               <select
                 id={`${id}-revision`}
                 value={opened.revision}
-                disabled={working}
+                // Not disabled while loading (that would drop focus to the page):
+                // a change made meanwhile is ignored instead.
+                aria-disabled={working}
                 onChange={(event) => {
+                  if (working) return;
                   const revision = Number(event.target.value);
                   load(opened.id, revision, false, t('opened', { name: opened.name, revision }));
                 }}
