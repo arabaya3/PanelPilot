@@ -352,9 +352,17 @@ export function snapshotOf(
   return canonicalJson(work);
 }
 
-/** JSON with every object's keys in a stable order, row keys and AI item ids left out. */
+/**
+ * JSON with every object's keys in a stable order, row keys and AI item ids
+ * left out, and text without the spaces around it: a save sends (and the
+ * revision stores) text trimmed, so text differing only by those spaces is
+ * the same work, and setting a field back to its stored value reads clean.
+ */
 function canonicalJson(work: unknown): string {
-  return sortedJson(work, (key) => key === 'key' || key === 'aiItem');
+  return JSON.stringify(
+    JSON.parse(sortedJson(work, (key) => key === 'key' || key === 'aiItem')),
+    (_key, value: unknown) => (typeof value === 'string' ? value.trim() : value),
+  );
 }
 
 /**

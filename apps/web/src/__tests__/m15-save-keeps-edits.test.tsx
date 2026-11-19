@@ -605,4 +605,32 @@ describe('edits made while Save is running', () => {
     // Revision 1 is open; the copy was made against revision 7: not applied.
     expect(designation().value).toBe('X1');
   });
+
+  it('setting a field back to exactly the stored (trimmed) value reads clean', async () => {
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(nameField(), { target: { value: '  Padded name  ' } });
+    api.revise.mockResolvedValueOnce({ kind: 'saved', project: savedAs('Padded name', 'X1') });
+    fireEvent.click(saveButton());
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(1);
+    });
+    // What is sent (and stored) is trimmed.
+    expect(api.revise.mock.calls[0]?.[0]?.request.info.name).toBe('Padded name');
+    await waitFor(() => {
+      expect(unsaved()).toBe(false);
+    });
+    fireEvent.change(nameField(), { target: { value: 'Edited' } });
+    await waitFor(() => {
+      expect(unsaved()).toBe(true);
+    });
+    // Back to exactly the stored value.
+    fireEvent.change(nameField(), { target: { value: 'Padded name' } });
+    await waitFor(() => {
+      expect(unsaved()).toBe(false);
+    });
+  });
 });
