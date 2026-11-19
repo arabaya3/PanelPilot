@@ -419,8 +419,10 @@ export function ProjectsPanel({
   // What the page holds now (the screen's `workMark`), kept current after each
   // commit; an open compares it with what it held when its work was settled.
   const markNow = useRef(workMark);
+  const dirtyNow = useRef(dirty);
   useLayoutEffect(() => {
     markNow.current = workMark;
+    dirtyNow.current = dirty;
   });
   // In the commit that shows the opened project (a layout effect), so focus is
   // never left on the page between the project appearing and a later effect.
@@ -458,9 +460,17 @@ export function ProjectsPanel({
     if (pending === null) return;
     // A save that is refused or fails keeps this project and everything typed:
     // the switch does not go on.
-    // What is saved is the work as it is now; anything typed later is asked about.
-    const mark = markNow.current;
-    if (await store()) pending.go(false, mark);
+    if (!(await store())) return;
+    // Once the page has rendered against the saved baseline: work typed while
+    // it saved is still unsaved, and is asked about before anything replaces
+    // it. What the save itself reset (confirmations, the stored configuration)
+    // is not an edit.
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    if (dirtyNow.current) {
+      setSwitching(pending);
+      return;
+    }
+    pending.go(false, markNow.current);
   }
 
   function load(projectId: string, revision?: number, focus = false, target?: string) {

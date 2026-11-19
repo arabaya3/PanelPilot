@@ -617,6 +617,35 @@ describe('focus after opening', () => {
     });
   }
 
+  it('work typed during Save in the dialog shown on arrival is asked about again', async () => {
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    const saving = deferred<Awaited<ReturnType<typeof saveProject>>>();
+    api.open.mockReturnValueOnce(late.promise);
+    api.save.mockReturnValueOnce(saving.promise);
+    renderScreen();
+    await openRow('p2');
+    await completeForm('Typed while opening');
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: project('p2', 'Second plant') });
+      await late.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-save'));
+    // Typed while the save is in flight.
+    type(overviewField('Customer'), 'Typed during the save');
+    await act(async () => {
+      saving.resolve({ kind: 'saved', project: project('p9', 'Typed while opening') });
+      await saving.promise;
+    });
+    await waitFor(() => {
+      expect(switchAsking()).toBe(true);
+    });
+    fireEvent.click(switchDialog().getByTestId('switch-cancel'));
+    expect(overviewField('Customer').value).toBe('Typed during the save');
+  });
+
   it('Save and continue with nothing typed meanwhile opens without asking twice', async () => {
     api.open.mockResolvedValueOnce({ kind: 'saved', project: saved('Stored tower') });
     api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
