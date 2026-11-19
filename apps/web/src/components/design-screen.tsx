@@ -131,6 +131,7 @@ import {
   setAsideCount,
   clearSetAside,
   deleteUnreadableCopy,
+  unreadableCopies,
   DRAFT_COPIES,
   type ConfirmedReference,
   type DesignDraft,
@@ -961,7 +962,10 @@ function DesignWorkspace({
   // M14: the copy this page itself keeps the work in (its project, and copy 1
   // or 2). Only that copy is ever written, or cleared when the work is clean
   // again: a copy kept earlier, for this project or another, is never touched.
-  const blockedSlot = useRef<{ project: string | null; copy: DraftCopy } | null>(null);
+  // The slot a 'blocked' warning is about (kept with the warning, reset with it).
+  const [blocked, setBlocked] = useState<{ project: string | null; copy: DraftCopy } | null>(null);
+  // Said once local data was deleted at the engineer's request (focus goes there).
+  const [deletedNote, setDeletedNote] = useState(false);
   const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
@@ -991,6 +995,7 @@ function DesignWorkspace({
       owned.current = null;
       lastWritten.current = '';
       if (draftWarning !== null) setDraftWarning(null);
+      if (blocked !== null) setBlocked(null);
       return;
     }
     // The copy to keep this work in: the page's own, else a free one. A copy
@@ -1000,8 +1005,17 @@ function DesignWorkspace({
     let copy =
       mine !== null && mine.owner === draftOwner && mine.project === here ? mine.copy : null;
     if (copy === null) {
-      const taken = new Set(ownDrafts(draftOwner, null, here).map((kept) => kept.copy));
-      copy = DRAFT_COPIES.find((each) => !taken.has(each)) ?? null;
+      // A slot holding an unreadable copy is taken too: a free one is used
+      // first, and that slot only when no other is free (it is then written
+      // only once its copy is set aside).
+      const unreadable = unreadableCopies(draftOwner)
+        .filter((slot) => slot.project === here)
+        .map((slot) => slot.copy);
+      const taken = new Set([
+        ...ownDrafts(draftOwner, null, here).map((kept) => kept.copy),
+        ...unreadable,
+      ]);
+      copy = DRAFT_COPIES.find((each) => !taken.has(each)) ?? unreadable[0] ?? null;
       if (copy === null) {
         if (draftWarning !== 'full') setDraftWarning('full');
         return;
@@ -1045,6 +1059,7 @@ function DesignWorkspace({
       lastWritten.current = text;
       owned.current = { owner: draftOwner, project: here, copy };
       if (draftWarning !== null) setDraftWarning(null);
+      if (blocked !== null) setBlocked(null);
       if (first) setRecoveryTick((tick) => tick + 1);
     } else {
       // Not kept: the page says so (never that the work is safe here). Tried
@@ -1052,7 +1067,8 @@ function DesignWorkspace({
       // holds an unreadable copy that could not be set aside, so it is not
       // written over; the work stays on this page only.
       lastWritten.current = text;
-      blockedSlot.current = outcome === 'blocked' ? { project: here, copy } : null;
+      const slot = outcome === 'blocked' ? { project: here, copy } : null;
+      if (blocked?.project !== slot?.project || blocked?.copy !== slot?.copy) setBlocked(slot);
       if (draftWarning !== outcome) setDraftWarning(outcome);
     }
   });
@@ -1087,8 +1103,15 @@ function DesignWorkspace({
         ? clearSetAside()
         : draftOwner !== null && deleteUnreadableCopy(draftOwner, target.project, target.copy);
     setDeleteFailed(!done);
+    setDeletedNote(done);
+    if (done) {
+      // The button that asked is gone: focus goes to what says it was done.
+      window.setTimeout(() => {
+        document.getElementById(`${id}-draft-deleted`)?.focus();
+      }, 0);
+    }
     if (done && target.kind === 'copy') {
-      blockedSlot.current = null;
+      setBlocked(null);
       // The slot is free now: the work on the page is tried again at once.
       lastWritten.current = '';
     }
@@ -2170,14 +2193,13 @@ function DesignWorkspace({
                   ? 'draft.notKeptBlocked'
                   : 'draft.notKeptFailed',
             )}
-            {draftWarning === 'blocked' && blockedSlot.current !== null && (
+            {draftWarning === 'blocked' && blocked !== null && (
               <button
                 type="button"
                 className="btn btn-sm btn-secondary mt-2 block"
                 data-testid="draft-delete-unreadable"
                 onClick={() => {
-                  const slot = blockedSlot.current;
-                  if (slot !== null) setConfirmDelete({ kind: 'copy', ...slot });
+                  setConfirmDelete({ kind: 'copy', ...blocked });
                 }}
               >
                 {tw('draft.deleteUnreadable')}
@@ -2198,6 +2220,17 @@ function DesignWorkspace({
             >
               {tw('draft.clearAside')}
             </button>
+          </p>
+        )}
+        {deletedNote && (
+          <p
+            id={`${id}-draft-deleted`}
+            tabIndex={-1}
+            role="status"
+            className="text-sm"
+            data-testid="draft-deleted"
+          >
+            {tw('draft.deleted')}
           </p>
         )}
         {deleteFailed && (

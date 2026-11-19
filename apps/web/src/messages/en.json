@@ -666,10 +666,11 @@
       "deleteUnreadableNew": "This permanently deletes the unreadable local copy {copy} kept in this browser for a new project. Its contents cannot be shown or recovered. Your saved revisions and other local copies are not affected.",
       "setAside": "{count} item(s) of local data in this browser cannot be used here and are set aside.",
       "clearAside": "Delete them…",
-      "clearAsideBody": "This permanently deletes the {count} set-aside item(s) of local data in this browser tab, without showing them. Your saved revisions and your own unsaved copies are not affected.",
+      "clearAsideBody": "This permanently deletes the {count} set-aside item(s) of local data in this browser tab, without showing them. They may include unsaved work from another sign-in on this browser. Your saved revisions and your own unsaved copies are not affected.",
       "deleteConfirm": "Delete permanently",
       "deleteCancel": "Cancel",
-      "deleteFailed": "The local data could not be deleted. Nothing was changed."
+      "deleteFailed": "The local data could not be deleted. Nothing was changed.",
+      "deleted": "Deleted. The local data is gone; your saved revisions are not affected."
     },
     "leave": {
       "title": "Discard unsaved changes?",

@@ -914,7 +914,12 @@ describe('drafts kept per identity and project', () => {
       DRAFT_STORAGE_KEY,
       JSON.stringify({
         v: 2,
-        drafts: { 's|new': CORRUPT, 's|p2': { ...body('s', 'p2', 'B kept'), savedAt: 5 } },
+        drafts: {
+          's|new': CORRUPT,
+          // The other copy of the new project is taken: only the unreadable slot is left.
+          's|new|2': { ...body('s', null, 'Other new copy'), savedAt: 4 },
+          's|p2': { ...body('s', 'p2', 'B kept'), savedAt: 5 },
+        },
       }),
     );
   }
@@ -981,6 +986,11 @@ describe('drafts kept per identity and project', () => {
         expect(readDraft('s', null)?.info.name).toBe('Work to keep');
       });
       expect(screen.queryByTestId('draft-not-kept')).toBeNull();
+      // The asking button is gone: focus and the announcement go to the status.
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByTestId('draft-deleted'));
+      });
+      expect(screen.getByTestId('draft-deleted').getAttribute('role')).toBe('status');
       expect(p2Bytes()).toBe(p2);
     } finally {
       full.mockRestore();
@@ -1038,5 +1048,26 @@ describe('drafts kept per identity and project', () => {
       getItem.mockRestore();
     }
     expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe(kept);
+  });
+
+  it('an unreadable copy is left alone while the other copy slot is free: the work is kept there', async () => {
+    api.list.mockResolvedValue(TWO);
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ v: 2, drafts: { 's|new': CORRUPT } }),
+    );
+    const full = fullBesideDrafts();
+    try {
+      renderScreen();
+      await screen.findByTestId('projects-panel');
+      type(overviewField('Project name'), 'Kept in the free copy');
+      await waitFor(() => {
+        expect(readDraft('s', null)?.info.name).toBe('Kept in the free copy');
+      });
+      expect(slotOf('s|new')).toEqual(CORRUPT);
+      expect(screen.queryByTestId('draft-not-kept')).toBeNull();
+    } finally {
+      full.mockRestore();
+    }
   });
 });
