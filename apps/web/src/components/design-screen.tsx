@@ -125,10 +125,13 @@ import {
   formControl,
   formControlTags,
   formBoards,
-  readDraft,
+  ownDrafts,
   writeDraft,
+  DRAFT_COPIES,
   type ConfirmedReference,
   type DesignDraft,
+  type DraftCopy,
+  type StoredDraft,
 } from '@/components/design/draft';
 import {
   DEFAULT_VIEW,
@@ -309,6 +312,13 @@ export function designDiffers(snapshot: string, clean: string): boolean {
     }
   };
   return strip(snapshot) !== strip(clean);
+}
+
+/** When a copy was kept, in the page's language (date and time). */
+function keptTime(at: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(at),
+  );
 }
 
 export function snapshotOf(
@@ -923,16 +933,25 @@ function DesignWorkspace({
   // nothing is written or cleared, so the page starting clean cannot wipe a
   // draft it is about to offer.
   const [draftChecked, setDraftChecked] = useState<string | null>(null);
-  const [draftOffer, setDraftOffer] = useState<DesignDraft | null>(null);
+  // M14: drafts are offered from storage as it is at each render, for the
+  // project on the page only (every kept copy on arrival, while nothing is
+  // open or typed yet), so an offer can never outlive its project. Bumped
+  // after this page changes what is kept, to read it again.
+  const [recoveryTick, setRecoveryTick] = useState(0);
+  // Arrival: nothing opened, started, restored or typed on this page yet.
+  const [arrival, setArrival] = useState(true);
+  if (arrival && dirty) setArrival(false);
+  // M14: why the work being typed is not kept in this browser, when it is not.
+  const [draftWarning, setDraftWarning] = useState<'failed' | 'full' | null>(null);
   const [draftProjectGone, setDraftProjectGone] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
   const lastWritten = useRef<string | null>(null);
-  // M14: the draft slot this page itself wrote (its project id, or 'new'). Only
-  // that slot is ever cleared when the work is clean again: a draft kept for
-  // another project, or one not yet offered, is never removed by this page.
-  const writtenSlot = useRef<string | null>(null);
+  // M14: the copy this page itself keeps the work in (its project, and copy 1
+  // or 2). Only that copy is ever written, or cleared when the work is clean
+  // again: a copy kept earlier, for this project or another, is never touched.
+  const owned = useRef<{ project: string | null; copy: DraftCopy } | null>(null);
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
   const workspaceAt = useRef(0);
@@ -943,23 +962,36 @@ function DesignWorkspace({
   }
   useEffect(() => {
     if (draftOwner === null || draftChecked === draftOwner) return;
-    setDraftOffer(readDraft(draftOwner, undefined, tokenTenant));
+    // Reading settles ownership: another identity's drafts go to quarantine.
+    ownDrafts(draftOwner, tokenTenant);
     setDraftChecked(draftOwner);
   }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner) return;
-    // While a draft of this very project is offered, it is not overwritten;
-    // work on another project is kept in its own slot meanwhile (M14).
-    if (draftOffer !== null && (draftOffer.project?.id ?? null) === (opened?.id ?? null)) return;
+    const here = opened?.id ?? null;
     if (!dirty || discardedSnapshot.current === snapshot) {
-      // Only this project's draft: another project's is never touched (M14).
-      if (writtenSlot.current !== null && writtenSlot.current === (opened?.id ?? 'new')) {
-        clearDraft(draftOwner, opened?.id ?? null);
+      // Only the copy this page wrote, for this project (M14).
+      const mine = owned.current;
+      if (mine !== null && mine.project === here) {
+        clearDraft(draftOwner, here, mine.copy);
+        setRecoveryTick((tick) => tick + 1);
       }
-      writtenSlot.current = null;
+      owned.current = null;
       lastWritten.current = '';
+      if (draftWarning !== null) setDraftWarning(null);
       return;
+    }
+    // The copy to keep this work in: the page's own, else a free one. A copy
+    // kept earlier (offered, not yet restored or dismissed) is never overwritten.
+    let copy = owned.current !== null && owned.current.project === here ? owned.current.copy : null;
+    if (copy === null) {
+      const taken = new Set(ownDrafts(draftOwner, null, here).map((kept) => kept.copy));
+      copy = DRAFT_COPIES.find((each) => !taken.has(each)) ?? null;
+      if (copy === null) {
+        if (draftWarning !== 'full') setDraftWarning('full');
+        return;
+      }
     }
     const draft: DesignDraft = {
       session: draftOwner,
@@ -991,15 +1023,47 @@ function DesignWorkspace({
           }
         : {}),
     };
-    const text = JSON.stringify(draft);
+    const text = `${String(copy)}|${JSON.stringify(draft)}`;
     if (text === lastWritten.current) return;
-    if (writeDraft(draft, tokenTenant)) {
+    if (writeDraft(draft, tokenTenant, copy)) {
+      const first = owned.current === null;
       lastWritten.current = text;
-      writtenSlot.current = opened?.id ?? 'new';
-    } else console.warn('Unsaved work could not be kept in session storage.');
+      owned.current = { project: here, copy };
+      if (draftWarning !== null) setDraftWarning(null);
+      if (first) setRecoveryTick((tick) => tick + 1);
+    } else {
+      // Not kept: the page says so (never that the work is safe here).
+      lastWritten.current = '';
+      if (draftWarning !== 'failed') setDraftWarning('failed');
+    }
   });
+  // What can be recovered here: every kept copy on arrival (nothing open or
+  // typed yet), else the copies kept for the project on the page; never the
+  // copy the page is writing now.
+  void recoveryTick;
+  const recoverable =
+    draftOwner === null || draftChecked !== draftOwner
+      ? []
+      : (arrival && opened === null
+          ? ownDrafts(draftOwner, tokenTenant)
+          : ownDrafts(draftOwner, tokenTenant, opened?.id ?? null)
+        ).filter(
+          (kept) =>
+            !(
+              owned.current !== null &&
+              owned.current.project === (kept.project?.id ?? null) &&
+              owned.current.copy === kept.copy
+            ),
+        );
+  // Projects with copies kept in this browser, for the list to say so.
+  const keptFor =
+    draftOwner === null || draftChecked !== draftOwner
+      ? []
+      : ownDrafts(draftOwner, tokenTenant).flatMap((kept) =>
+          kept.project === null ? [] : [kept.project.id],
+        );
 
-  async function restoreDraft(draft: DesignDraft) {
+  async function restoreDraft(draft: StoredDraft) {
     // The offer (and so the stored draft) stays until the work is back on the page.
     setRestoring(true);
     restoredDraft.current = true;
@@ -1036,7 +1100,10 @@ function DesignWorkspace({
     const restoredAt = workspaceAt.current;
     setDraftProjectGone(!reopened);
     setRestoring(false);
-    setDraftOffer(null);
+    setArrival(false);
+    // The restored copy is the page's own now: further edits update it.
+    owned.current = { project: draft.project?.id ?? null, copy: draft.copy };
+    setRecoveryTick((tick) => tick + 1);
     const keyed = formBoards(draft.boards, nextKey.current);
     nextKey.current += Math.max(1, keyed.used);
     setInfo(draft.info);
@@ -1066,18 +1133,10 @@ function DesignWorkspace({
     setExportError(null);
   }
 
-  function dismissDraft() {
-    const offered = draftOffer;
-    setDraftOffer(null);
-    if (offered !== null) clearDraft(offered.session, offered.project?.id ?? null);
-    // The project on the page may have a draft of its own, held back while
-    // this offer showed: it is offered now, never removed unseen (M14).
-    if (draftOwner !== null) {
-      const own = readDraft(draftOwner, opened?.id ?? null, tokenTenant);
-      if (own !== null && (own.project?.id ?? null) !== (offered?.project?.id ?? null)) {
-        setDraftOffer(own);
-      }
-    }
+  /** Dismiss one kept copy: only that copy goes (M14). */
+  function dismissDraft(kept: StoredDraft) {
+    clearDraft(kept.session, kept.project?.id ?? null, kept.copy);
+    setRecoveryTick((tick) => tick + 1);
   }
 
   /**
@@ -1087,16 +1146,20 @@ function DesignWorkspace({
    */
   function discardForSwitch() {
     discardedSnapshot.current = snapshot;
-    if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
+    const mine = owned.current;
+    if (draftOwner !== null && mine !== null) clearDraft(draftOwner, mine.project, mine.copy);
+    owned.current = null;
     lastWritten.current = '';
-    writtenSlot.current = null;
+    setRecoveryTick((tick) => tick + 1);
   }
 
   function discardChanges() {
     discardedSnapshot.current = snapshot;
-    if (draftOwner !== null) clearDraft(draftOwner, opened?.id ?? null);
+    const mine = owned.current;
+    if (draftOwner !== null && mine !== null) clearDraft(draftOwner, mine.project, mine.copy);
+    owned.current = null;
     lastWritten.current = '';
-    writtenSlot.current = null;
+    setRecoveryTick((tick) => tick + 1);
     unsaved.discard();
   }
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
@@ -1213,11 +1276,10 @@ function DesignWorkspace({
       // M14: the form now holds another project (or another revision of it):
       // a new workspace, so nothing started for the one before is applied.
       nextWorkspace();
-      // Only the draft kept for this project is offered, never another's; one
-      // offered for another project stays kept, to be offered with that project.
-      if (draftOwner !== null) {
-        setDraftOffer(readDraft(draftOwner, project.id, tokenTenant));
-      }
+      // The work left was saved or discarded: the page keeps no copy for this
+      // project yet. Its copies kept earlier are offered here (see `recoverable`).
+      owned.current = null;
+      setArrival(false);
     }
     setOpened({
       id: project.id,
@@ -1370,12 +1432,12 @@ function DesignWorkspace({
     pristine.current = true;
     discardedSnapshot.current = null;
     lastWritten.current = '';
-    writtenSlot.current = null;
+    owned.current = null;
+    setArrival(false);
     setLastSave(null);
     setResult({ kind: 'idle' });
     setExportError(null);
-    // Only the draft kept for a new project is offered, never another's.
-    if (draftOwner !== null) setDraftOffer(readDraft(draftOwner, null, tokenTenant));
+    setRecoveryTick((tick) => tick + 1);
   }
 
   async function run() {
@@ -1998,47 +2060,61 @@ function DesignWorkspace({
             {session.kind === 'rate-limited' ? t('rateLimited') : t('unavailable')}
           </Notice>
         )}
-        {draftOffer !== null && (
-          <Notice
-            tone="warning"
-            title={tw('draft.title')}
-            testId="draft-offer"
-            action={
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-primary"
-                  // A draft of a saved project waits for the session that can reopen it.
-                  disabled={restoring || (draftOffer.project !== null && token === null)}
-                  onClick={() => {
-                    const offered = draftOffer;
-                    unsaved.guard(() => {
-                      void restoreDraft(offered);
-                    });
-                  }}
+        {recoverable.length > 0 && (
+          <Notice tone="warning" title={tw('draft.title')} testId="draft-offer">
+            <span className="block">{tw('draft.body')}</span>
+            <span className="block text-text-muted" data-testid="draft-offer-local">
+              {tw('draft.localOnly')}
+            </span>
+            <ul className="mt-2 flex flex-col gap-2" aria-label={tw('draft.title')}>
+              {recoverable.map((kept) => (
+                <li
+                  key={`${kept.project?.id ?? 'new'}|${String(kept.copy)}`}
+                  className="flex flex-wrap items-center gap-2"
+                  data-testid="draft-copy"
                 >
-                  {tw('draft.restore')}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  disabled={restoring}
-                  onClick={dismissDraft}
-                >
-                  {tw('draft.dismiss')}
-                </button>
-              </div>
-            }
-          >
-            <span dir="auto" data-testid="draft-offer-project">
-              {draftOffer.project === null
-                ? tw('draft.forNew')
-                : tw('draft.forProject', {
-                    name: draftOffer.info.name || draftOffer.project.id,
-                    revision: draftOffer.project.revision,
-                  })}
-            </span>{' '}
-            {tw('draft.body')}
+                  <span className="min-w-0 flex-1" dir="auto" data-testid="draft-offer-project">
+                    {kept.project === null
+                      ? tw('draft.forNew')
+                      : tw('draft.forProject', {
+                          name: kept.info.name || kept.project.id,
+                          revision: kept.project.revision,
+                        })}{' '}
+                    {kept.savedAt > 0
+                      ? tw('draft.keptAt', { time: keptTime(kept.savedAt, locale) })
+                      : tw('draft.keptEarlier')}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    // A draft of a saved project waits for the session that can reopen it.
+                    disabled={restoring || (kept.project !== null && token === null)}
+                    onClick={() => {
+                      unsaved.guard(() => {
+                        void restoreDraft(kept);
+                      });
+                    }}
+                  >
+                    {tw('draft.restore')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    disabled={restoring}
+                    onClick={() => {
+                      dismissDraft(kept);
+                    }}
+                  >
+                    {tw('draft.dismiss')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        )}
+        {draftWarning !== null && dirty && (
+          <Notice tone="critical" testId="draft-not-kept">
+            {tw(draftWarning === 'full' ? 'draft.notKeptFull' : 'draft.notKeptFailed')}
           </Notice>
         )}
         {draftProjectGone && (
@@ -2136,6 +2212,7 @@ function DesignWorkspace({
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 onNewProject={startNewProject}
+                keptFor={keptFor}
                 onDiscard={discardForSwitch}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
@@ -2170,7 +2247,12 @@ function DesignWorkspace({
                   // A new project's first save: its work now belongs to the saved
                   // project, so the draft kept for "new" goes (M14).
                   if (state === 'saved' && opened === null && draftOwner !== null) {
-                    clearDraft(draftOwner, null);
+                    const mine = owned.current;
+                    if (mine !== null && mine.project === null) {
+                      clearDraft(draftOwner, null, mine.copy);
+                    }
+                    owned.current = null;
+                    setRecoveryTick((tick) => tick + 1);
                   }
                   // A saved proposal is used: it can place nothing more, so its
                   // tags come off the rows (they are not part of the snapshot)

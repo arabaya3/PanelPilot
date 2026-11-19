@@ -652,7 +652,12 @@
       "dismiss": "Discard it",
       "projectGone": "The saved project this work belonged to could not be opened. Saving will store it as a new project.",
       "forProject": "This is unsaved work for {name} (revision {revision}).",
-      "forNew": "This is unsaved work for a new project."
+      "forNew": "This is unsaved work for a new project.",
+      "localOnly": "Kept only in this browser tab: not a saved revision, and not approved.",
+      "keptAt": "Kept {time}.",
+      "keptEarlier": "Kept earlier.",
+      "notKeptFailed": "Your unsaved work could not be kept in this browser (storage is full or blocked). It is only on this page: save the project, or discard an older unsaved copy to make room.",
+      "notKeptFull": "This project already has two unsaved copies kept in this browser. Restore or discard one of them so the work you are typing now can be kept too; until then it is only on this page."
     },
     "leave": {
       "title": "Discard unsaved changes?",
@@ -1263,7 +1268,8 @@
       "newUnsavedName": "The new, unsaved project",
       "openGone": "That project is no longer available, so it was not opened. The list has been refreshed; what is open stays as it is.",
       "switchDiscardNew": "Discard the new project's unsaved work",
-      "openFailed": "The project could not be opened. What is open stays as it is; try again."
+      "openFailed": "The project could not be opened. What is open stays as it is; try again.",
+      "hasKept": "Unsaved copy kept in this browser"
     },
     "readiness": {
       "title": "Status",

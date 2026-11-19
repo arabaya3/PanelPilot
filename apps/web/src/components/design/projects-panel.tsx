@@ -147,7 +147,10 @@ export function ProjectsPanel({
   accountEmail = null,
   onNewProject,
   onDiscard,
+  keptFor = [],
 }: {
+  /** M14: projects with unsaved copies kept in this browser (said on their rows). */
+  keptFor?: readonly string[];
   /**
    * M14: start a new, unsaved project (offered when given). Unsaved work is
    * settled first: saved, discarded or kept by cancelling.
@@ -889,6 +892,11 @@ export function ProjectsPanel({
               >
                 {project.name}
               </span>
+              {keptFor.includes(project.id) && (
+                <span className="text-xs text-text-muted" data-testid="project-has-kept">
+                  {t('hasKept')}
+                </span>
+              )}
               {opened?.id === project.id && (
                 <span className="text-xs font-semibold" data-testid="project-is-current">
                   {t('isCurrent')}

@@ -7,6 +7,7 @@ import {
   draftBoards,
   readDraft,
   storedDrafts,
+  QUARANTINE_KEY,
   UNREADABLE_KEY,
   writeDraft,
   DRAFT_STORAGE_KEY,
@@ -147,7 +148,7 @@ function renderScreen(
       {...impls}
     />
   );
-  renderApp(account ? asSignedIn(screenUi) : screenUi);
+  return renderApp(account ? asSignedIn(screenUi) : screenUi);
 }
 
 /*
@@ -599,20 +600,23 @@ describe('drafts kept per identity and project', () => {
     expect(readDraft('s', 'p1')).toBeNull();
   });
 
-  it('dismissing the arrival offer never removes another draft, which is offered next', async () => {
+  it('on arrival every kept copy is listed by project; dismissing one removes only that one', async () => {
     api.list.mockResolvedValue(TWO);
     writeDraft(body('s', null, 'Kept for a new project'));
-    // Written last, so offered first on arrival.
     await new Promise((resolve) => setTimeout(resolve, 2));
     writeDraft(body('s', 'p1', 'Kept for p1'));
     renderScreen();
-    const offer = await screen.findByTestId('draft-offer');
-    fireEvent.click(within(offer).getByText('Discard it'));
-    // The new project's draft (the page shows a new project) is kept and offered now.
-    expect(readDraft('s', null)?.info.name).toBe('Kept for a new project');
+    await screen.findByTestId('draft-offer');
+    const rows = () => screen.getAllByTestId('draft-copy');
+    expect(rows()).toHaveLength(2);
+    // Most recent first, each named by its project.
+    expect(rows()[0]?.textContent).toContain('Kept for p1');
+    expect(rows()[1]?.textContent).toContain('a new project');
+    fireEvent.click(within(rows()[0] as HTMLElement).getByText('Discard it'));
     expect(readDraft('s', 'p1')).toBeNull();
-    const next = await screen.findByTestId('draft-offer');
-    fireEvent.click(within(next).getByText('Restore unsaved work'));
+    expect(readDraft('s', null)?.info.name).toBe('Kept for a new project');
+    expect(rows()).toHaveLength(1);
+    fireEvent.click(within(rows()[0] as HTMLElement).getByText('Restore unsaved work'));
     await waitFor(() => {
       expect(overviewField('Project name').value).toBe('Kept for a new project');
     });
@@ -653,5 +657,138 @@ describe('drafts kept per identity and project', () => {
       expect(readDraft('s', null)?.info.name).toBe('Typed while offered');
     });
     expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+  });
+
+  it('an offer for one project is not shown in another or in a new project, and stays kept', async () => {
+    api.list.mockResolvedValue(TWO);
+    api.open.mockResolvedValue({ kind: 'saved', project: project('p2', 'Second plant') });
+    writeDraft(body('s', 'p1', 'Kept p1 work'));
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    // The list says which projects have a kept copy.
+    expect(within(screen.getByTestId('project-p1')).getByTestId('project-has-kept')).toBeTruthy();
+    await openRow('p2');
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    expect(screen.queryByTestId('draft-offer')).toBeNull();
+    fireEvent.click(projects().getByTestId('project-new'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('');
+    });
+    expect(screen.queryByTestId('draft-offer')).toBeNull();
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+  });
+
+  it('typing while an older copy is offered keeps a second copy; each is restored or dismissed alone', async () => {
+    api.list.mockResolvedValue(TWO);
+    writeDraft(body('s', null, 'Older copy'));
+    const first = renderScreen();
+    await screen.findByTestId('draft-offer');
+    type(overviewField('Project name'), 'Newer typing');
+    await waitFor(() => {
+      expect(storedDrafts()).toHaveLength(2);
+    });
+    const names = storedDrafts().map((kept) => kept.info.name);
+    expect(names).toContain('Older copy');
+    expect(names).toContain('Newer typing');
+    // The older copy is still offered (the newer one is the page's own).
+    expect(screen.getAllByTestId('draft-copy')).toHaveLength(1);
+    expect(screen.getByTestId('draft-copy').textContent).toContain('a new project');
+    // A reload: both copies are offered, each named and timed.
+    first.unmount();
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    const rows = screen.getAllByTestId('draft-copy');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.textContent).toMatch(/Kept /);
+    // Restore the older one explicitly: the newer one stays kept.
+    const olderIndex = storedDrafts().findIndex((kept) => kept.info.name === 'Older copy');
+    fireEvent.click(within(rows[olderIndex] as HTMLElement).getByText('Restore unsaved work'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Older copy');
+    });
+    expect(storedDrafts().map((kept) => kept.info.name)).toContain('Newer typing');
+  });
+
+  it('when both copies are taken, typing says the work is not kept, and nothing is overwritten', async () => {
+    api.list.mockResolvedValue(TWO);
+    writeDraft(body('s', null, 'Copy one'), null, 1);
+    writeDraft(body('s', null, 'Copy two'), null, 2);
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    type(overviewField('Project name'), 'Third typing');
+    expect((await screen.findByTestId('draft-not-kept')).textContent).toContain(
+      'two unsaved copies',
+    );
+    expect(
+      storedDrafts()
+        .map((kept) => kept.info.name)
+        .sort(),
+    ).toEqual(['Copy one', 'Copy two']);
+  });
+
+  it('when storage fails, the page says the work is not kept, and other drafts stay', async () => {
+    api.list.mockResolvedValue(TWO);
+    writeDraft(body('s', 'p1', 'Kept p1 work'));
+    renderScreen();
+    await screen.findByTestId('draft-offer');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    try {
+      type(overviewField('Project name'), 'Typed when full');
+      expect((await screen.findByTestId('draft-not-kept')).textContent).toContain(
+        'could not be kept',
+      );
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+  });
+
+  it("another identity's draft (current or earlier format) is quarantined: not offered, not shown, not deleted", async () => {
+    api.list.mockResolvedValue(TWO);
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ v: 1, ...body('account:someone-else', 'p1', 'Secret of another') }),
+    );
+    renderScreen();
+    await screen.findByTestId('projects-panel');
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('other-identity');
+    });
+    expect(screen.queryByTestId('draft-offer')).toBeNull();
+    expect(document.body.textContent).not.toContain('Secret of another');
+    expect(storedDrafts()).toHaveLength(0);
+  });
+
+  it('a restore whose open answers after another project was opened is let go', async () => {
+    api.list.mockResolvedValue(TWO);
+    const late = deferred<Awaited<ReturnType<typeof openProject>>>();
+    writeDraft(body('s', 'p1', 'Kept p1 work'));
+    renderScreen();
+    const offer = await screen.findByTestId('draft-offer');
+    api.open.mockReturnValueOnce(late.promise);
+    fireEvent.click(within(offer).getByText('Restore unsaved work'));
+    api.open.mockResolvedValueOnce({ kind: 'saved', project: project('p2', 'Second plant') });
+    // The list is not disabled by a restore: open p2 meanwhile.
+    fireEvent.click(within(screen.getByTestId('project-p2')).getByText('Open'));
+    await waitFor(() => {
+      expect(overviewField('Project name').value).toBe('Second plant');
+    });
+    await act(async () => {
+      late.resolve({ kind: 'saved', project: saved('Stored tower') });
+      await late.promise;
+    });
+    expect(overviewField('Project name').value).toBe('Second plant');
+    expect(readDraft('s', 'p1')?.info.name).toBe('Kept p1 work');
+  });
+
+  it("a trial's drafts are not offered to the account it signs in to; they are quarantined, not deleted", () => {
+    writeDraft(body('trial-session', 'p1', 'Typed in the trial'), 'trial-tenant');
+    expect(readDraft('account:user-1', undefined, 'account-tenant')).toBeNull();
+    expect(storedDrafts()).toHaveLength(0);
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toContain('other-identity');
   });
 });

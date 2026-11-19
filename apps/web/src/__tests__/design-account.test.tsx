@@ -9,7 +9,13 @@ import {
   type AccountState,
 } from '@/components/account-session';
 import { DesignScreen } from '@/components/design-screen';
-import { DRAFT_STORAGE_KEY, storedDrafts } from '@/components/design/draft';
+import {
+  DRAFT_STORAGE_KEY,
+  storedDrafts,
+  QUARANTINE_KEY,
+  writeDraft,
+  type DesignDraft,
+} from '@/components/design/draft';
 import { approvalOf, ProjectsPanel } from '@/components/design/projects-panel';
 import type {
   listProjects,
@@ -373,6 +379,27 @@ describe('when the session ends', () => {
 });
 
 describe('signing out', () => {
+  it('M14: clears every kept copy, of every project, and the quarantine keeps no work of it', async () => {
+    api.save.mockResolvedValue({ kind: 'saved', project: saved() });
+    renderScreen({ initial: signedIn() });
+    await completeForm();
+    await waitFor(() => {
+      expect(storedDraft()).not.toBeNull();
+    });
+    // Another project's copy of the same account, kept earlier in this tab.
+    const owner = String(storedDraft()?.session);
+    writeDraft({
+      ...(storedDraft() as unknown as DesignDraft),
+      session: owner,
+      project: { id: 'p9', revision: 1 },
+    });
+    expect(storedDrafts().length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(within(screen.getByTestId('design-account-mode')).getByText('Sign out'));
+    expect(await screen.findByTestId('design-signed-out')).toBeTruthy();
+    expect(storedDrafts()).toHaveLength(0);
+    expect(window.sessionStorage.getItem(QUARANTINE_KEY)).toBeNull();
+  });
+
   it('clears the session and the work, and starts a trial only when asked', async () => {
     api.save.mockResolvedValue({ kind: 'saved', project: saved() });
     const acquireImpl = vi.fn<typeof acquireTrial>().mockResolvedValue(trialReady());

@@ -236,45 +236,74 @@ function storage(): Storage | null {
 
 /**
  * M14: drafts are kept per identity and project, side by side, under the one
- * key: `{ v: 2, drafts: { "<owner>|<project id or new>": draft } }`. Writing
- * one project's draft never touches another's, and a project never saved has
- * its own slot (`new`). Still this tab's session storage: browser-local, never
- * sent to the server.
+ * key: `{ v: 2, drafts: { "<owner>|<project id or new>[|2]": draft } }`.
+ * Each project (and a new, never-saved project) has at most two copies: the
+ * one kept earlier and, while that one waits to be restored or dismissed, the
+ * working copy of what is being typed now. Writing one copy never touches
+ * another. Still this tab's session storage: browser-local, never sent to the
+ * server, and not a saved revision.
  *
  * A draft in the earlier format (a single v1 draft at the key) is read as the
- * draft of its own identity and project, never dropped; anything at the key
- * that cannot be read is moved aside to `UNREADABLE_KEY` rather than
- * overwritten.
+ * draft of its own identity and project. Anything that cannot be read is moved
+ * aside to `UNREADABLE_KEY`; a draft whose identity is not the reader's is
+ * moved to `QUARANTINE_KEY`. Neither is shown, offered or silently deleted.
  */
 const STORE_VERSION = 2;
 export const UNREADABLE_KEY = `${DRAFT_STORAGE_KEY}.unreadable`;
+export const QUARANTINE_KEY = `${DRAFT_STORAGE_KEY}.quarantine`;
+/** At most this many quarantined entries are kept (the oldest goes first). */
+const QUARANTINE_LIMIT = 10;
+
+/** Which copy of a project's draft: the one kept earlier, or the working copy beside it. */
+export type DraftCopy = 1 | 2;
+export const DRAFT_COPIES: readonly DraftCopy[] = [1, 2];
 
 /** A kept draft, with when it was written (0 for one migrated from the earlier format). */
-export type StoredDraft = DesignDraft & { savedAt: number; tenant?: string };
+export type StoredDraft = DesignDraft & { savedAt: number; tenant?: string; copy: DraftCopy };
 
 /** A kept draft as stored, with its body version (so `parseDraft` reads it as written). */
 export type StoredEntry = StoredDraft & { v: number };
 
-export function draftSlot(owner: string, project: string | null): string {
-  return `${owner}|${project ?? 'new'}`;
+export function draftSlot(owner: string, project: string | null, copy: DraftCopy = 1): string {
+  return `${owner}|${project ?? 'new'}${copy === 2 ? '|2' : ''}`;
 }
 
-function parseStored(value: unknown): StoredDraft | null {
+function parseStored(value: unknown, copy: DraftCopy): StoredDraft | null {
   const draft = parseDraft(value);
   if (draft === null || !isFields(value)) return null;
   const savedAt = typeof value.savedAt === 'number' ? value.savedAt : 0;
   const tenant = typeof value.tenant === 'string' && value.tenant !== '' ? value.tenant : undefined;
-  return { ...draft, savedAt, ...(tenant ? { tenant } : {}) };
+  return { ...draft, savedAt, copy, ...(tenant ? { tenant } : {}) };
+}
+
+function readRaw(store: Storage, key: string): string | null {
+  try {
+    return store.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Keep `raw` out of sight: never shown or offered, never silently dropped. */
+function quarantine(store: Storage, raw: string, reason: string): void {
+  let list: unknown[] = [];
+  try {
+    const parsed: unknown = JSON.parse(readRaw(store, QUARANTINE_KEY) ?? '[]');
+    if (Array.isArray(parsed)) list = parsed;
+  } catch {
+    list = [];
+  }
+  list.push({ reason, at: Date.now(), raw });
+  try {
+    store.setItem(QUARANTINE_KEY, JSON.stringify(list.slice(-QUARANTINE_LIMIT)));
+  } catch {
+    // Over quota: it stays where it was until a write replaces it.
+  }
 }
 
 /** Every kept draft by slot; an earlier single draft comes back in its own slot. */
 function load(store: Storage): Record<string, StoredDraft> {
-  let raw: string | null;
-  try {
-    raw = store.getItem(DRAFT_STORAGE_KEY);
-  } catch {
-    return {};
-  }
+  const raw = readRaw(store, DRAFT_STORAGE_KEY);
   if (raw === null) return {};
   let value: unknown;
   try {
@@ -285,14 +314,18 @@ function load(store: Storage): Record<string, StoredDraft> {
   if (isFields(value) && value.v === STORE_VERSION && isFields(value.drafts)) {
     const out: Record<string, StoredDraft> = {};
     for (const [slot, entry] of Object.entries(value.drafts)) {
-      const draft = parseStored({ ...(isFields(entry) ? entry : {}), v: DRAFT_VERSION });
-      if (draft !== null && slot === draftSlot(draft.session, draft.project?.id ?? null)) {
+      const copy: DraftCopy = slot.endsWith('|2') ? 2 : 1;
+      const draft = parseStored({ ...(isFields(entry) ? entry : {}), v: DRAFT_VERSION }, copy);
+      if (draft !== null && slot === draftSlot(draft.session, draft.project?.id ?? null, copy)) {
         out[slot] = draft;
+      } else {
+        // An entry this page cannot read is set aside, not dropped with the next write.
+        quarantine(store, JSON.stringify(entry), 'unreadable-entry');
       }
     }
     return out;
   }
-  const legacy = parseStored(value);
+  const legacy = parseStored(value, 1);
   if (legacy !== null) {
     return { [draftSlot(legacy.session, legacy.project?.id ?? null)]: legacy };
   }
@@ -310,47 +343,61 @@ function save(store: Storage, drafts: Record<string, StoredDraft>): boolean {
     if (Object.keys(drafts).length === 0) store.removeItem(DRAFT_STORAGE_KEY);
     else {
       const body: Record<string, unknown> = {};
-      for (const [slot, draft] of Object.entries(drafts)) body[slot] = draft;
+      for (const [slot, { copy: _copy, ...draft }] of Object.entries(drafts)) body[slot] = draft;
       store.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ v: STORE_VERSION, drafts: body }));
     }
     return true;
   } catch {
-    // Over quota: the guard's warnings still stand, but nothing is kept.
+    // Over quota or blocked: the caller says the work is not kept.
     return false;
   }
 }
 
-/** Keep `draft` in its own slot (its identity and project), leaving every other draft as it is. */
-export function writeDraft(draft: DesignDraft, tenant?: string | null): boolean {
+/**
+ * Keep `draft` in its own slot (its identity, project and copy), leaving every
+ * other draft as it is. False when it could not be kept (storage blocked or full).
+ */
+export function writeDraft(
+  draft: DesignDraft,
+  tenant?: string | null,
+  copy: DraftCopy = 1,
+): boolean {
   const store = storage();
   if (store === null) return false;
   const drafts = load(store);
-  drafts[draftSlot(draft.session, draft.project?.id ?? null)] = {
+  drafts[draftSlot(draft.session, draft.project?.id ?? null, copy)] = {
     ...draft,
     savedAt: Date.now(),
+    copy,
     ...(tenant ? { tenant } : {}),
   };
   return save(store, drafts);
 }
 
 /**
- * Remove kept drafts: with no arguments, every one (signing out, another
- * account); with an owner, that identity's; with a project too, only that
- * project's slot (`null` for the project never saved).
+ * Remove kept drafts: with no arguments, every one, quarantined and unreadable
+ * data included (signing out, another account: an explicit end of the work); with an owner, that identity's; with a project too, that project's
+ * copies (`null`: the project never saved); with a copy too, only that copy.
  */
-export function clearDraft(owner?: string, project?: string | null): void {
+export function clearDraft(owner?: string, project?: string | null, copy?: DraftCopy): void {
   const store = storage();
   if (store === null) return;
   if (owner === undefined) {
+    // Signing out or another account: nothing typed here stays, set aside or not.
     try {
       store.removeItem(DRAFT_STORAGE_KEY);
+      store.removeItem(QUARANTINE_KEY);
+      store.removeItem(UNREADABLE_KEY);
     } catch {
       // Nothing stored can be reached, so nothing is left to offer either.
     }
     return;
   }
-  const gone = (slot: string) =>
-    project === undefined ? slot.startsWith(`${owner}|`) : slot === draftSlot(owner, project);
+  const gone = (slot: string) => {
+    if (project === undefined) return slot.startsWith(`${owner}|`);
+    if (copy !== undefined) return slot === draftSlot(owner, project, copy);
+    return DRAFT_COPIES.some((each) => slot === draftSlot(owner, project, each));
+  };
   save(store, Object.fromEntries(Object.entries(load(store)).filter(([slot]) => !gone(slot))));
 }
 
@@ -364,30 +411,50 @@ export function storedDrafts(): StoredEntry[] {
 }
 
 /**
+ * The drafts `session` may be offered, most recent first: its own, under the
+ * tenant `tenant` when both are known. Another identity's drafts are moved to
+ * quarantine (its ownership here is not proven): never offered, never shown,
+ * never silently deleted. With `project` given, only that project's copies.
+ */
+export function ownDrafts(
+  session: string,
+  tenant?: string | null,
+  project?: string | null,
+): StoredDraft[] {
+  const store = storage();
+  if (store === null) return [];
+  const drafts = Object.entries(load(store));
+  const own = drafts.filter(([, draft]) => draft.session === session);
+  if (own.length < drafts.length) {
+    for (const [slot, draft] of drafts) {
+      if (draft.session !== session)
+        quarantine(store, JSON.stringify({ slot, ...draft }), 'other-identity');
+    }
+    save(store, Object.fromEntries(own));
+  }
+  return own
+    .map(([, draft]) => draft)
+    .filter(
+      (draft) =>
+        (tenant == null || draft.tenant === undefined || draft.tenant === tenant) &&
+        (project === undefined || (draft.project?.id ?? null) === project),
+    )
+    .sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/**
  * The draft typed by `session` for `project` (`null`: the project never
- * saved), or with `project` left out its most recent one; null when none. A
- * draft written under another tenant than `tenant` is not offered. Drafts of
- * other identities are removed, never offered.
+ * saved), or with `project` left out its most recent one; null when none.
+ * See `ownDrafts` for what is offered and what is quarantined.
  */
 export function readDraft(
   session: string,
   project?: string | null,
   tenant?: string | null,
 ): DesignDraft | null {
-  const store = storage();
-  if (store === null) return null;
-  // Another identity's drafts are never offered here, and are removed (as before M14).
-  const drafts = Object.entries(load(store));
-  const own = drafts.filter(([, draft]) => draft.session === session);
-  if (own.length < drafts.length) save(store, Object.fromEntries(own));
-  const found = storedDrafts().find(
-    (draft) =>
-      draft.session === session &&
-      (project === undefined || (draft.project?.id ?? null) === project) &&
-      (tenant == null || draft.tenant === undefined || draft.tenant === tenant),
-  );
+  const found = ownDrafts(session, tenant, project)[0];
   if (found === undefined) return null;
-  const { savedAt: _savedAt, tenant: _tenant, v: _v, ...draft } = found;
+  const { savedAt: _savedAt, tenant: _tenant, copy: _copy, ...draft } = found;
   return draft;
 }
 
