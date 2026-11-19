@@ -379,6 +379,78 @@ describe('when the session ends', () => {
 });
 
 describe('signing out', () => {
+  it('M15: a save answering after another account (another tenant) signed in changes nothing of it', async () => {
+    let answer: (value: Awaited<ReturnType<typeof api.save>>) => void = () => undefined;
+    api.save.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const other = jwt('user-2', 'other-tenant');
+    const signInImpl = vi
+      .fn<typeof signIn>()
+      .mockResolvedValue({ kind: 'signed-in', accessToken: other });
+    renderScreen({ initial: signedIn(), signInImpl });
+    await completeForm();
+    type(overview().getByLabelText('Customer'), 'Typed for user 1');
+    fireEvent.click(projects().getByText('Save project'));
+    await waitFor(() => {
+      expect(api.save).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(within(screen.getByTestId('design-account-mode')).getByText('Sign out'));
+    fireEvent.click(
+      within(await screen.findByTestId('design-signed-out')).getByText(
+        'Sign in to save to your account',
+      ),
+    );
+    await signInThroughForm(other);
+    await screen.findByTestId('projects-panel');
+    await act(async () => {
+      answer({ kind: 'saved', project: saved() });
+      await Promise.resolve();
+    });
+    expect(nameField().value).toBe('');
+    expect(screen.queryByTestId('project-opened')).toBeNull();
+    expect(document.body.textContent).not.toContain('Typed for user 1');
+    expect(JSON.stringify(storedDrafts())).not.toContain('Typed for user 1');
+  });
+
+  for (const outcome of ['saved', 'failed'] as const) {
+    it(`M15: a save answering (${outcome}) after sign-out changes nothing and recreates no recovery copy`, async () => {
+      let answer: (value: Awaited<ReturnType<typeof api.save>>) => void = () => undefined;
+      api.save.mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      const acquireImpl = vi.fn<typeof acquireTrial>().mockResolvedValue(trialReady());
+      renderScreen({ initial: signedIn(), acquireImpl });
+      await completeForm();
+      type(overview().getByLabelText('Customer'), 'Typed for user 1');
+      fireEvent.click(projects().getByText('Save project'));
+      await waitFor(() => {
+        expect(api.save).toHaveBeenCalledTimes(1);
+      });
+      fireEvent.click(within(screen.getByTestId('design-account-mode')).getByText('Sign out'));
+      expect(await screen.findByTestId('design-signed-out')).toBeTruthy();
+      expect(storedDrafts()).toHaveLength(0);
+      // Continue as a trial: a fresh workspace for another identity.
+      fireEvent.click(
+        within(screen.getByTestId('design-signed-out')).getByText('Continue as a trial'),
+      );
+      await screen.findByTestId('projects-panel');
+      await act(async () => {
+        answer(outcome === 'saved' ? { kind: 'saved', project: saved() } : { kind: 'failed' });
+        await Promise.resolve();
+      });
+      expect(nameField().value).toBe('');
+      expect(overview().getByLabelText<HTMLInputElement>('Customer').value).toBe('');
+      expect(screen.queryByTestId('project-opened')).toBeNull();
+      expect(document.body.textContent).not.toContain('Typed for user 1');
+      expect(JSON.stringify(storedDrafts())).not.toContain('Typed for user 1');
+    });
+  }
+
   it('M14: clears every kept copy, of every project, and the quarantine keeps no work of it', async () => {
     api.save.mockResolvedValue({ kind: 'saved', project: saved() });
     renderScreen({ initial: signedIn() });

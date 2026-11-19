@@ -2,7 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
-import { storedDrafts } from '@/components/design/draft';
+import { draftBoards, readDraft, storedDrafts, writeDraft } from '@/components/design/draft';
+import { blankBoard } from '@/components/design/schedule';
 import type * as DesignModule from '@/lib/design';
 import type {
   listProjects,
@@ -412,4 +413,68 @@ describe('edits made while Save is running', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
   });
+
+  for (const outcome of ['saved', 'failed'] as const) {
+    it(`a draft restored while Save is in flight is not overwritten by its ${outcome} answer`, async () => {
+      // A copy of p1 kept earlier in this tab (another reload).
+      writeDraft({
+        session: 's',
+        project: { id: 'p1', revision: 1 },
+        clean: '',
+        info: { name: 'Restored name', number: '', customer: '', consultant: '', contractor: '' },
+        boards: draftBoards([blankBoard(0, 1, 'MDB')]),
+        profileText: '',
+        language: null,
+        market: '',
+        configuration: {
+          doc: {
+            ...STORED,
+            strips: [
+              {
+                ...STORED.strips[0],
+                designation: { function: null, location: null, product: 'XD' },
+              },
+            ],
+          },
+          dropUnrecoverable: false,
+        },
+      });
+      const pending = deferred<Awaited<ReturnType<typeof reviseProject>>>();
+      renderScreen();
+      fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+      await waitFor(() => {
+        expect(designation().value).toBe('X1');
+      });
+      const offer = await screen.findByTestId('draft-offer');
+      fireEvent.change(designation(), { target: { value: 'X7' } });
+      api.revise.mockReturnValueOnce(pending.promise);
+      fireEvent.click(saveButton());
+      await waitFor(() => {
+        expect(api.revise).toHaveBeenCalledTimes(1);
+      });
+      // Restore the kept copy while the save runs (the page asks first: discard).
+      fireEvent.click(within(offer).getByText('Restore unsaved work'));
+      fireEvent.click(within(screen.getByTestId('unsaved-dialog')).getByText('Discard changes'));
+      await waitFor(() => {
+        expect(designation().value).toBe('XD');
+      });
+      expect(nameField().value).toBe('Restored name');
+      await act(async () => {
+        pending.resolve(
+          outcome === 'saved'
+            ? { kind: 'saved', project: savedAs('Stored tower', 'X7') }
+            : { kind: 'failed' },
+        );
+        await pending.promise;
+      });
+      // The restored workspace is untouched by the late answer.
+      expect(designation().value).toBe('XD');
+      expect(nameField().value).toBe('Restored name');
+      expect(unsaved()).toBe(true);
+      // Its recovery copy is still kept, with the restored work.
+      await waitFor(() => {
+        expect(JSON.stringify(readDraft('s', 'p1')?.configuration?.doc)).toContain('XD');
+      });
+    });
+  }
 });
