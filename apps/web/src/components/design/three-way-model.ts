@@ -10,7 +10,7 @@
  * does not carry is not compared; where base and latest differ in it, it is
  * listed as changed outside this comparison, never as unchanged.
  *
- * Identity is #236's (never position, never a generated id):
+ * Identity is PR 236's (never position, never a generated id):
  * - boards by name; loads by description within a board, unique on each
  *   side (a description held by several loads on any side is a duplicate
  *   group: unresolved unless identical on all three sides);
