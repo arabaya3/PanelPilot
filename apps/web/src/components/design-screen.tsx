@@ -982,6 +982,7 @@ function DesignWorkspace({
   // Said once local data was deleted at the engineer's request (focus goes there).
   const [deletedNote, setDeletedNote] = useState(false);
   const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
+  const holdLocalWrites = useRef(false);
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
   const workspaceAt = useRef(0);
@@ -1032,6 +1033,9 @@ function DesignWorkspace({
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner) return;
+    // Between keeping the page's work for a server-draft restore and the
+    // restore landing: the same work is not kept a second time in the other copy.
+    if (holdLocalWrites.current) return;
     const here = opened?.id ?? null;
     if (!dirty || discardedSnapshot.current === discardMark) {
       // Only the copy this page wrote, for this project (M14).
@@ -1168,8 +1172,10 @@ function DesignWorkspace({
     }
     const outcome = keepDraft(workDraft(draftOwner), tokenTenant, copy);
     if (outcome !== 'kept') return outcome;
-    // That copy is now set apart: the page writes elsewhere from here on.
+    // That copy is now set apart: the page writes elsewhere from here on,
+    // and nothing until the restore that follows has landed.
     owned.current = null;
+    holdLocalWrites.current = true;
     lastWritten.current = '';
     setRecoveryTick((tick) => tick + 1);
     return 'kept';
@@ -1189,6 +1195,7 @@ function DesignWorkspace({
       });
       // Opened for an identity the page has since left: not this one's work.
       if (currentOwner.current !== owner) {
+        holdLocalWrites.current = false;
         setRestoring(false);
         return;
       }
@@ -1243,6 +1250,7 @@ function DesignWorkspace({
         : null;
     // A server draft restored: further edits go to a free copy, never over the one kept just before.
     if (!own) lastWritten.current = '';
+    holdLocalWrites.current = false;
     setRecoveryTick((tick) => tick + 1);
     const keyed = formBoards(draft.boards, nextKey.current);
     nextKey.current += Math.max(1, keyed.used);
