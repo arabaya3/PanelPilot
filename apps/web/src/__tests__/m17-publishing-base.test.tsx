@@ -238,6 +238,21 @@ describe('dialog focus', () => {
     });
   });
 
+  it('when focus was on the page itself at opening, closing places focus on the panel', async () => {
+    renderApp(<Harness removeOpener={false} />, { locale: 'en' });
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(screen.getByRole('button', { name: 'Opener' }));
+    await waitFor(() => {
+      expect(document.activeElement?.textContent).toBe('Cancel');
+    });
+    act(() => {
+      (document.activeElement as HTMLButtonElement).click();
+    });
+    await waitFor(() => {
+      expect(document.activeElement?.textContent).toBe('Panel');
+    });
+  });
+
   it('keeps Tab and Shift+Tab inside the dialog', async () => {
     renderApp(<Harness removeOpener={false} />, { locale: 'en' });
     fireEvent.click(screen.getByRole('button', { name: 'Opener' }));

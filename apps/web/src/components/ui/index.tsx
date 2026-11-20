@@ -459,7 +459,13 @@ export function Dialog({
       else dialog.removeAttribute('open');
       const back = returnTo.current;
       back?.focus();
-      onClosed?.(back !== null && back.isConnected && document.activeElement === back);
+      // The page itself is not a place to return to: focus there is lost focus.
+      onClosed?.(
+        back !== null &&
+          back !== document.body &&
+          back.isConnected &&
+          document.activeElement === back,
+      );
     }
     // `initialFocus` and `onClosed` are read when `open` changes, not tracked.
   }, [open]);
