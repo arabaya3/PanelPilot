@@ -297,6 +297,35 @@ describe('three-way review panel', () => {
     expect(screen.getByTestId('review-status').textContent).toMatch(/Fetching/);
   });
 
+  it('an answer that arrives after your work changed is not shown', async () => {
+    const resolvers: Array<() => void> = [];
+    const { all, view } = setup(
+      ({ revision }) =>
+        new Promise((resolve) => {
+          resolvers.push(() => {
+            resolve({
+              kind: 'saved',
+              project: revision === 2 ? project(2, 'C2', '1.5') : project(3, 'C3', '1.5'),
+            });
+          });
+        }),
+    );
+    await waitFor(() => {
+      expect(resolvers).toHaveLength(2);
+    });
+    view.rerender(<ThreeWayReview {...all} workMark="m-edited" />);
+    await act(async () => {
+      for (const go of resolvers) go();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('review-status').textContent).toMatch(
+        /changed while the revisions were fetched/,
+      );
+    });
+    expect(screen.queryByTestId('review-result')).toBeNull();
+  });
+
   it('when no newer revision exists, says so and shows only your changes', async () => {
     setup(({ revision }) => ok(project(2, 'C2', '1.5', revision === null ? {} : {})));
     expect((await screen.findByTestId('review-no-newer')).textContent).toMatch(

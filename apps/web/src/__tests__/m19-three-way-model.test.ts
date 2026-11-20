@@ -341,6 +341,34 @@ describe('three-way classification', () => {
     });
   });
 
+  it('under a board name held twice, loads get no verdict', () => {
+    const two = (kw: string) =>
+      src([board('DB1', [load('Pump', { power_kw: kw })]), board('DB1', [load('Fan')])]);
+    const r = threeWay(two('4'), two('4'), two('6'));
+    expect(row(r, 'load', 'Pump')).toMatchObject({ status: 'unresolved', reason: 'duplicate' });
+  });
+
+  it('wire details of a binding id held twice get no verdict', () => {
+    const doubled = (number: string) => {
+      const c = cfg({ wires: { 'n1/0': { number } } });
+      c.bindings = [
+        c.bindings[0] as L,
+        { ...(c.bindings[0] as L), circuit: 'Other', wires: {} },
+      ] as typeof c.bindings;
+      return c;
+    };
+    const r = threeWay(
+      src(B, { configuration: doubled('W7') }),
+      src(B, { configuration: doubled('W7') }),
+      src(B, { configuration: doubled('W9') }),
+    );
+    expect(rows(r).find((x) => x.type === 'wire')).toBeUndefined();
+    expect(rows(r).find((x) => x.type === 'wires')).toMatchObject({
+      status: 'unresolved',
+      reason: 'duplicate',
+    });
+  });
+
   it('identical sources show nothing', () => {
     expect(
       rows(
@@ -414,6 +442,52 @@ describe('one representation for all three sources', () => {
         'MDB › Lights: feeds',
         'profile',
       ].sort(),
+    );
+  });
+
+  it('a value the form fills by default (50 Hz) is never taken as the stored one: 60 Hz in latest is listed', () => {
+    const b = stored(1, request());
+    const lr = request();
+    ((lr.boards[0] as L).supply as L).frequency_hz = '60';
+    const l = stored(2, lr);
+    expect(outsideChanges(b, l, storedSource(b), storedSource(l))).toContain(
+      'MDB: supply.frequency_hz',
+    );
+    // And the converted sources really do agree on 50, so no row could show it.
+    expect(rows(threeWay(storedSource(b), storedSource(b), storedSource(l)))).toEqual([]);
+  });
+
+  it('a feeder link the conversion drops (no fed-from) that changed is listed', () => {
+    const withLink = (number: string) => ({
+      ...request(),
+      feeder_links: [{ fed_board: 'MDB', from_end: null, to_end: null, attributes: { number } }],
+    });
+    const b = stored(1, withLink('W1'));
+    const l = stored(2, withLink('W2'));
+    expect(outsideChanges(b, l, storedSource(b), storedSource(l))).toContain(
+      'link MDB: attributes.number',
+    );
+  });
+
+  it('a board present only in latest lists what the conversion does not carry of it', () => {
+    const lr = request();
+    lr.boards = [
+      ...lr.boards,
+      {
+        ...board('DB2', [load('Fan')]),
+        conditions: {
+          installation_method: 'E',
+          ambient_temp_c: '45',
+          grouped_circuits: 2,
+          conductor_material: 'copper',
+          insulation_rating_c: 90,
+        },
+      },
+    ];
+    const b = stored(1, request());
+    const l = stored(2, lr);
+    expect(outsideChanges(b, l, storedSource(b), storedSource(l))).toContain(
+      'DB2: conditions.ambient_temp_c',
     );
   });
 

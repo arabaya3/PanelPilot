@@ -45,6 +45,7 @@ type Outcome =
       mark: string;
     }
   | { key: string; kind: 'noBase'; madeFrom: number | null }
+  | { key: string; kind: 'changedWhileFetching' }
   | {
       key: string;
       kind: 'baseIntegrity' | 'latestIntegrity' | 'baseNotFound' | 'latestNotFound' | 'failed';
@@ -94,6 +95,9 @@ export function ThreeWayReview({
   const key = `${token}|${projectId}|${String(base)}|${String(round)}`;
   const keyNow = useRef(key);
   keyNow.current = key;
+  // What the editor holds now: an answer for an older copy is not shown.
+  const markNow = useRef(workMark);
+  markNow.current = workMark;
 
   async function run(asked: string) {
     if (base === null) {
@@ -115,6 +119,11 @@ export function ThreeWayReview({
     setPending((current) => (current === asked ? null : current));
     // Input, project, base, identity or round changed since: this answer is not shown.
     if (keyNow.current !== asked) return;
+    // Your work changed while this was fetched: the copy it compares is not your work now.
+    if (markNow.current !== captured.mark) {
+      setOutcome({ key: asked, kind: 'changedWhileFetching' });
+      return;
+    }
     const [b = { kind: 'failed' as const }, l = { kind: 'failed' as const }] = pair;
     if (b.kind === 'unauthorized' || l.kind === 'unauthorized') {
       onUnauthorized?.();
@@ -194,7 +203,9 @@ export function ThreeWayReview({
         ? t('done', { count: shown.review.sections.reduce((n, s) => n + s.rows.length, 0) })
         : shown.kind === 'noBase'
           ? t('noBase')
-          : t(shown.kind, { revision: shown.revision ?? '' });
+          : shown.kind === 'changedWhileFetching'
+            ? t('changedWhileFetching')
+            : t(shown.kind, { revision: shown.revision ?? '' });
 
   const label = (field: string) => {
     const k = `fields.${field.replace(/\./g, '_')}`;

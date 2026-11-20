@@ -378,9 +378,41 @@ export function threeWay(base: Source, yours: Source, latest: Source): Review {
   const keys = [
     ...new Set([...eb.entries.keys(), ...ey.entries.keys(), ...el.entries.keys()]),
   ].sort();
+  // A board name or binding held by several entries on any side has no identity:
+  // nothing under it (loads, strips, components, bindings, links, wire details)
+  // is given a verdict either.
+  const duplicated = (type: string) =>
+    new Set(
+      [eb, ey, el].flatMap((e) =>
+        [...e.entries.values()]
+          .filter((x) => x.type === type && x.group !== undefined)
+          .map((x) => x.key.slice(type.length + 1)),
+      ),
+    );
+  const dupBoards = duplicated('board');
+  const dupBindings = duplicated('binding');
+  const underDuplicate = (key: string) => {
+    const [type, rest] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    if (type === 'board' || type === 'details') return false;
+    const board = type === 'link' ? rest : (rest.split(SEP)[0] ?? '');
+    return dupBoards.has(board);
+  };
   for (const key of keys) {
-    const row = classify(key, eb.entries.get(key), ey.entries.get(key), el.entries.get(key));
-    if (row) rows.push(row);
+    const b = eb.entries.get(key);
+    const y = ey.entries.get(key);
+    const l = el.entries.get(key);
+    const row = classify(key, b, y, l);
+    if (row === null) continue;
+    if (row.status !== 'unresolved' && underDuplicate(key)) {
+      const side = (e?: Entry) => (e === undefined ? [] : [valuesOf(e.value ?? {})]);
+      rows.push({
+        ...row,
+        status: 'unresolved',
+        reason: 'duplicate',
+        fields: [],
+        sides: { base: side(b), yours: side(y), latest: side(l) },
+      });
+    } else rows.push(row);
   }
   // Wire details: by position only while net and endpoints are one on all three sides.
   const wireKeys = [
@@ -392,8 +424,10 @@ export function threeWay(base: Source, yours: Source, latest: Source): Review {
     const wl = el.wires.get(key);
     const any = (wb ?? wy ?? wl) as Wires;
     const [board = ''] = key.split(SEP);
+    const [, bindingId = ''] = key.split(SEP);
+    const dup = dupBoards.has(board) || dupBindings.has(`${board}${SEP}${bindingId}`);
     const ctx = [wb, wy, wl].map((w) => (w === undefined ? undefined : w.context));
-    const sameEnds = ctx.every((c) => c !== null && c !== undefined && c === ctx[0]);
+    const sameEnds = !dup && ctx.every((c) => c !== null && c !== undefined && c === ctx[0]);
     if (!sameEnds) {
       const d = [wb, wy, wl].map((w) => canonical(w?.details ?? {}));
       if (d[0] === d[1] && d[0] === d[2]) continue;
@@ -406,7 +440,7 @@ export function threeWay(base: Source, yours: Source, latest: Source): Review {
         label: any.label,
         where: any.where,
         status: 'unresolved',
-        reason: 'wire_endpoints',
+        reason: dup ? 'duplicate' : 'wire_endpoints',
         presence: { base: wb !== undefined, yours: wy !== undefined, latest: wl !== undefined },
         fields: [],
         sides: { base: side(wb), yours: side(wy), latest: side(wl) },
@@ -509,7 +543,6 @@ export function outsideChanges(
   carriedLatest: Source,
 ): string[] {
   const out = new Set<string>();
-  const kept = (value: Raw) => new Set(flatten(value).keys());
   const unique = (list: Raw[], key: (item: Raw) => string | null) => {
     const counts = new Map<string, Raw[]>();
     for (const item of list) {
@@ -522,13 +555,32 @@ export function outsideChanges(
         .map(([k, items]) => [k, items[0] as Raw]),
     );
   };
-  const diff = (a: Raw, b: Raw, keep: Set<string>, prefix: string, skip: string[] = []) => {
-    const fa = flatten(a);
-    const fb = flatten(b);
+  /**
+   * A path that differs between base and latest as stored is compared by the
+   * review only if the editor's conversion kept the stored value on both sides
+   * (a default the form writes, such as 50 Hz, is not the stored value).
+   * Otherwise it is listed here.
+   */
+  const diff = (
+    a: Raw | undefined,
+    b: Raw | undefined,
+    convA: Raw | undefined,
+    convB: Raw | undefined,
+    prefix: string,
+    skip: string[] = [],
+  ) => {
+    const fa = flatten(a ?? {});
+    const fb = flatten(b ?? {});
+    const ca = flatten(convA ?? {});
+    const cb = flatten(convB ?? {});
     for (const key of new Set([...fa.keys(), ...fb.keys()])) {
       if (skip.some((s) => key === s || key.startsWith(`${s}.`))) continue;
-      if (keep.has(key)) continue;
-      if (!same(fa.get(key), fb.get(key), key)) out.add(`${prefix}${key}`);
+      const va = a === undefined ? null : (fa.get(key) ?? null);
+      const vb = b === undefined ? null : (fb.get(key) ?? null);
+      if (same(va, vb, key)) continue;
+      const keptA = a === undefined || (ca.has(key) && same(va, ca.get(key), key));
+      const keptB = b === undefined || (cb.has(key) && same(vb, cb.get(key), key));
+      if (!keptA || !keptB) out.add(`${prefix}${key}`);
     }
   };
   const rb = base.request as unknown as Raw;
@@ -536,29 +588,55 @@ export function outsideChanges(
   diff(
     record(rb.info) ?? {},
     record(rl.info) ?? {},
-    kept(record(carried.request.info) ?? {}),
+    record(carried.request.info) ?? {},
+    record(carriedLatest.request.info) ?? {},
     'info.',
     ['revisions'],
   );
   if (canonical(rb.profile ?? null) !== canonical(rl.profile ?? null)) out.add('profile');
-  const boardsB = unique(records(rb.boards), (b) => str(b.name));
-  const boardsL = unique(records(rl.boards), (b) => str(b.name));
-  const carriedBoards = unique(records(carriedLatest.request.boards), (b) => str(b.name));
-  for (const [name, bb] of boardsB) {
+  const byName = (list: unknown) => unique(records(list), (b) => str(b.name));
+  const byDescription = (list: unknown) => unique(records(list), (x) => str(x.description));
+  const boardsB = byName(rb.boards);
+  const boardsL = byName(rl.boards);
+  const convB = byName(carried.request.boards);
+  const convL = byName(carriedLatest.request.boards);
+  for (const name of new Set([...boardsB.keys(), ...boardsL.keys()])) {
+    const bb = boardsB.get(name);
     const bl = boardsL.get(name);
-    if (!bl) continue;
-    const shape = carriedBoards.get(name) ?? {};
-    diff(bb, bl, kept(without(shape, ['loads'])), `${name}: `, ['loads', 'name']);
-    const loadsB = unique(records(bb.loads), (x) => str(x.description));
-    const loadsL = unique(records(bl.loads), (x) => str(x.description));
-    const carriedLoads = unique(records(shape.loads), (x) => str(x.description));
-    for (const [description, lb] of loadsB) {
-      const ll = loadsL.get(description);
-      if (ll)
-        diff(lb, ll, kept(carriedLoads.get(description) ?? {}), `${name} › ${description}: `, [
-          'description',
-        ]);
+    // A board on one side only: what the conversion does not carry of it is listed too.
+    diff(
+      bb && without(bb, ['loads']),
+      bl && without(bl, ['loads']),
+      convB.get(name),
+      convL.get(name),
+      `${name}: `,
+      ['loads', 'name'],
+    );
+    const loadsB = byDescription(bb?.loads);
+    const loadsL = byDescription(bl?.loads);
+    const cLoadsB = byDescription(convB.get(name)?.loads);
+    const cLoadsL = byDescription(convL.get(name)?.loads);
+    for (const description of new Set([...loadsB.keys(), ...loadsL.keys()])) {
+      diff(
+        loadsB.get(description),
+        loadsL.get(description),
+        cLoadsB.get(description),
+        cLoadsL.get(description),
+        `${name} › ${description}: `,
+        ['description'],
+      );
     }
+  }
+  // Feeder links as stored, against what the conversion kept of them.
+  const byFed = (list: unknown) => unique(records(list), (l) => str(l.fed_board));
+  const linksB = byFed(rb.feeder_links);
+  const linksL = byFed(rl.feeder_links);
+  const cLinksB = byFed(carried.request.feeder_links);
+  const cLinksL = byFed(carriedLatest.request.feeder_links);
+  for (const fed of new Set([...linksB.keys(), ...linksL.keys()])) {
+    diff(linksB.get(fed), linksL.get(fed), cLinksB.get(fed), cLinksL.get(fed), `link ${fed}: `, [
+      'fed_board',
+    ]);
   }
   return [...out].sort();
 }

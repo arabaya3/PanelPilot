@@ -2018,7 +2018,8 @@
       "unresolvedDuplicate": "Cannot be matched: several entries share this name. All three sources are listed.",
       "unresolvedWires": "Cannot be matched: the net or what its positions connect differs between the sources, so a position may be another physical connection. All three sources are listed.",
       "dependsLatest": "Related change in latest: {what}",
-      "dependsYours": "Related change in yours: {what}"
+      "dependsYours": "Related change in yours: {what}",
+      "changedWhileFetching": "Your work changed while the revisions were fetched, so nothing is shown. Press Refresh to review your work as it is now."
     }
   },
   "files": {
