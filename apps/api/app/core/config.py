@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     # Days an AI intake proposal no saved revision applied is kept before the
     # ``purge-ai-proposals`` job deletes it (M6b S3). An open owner decision.
     ai_intake_unused_retention_days: int = Field(default=30, ge=1)
+    # Server-backed design drafts (slice 1): a draft or tombstone not updated
+    # for this many days is purged with its request records; request ids are
+    # remembered for DESIGN_DRAFT_REQUEST_RETENTION_HOURS.
+    design_draft_retention_days: int = Field(default=30, ge=1)
+    design_draft_request_retention_hours: int = Field(default=48, ge=25)
     # Whether each plan's limits apply (app.domain.billing). Off until a way
     # to pay exists: until then every account may use every feature, under
     # MODEL_CALLS_PER_MONTH.
@@ -435,6 +440,30 @@ class _CableCoreSwitch(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     design_cable_core_cross_board: bool = False
+
+
+class _ServerDraftsSwitch(BaseSettings):
+    """The server-drafts write switch alone (see :func:`design_server_drafts`)."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    design_server_drafts: bool = False
+
+
+def design_server_drafts() -> bool:
+    """Whether accounts may write server-backed design drafts.
+
+    ``DESIGN_SERVER_DRAFTS``, read on each call. Off by default. Off stops new
+    draft writes only: drafts already stored stay, and their author can still
+    read and delete them. Nothing is deleted by turning it off.
+
+    Raises:
+        ConfigurationError: If it is not a boolean.
+    """
+    try:
+        return _ServerDraftsSwitch().design_server_drafts
+    except PydanticValidationError as exc:
+        raise ConfigurationError(_format_validation_error(exc)) from exc
 
 
 def design_cable_core_cross_board() -> bool:

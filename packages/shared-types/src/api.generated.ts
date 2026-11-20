@@ -944,6 +944,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/drafts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Drafts
+     * @description The caller's own live drafts (no bodies), and whether writes are on.
+     */
+    get: operations['list_drafts_api_v1_design_drafts_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/draft': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Draft
+     * @description The caller's own draft of a saved project, if any (a tombstone has no body).
+     */
+    get: operations['get_draft_api_v1_design_projects__project_id__draft_get'];
+    /**
+     * Put Draft
+     * @description Keep the caller's draft when ``if_match`` is the current token (or ``None`` for none).
+     */
+    put: operations['put_draft_api_v1_design_projects__project_id__draft_put'];
+    post?: never;
+    /**
+     * Delete Draft
+     * @description Delete the caller's draft when ``if_match`` is its current token (leaves a tombstone).
+     */
+    delete: operations['delete_draft_api_v1_design_projects__project_id__draft_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -3409,6 +3457,170 @@ export interface components {
       feeder_length_m?: string | null;
     };
     /**
+     * DraftBody
+     * @description What the design page keeps of unsaved work (never a token or identity).
+     */
+    DraftBody: {
+      /** Clean */
+      clean: string;
+      info: components['schemas']['DraftInfo'];
+      /** Boards */
+      boards: {
+        [key: string]: unknown;
+      }[];
+      /** Profiletext */
+      profileText: string;
+      /** Language */
+      language?: string | null;
+      /** Market */
+      market: string;
+      /** Control */
+      control?: unknown[] | null;
+      /** Ai */
+      ai?: {
+        [key: string]: unknown;
+      } | null;
+      configuration?: components['schemas']['DraftConfiguration'] | null;
+    };
+    /**
+     * DraftConfiguration
+     * @description Unsaved configuration edits, and whether "save without it" was chosen.
+     */
+    DraftConfiguration: {
+      /** Doc */
+      doc: {
+        [key: string]: unknown;
+      };
+      /** Dropunrecoverable */
+      dropUnrecoverable: boolean;
+      /** Confirmed */
+      confirmed?: {
+        [key: string]: unknown;
+      }[];
+    };
+    /**
+     * DraftDelete
+     * @description Delete a draft (it becomes a tombstone with a new token).
+     */
+    DraftDelete: {
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+      /**
+       * Issued At
+       * Format: date-time
+       */
+      issued_at: string;
+      /** If Match */
+      if_match: string;
+    };
+    /**
+     * DraftInfo
+     * @description The project details as typed.
+     */
+    DraftInfo: {
+      /** Name */
+      name: string;
+      /** Number */
+      number: string;
+      /** Customer */
+      customer: string;
+      /** Consultant */
+      consultant: string;
+      /** Contractor */
+      contractor: string;
+    };
+    /**
+     * DraftList
+     * @description The caller's live drafts (no bodies), and whether writes are on.
+     */
+    DraftList: {
+      /** Writes Enabled */
+      writes_enabled: boolean;
+      /** Drafts */
+      drafts: components['schemas']['DraftState'][];
+    };
+    /**
+     * DraftLookup
+     * @description The caller's draft of one project, if any, and whether writes are on.
+     */
+    DraftLookup: {
+      /** Writes Enabled */
+      writes_enabled: boolean;
+      draft?: components['schemas']['DraftState'] | null;
+    };
+    /**
+     * DraftState
+     * @description A draft as the server holds it, for its author only.
+     *
+     *     Attributes:
+     *         project_id: The saved project.
+     *         token: The concurrency token: send it as ``if_match`` with the next write.
+     *         state: ``live``, or ``deleted`` (a tombstone, with no body).
+     *         base_revision: The saved revision the work was made from.
+     *         updated_at: When it was last written.
+     *         body: The work; ``None`` when deleted or when not asked for.
+     *         replayed: ``True`` when this answers a retry of a write already applied.
+     */
+    DraftState: {
+      /**
+       * Project Id
+       * Format: uuid
+       */
+      project_id: string;
+      /** Token */
+      token: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'live' | 'deleted';
+      /** Base Revision */
+      base_revision: number;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      body?: components['schemas']['DraftBody'] | null;
+      /**
+       * Replayed
+       * @default false
+       */
+      replayed: boolean;
+    };
+    /**
+     * DraftWrite
+     * @description Keep a draft.
+     *
+     *     Attributes:
+     *         request_id: Chosen by the client for this write; a retry sends the same.
+     *         issued_at: When the client first sent it; refused after 24 hours.
+     *         if_match: The token the client last saw, or ``None`` to say it saw no
+     *             draft (and no deleted one) for this project.
+     *         base_revision: The saved revision the work was made from.
+     *         body: The work.
+     */
+    DraftWrite: {
+      /**
+       * Request Id
+       * Format: uuid
+       */
+      request_id: string;
+      /**
+       * Issued At
+       * Format: date-time
+       */
+      issued_at: string;
+      /** If Match */
+      if_match?: string | null;
+      /** Base Revision */
+      base_revision: number;
+      body: components['schemas']['DraftBody'];
+    };
+    /**
      * DriveRangeSummary
      * @description A drive series selection can choose from.
      */
@@ -5809,6 +6021,8 @@ export interface components {
       configuration_removed: boolean;
       /** References Confirmed */
       references_confirmed?: components['schemas']['ReferenceConfirmation'][];
+      /** Expected Revision */
+      expected_revision?: number | null;
     };
     /**
      * Revision
@@ -8832,6 +9046,184 @@ export interface operations {
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
         };
+      };
+    };
+  };
+  list_drafts_api_v1_design_drafts_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DraftList'];
+        };
+      };
+    };
+  };
+  get_draft_api_v1_design_projects__project_id__draft_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DraftLookup'];
+        };
+      };
+      /** @description Writes are off (server_drafts_disabled), or no account (trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such project, or not the caller's */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description draft_conflict (nothing changed) or request_expired */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description request_id_reused, draft_too_large, or a malformed body */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  put_draft_api_v1_design_projects__project_id__draft_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DraftWrite'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DraftState'];
+        };
+      };
+      /** @description Writes are off (server_drafts_disabled), or no account (trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such project, or not the caller's */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description draft_conflict (nothing changed) or request_expired */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description request_id_reused, draft_too_large, or a malformed body */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_draft_api_v1_design_projects__project_id__draft_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DraftDelete'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DraftState'];
+        };
+      };
+      /** @description Writes are off (server_drafts_disabled), or no account (trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such project, or not the caller's */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description draft_conflict (nothing changed) or request_expired */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description request_id_reused, draft_too_large, or a malformed body */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

@@ -17,6 +17,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from 'react';
 
 import { AlertTriangleIcon, CheckIcon, CloseIcon, InfoIcon } from '@/components/icons';
@@ -415,6 +416,8 @@ export function Dialog({
   footer,
   variant = 'dialog',
   closeLabel,
+  initialFocus,
+  onClosed,
 }: {
   open: boolean;
   onClose: () => void;
@@ -425,6 +428,13 @@ export function Dialog({
   variant?: 'dialog' | 'drawer' | 'drawer-start';
   /** Accessible name of the close button, translated by the caller. */
   closeLabel: string;
+  /** Where focus goes on opening (a safe choice); else the browser's first focusable. */
+  initialFocus?: RefObject<HTMLElement | null>;
+  /**
+   * Called once closed, with whether focus could go back to what opened it.
+   * When it could not (it is gone or disabled now), the caller places focus.
+   */
+  onClosed?: (returned: boolean) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -443,11 +453,21 @@ export function Dialog({
       openedAt.current = Date.now();
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
+      initialFocus?.current?.focus();
     } else if (!open && dialog.open) {
       if (typeof dialog.close === 'function') dialog.close();
       else dialog.removeAttribute('open');
-      returnTo.current?.focus();
+      const back = returnTo.current;
+      back?.focus();
+      // The page itself is not a place to return to: focus there is lost focus.
+      onClosed?.(
+        back !== null &&
+          back !== document.body &&
+          back.isConnected &&
+          document.activeElement === back,
+      );
     }
+    // `initialFocus` and `onClosed` are read when `open` changes, not tracked.
   }, [open]);
 
   return (
@@ -458,6 +478,27 @@ export function Dialog({
       onCancel={(event) => {
         event.preventDefault();
         onClose();
+      }}
+      onKeyDown={(event) => {
+        // Keyboard focus stays in the dialog: Tab from its last control goes to
+        // its first, and Shift+Tab from its first to its last (the native modal
+        // otherwise lets focus leave to the browser).
+        if (event.key !== 'Tab' || ref.current === null) return;
+        const focusable = Array.from(
+          ref.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }}
       onClick={(event) => {
         // A click on the backdrop lands on the dialog element itself.

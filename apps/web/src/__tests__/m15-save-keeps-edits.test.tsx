@@ -515,7 +515,8 @@ describe('edits made while Save is running', () => {
     api.open.mockResolvedValueOnce({ kind: 'failed' });
     fireEvent.click(within(offer).getByText('Restore unsaved work'));
     fireEvent.click(within(screen.getByTestId('unsaved-dialog')).getByText('Discard changes'));
-    await screen.findByTestId('draft-project-gone');
+    // The same revision is open: its base is provable, so nothing is held (and
+    // it is not said to be saved as a new project: the project is open).
     await waitFor(() => {
       expect(nameField().value).toBe('Restored name');
     });
@@ -524,7 +525,8 @@ describe('edits made while Save is running', () => {
       await pending.promise;
     });
     // The late answer neither reopens the project nor marks the restored work saved.
-    expect(screen.getByTestId('draft-project-gone')).toBeTruthy();
+    expect(screen.queryByTestId('base-held')).toBeNull();
+    expect(screen.queryByTestId('draft-project-gone')).toBeNull();
     expect(nameField().value).toBe('Restored name');
     // Its unsaved configuration came back too (the project is still the one open).
     expect(designation().value).toBe('XD');
@@ -601,9 +603,14 @@ describe('edits made while Save is running', () => {
     const offer = await screen.findByTestId('draft-offer');
     api.open.mockResolvedValueOnce({ kind: 'failed' });
     fireEvent.click(within(offer).getByText('Restore unsaved work'));
-    await screen.findByTestId('draft-project-gone');
+    await screen.findByTestId('base-held');
     // Revision 1 is open; the copy was made against revision 7: not applied.
     expect(designation().value).toBe('X1');
+    // Its base cannot be shown: the page holds saving (see the panel tests for
+    // the held save) until the explicit decision, which clears the hold.
+    fireEvent.click(screen.getByTestId('base-held-accept'));
+    expect(screen.queryByTestId('base-held')).toBeNull();
+    expect(api.revise).not.toHaveBeenCalled();
   });
 
   it('setting a field back to exactly the stored (trimmed) value reads clean', async () => {

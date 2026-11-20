@@ -145,6 +145,9 @@ export function ProjectsPanel({
   note: heldNote,
   onNoteChange,
   impls = {},
+  base,
+  onReconcile,
+  onKeepAndOpen,
   accountEmail = null,
   onNewProject,
   onDiscard,
@@ -187,6 +190,16 @@ export function ProjectsPanel({
     referencesConfirmed?: ReferenceConfirmation[];
   } | null;
   opened: OpenedProject | null;
+  /**
+   * The editing base: the saved revision the work was made from, sent as
+   * `expected_revision`. Null: not provable (saving waits for the page's
+   * decision). Absent: the revision open.
+   */
+  base?: number | null;
+  /** An explicit reconciliation: the work now counts as changes to revision `latest`. */
+  onReconcile?: (latest: number) => void;
+  /** Keep the work in this browser, then open revision `latest` in its place. */
+  onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'changed' | 'failed'>;
   /** `fill` is true when the project was opened, so the form takes it. */
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
@@ -269,6 +282,18 @@ export function ProjectsPanel({
   const note = heldNote ?? ownNote;
   const setNote = onNoteChange ?? setOwnNote;
   const [message, setMessage] = useState<string | null>(null);
+  // A save refused because another revision was saved after this work's base:
+  // nothing was saved, the work stays, and the engineer chooses how to go on.
+  const [stale, setStale] = useState<{ base: number; latest: number } | null>(null);
+  const [staleConfirm, setStaleConfirm] = useState(false);
+  const [staleBusy, setStaleBusy] = useState(false);
+  // Another project or revision (or this page's own save) answers the question.
+  const staleFor = opened === null ? null : `${opened.id}|${String(opened.revision)}`;
+  useEffect(() => {
+    setStale(null);
+    setStaleConfirm(false);
+    setStaleBusy(false);
+  }, [staleFor]);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [approvalNote, setApprovalNote] = useState('');
@@ -359,6 +384,11 @@ export function ProjectsPanel({
 
   async function store(): Promise<boolean> {
     if (current === null || working || unchanged) return false;
+    if (opened !== null && base === null) {
+      // The page holds this save until the base is decided (its notice says how).
+      setMessage(t('baseHeld'));
+      return false;
+    }
     const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
@@ -367,6 +397,9 @@ export function ProjectsPanel({
       ? await revise({
           token,
           id: opened.id,
+          // The revision the work was made from (never one merely seen since):
+          // the server refuses the save if another was saved after it.
+          expectedRevision: base ?? opened.revision,
           request: current.request,
           note,
           ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
@@ -399,6 +432,16 @@ export function ProjectsPanel({
     } else {
       // A refusal says what the API objected to; anything else is a save that
       // did not happen, not a design that failed. What was entered stays.
+      if (outcome.kind === 'refused' && outcome.code === 'revision_stale_base') {
+        const latest = Number(outcome.params?.latest);
+        const expected = Number(outcome.params?.expected);
+        if (Number.isInteger(latest) && Number.isInteger(expected)) {
+          setStale({ base: expected, latest });
+          setStaleConfirm(false);
+          setMessage(null);
+          return false;
+        }
+      }
       if (outcome.kind === 'refused') onRefused?.(outcome);
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       setMessage(
@@ -934,6 +977,93 @@ export function ProjectsPanel({
         <p role="status" className="text-sm" data-testid="projects-message">
           {message}
         </p>
+      )}
+      {stale !== null && opened !== null && (
+        <div
+          role="group"
+          aria-labelledby={`${id}-stale`}
+          className="mt-2 rounded-md border border-status-critical p-3 text-sm"
+          data-testid="stale-reconcile"
+        >
+          <p id={`${id}-stale`} role="alert">
+            {t('staleIntro', { base: stale.base, latest: stale.latest })}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {onKeepAndOpen ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                disabled={staleBusy}
+                data-testid="stale-keep-open"
+                onClick={() => {
+                  const target = stale.latest;
+                  setStaleBusy(true);
+                  void onKeepAndOpen(target)
+                    .then((outcome) => {
+                      setMessage(
+                        outcome === 'opened'
+                          ? t('staleOpened', { latest: target })
+                          : t(
+                              outcome === 'notKept'
+                                ? 'staleNotKept'
+                                : outcome === 'changed'
+                                  ? 'staleChanged'
+                                  : 'staleOpenFailed',
+                            ),
+                      );
+                    })
+                    .catch(() => {
+                      setMessage(t('staleOpenFailed'));
+                    })
+                    .finally(() => {
+                      setStaleBusy(false);
+                    });
+                }}
+              >
+                {t('staleKeepOpen', { latest: stale.latest })}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              data-testid="stale-dismiss"
+              onClick={() => {
+                setStale(null);
+              }}
+            >
+              {t('staleDismiss')}
+            </button>
+          </div>
+          {onReconcile ? (
+            <div className="mt-3">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={staleConfirm}
+                  data-testid="stale-confirm"
+                  onChange={(event) => {
+                    setStaleConfirm(event.target.checked);
+                  }}
+                />
+                <span>{t('staleConfirm', { latest: stale.latest })}</span>
+              </label>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary mt-2"
+                disabled={!staleConfirm}
+                data-testid="stale-reconcile-accept"
+                onClick={() => {
+                  const target = stale.latest;
+                  onReconcile(target);
+                  setStale(null);
+                  setMessage(t('staleReconciled', { latest: target }));
+                }}
+              >
+                {t('staleReconcile', { latest: stale.latest })}
+              </button>
+            </div>
+          ) : null}
+        </div>
       )}
       {page === null && !listError && (
         <p role="status" className="text-sm text-text-muted" data-testid="projects-loading">

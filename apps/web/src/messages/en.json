@@ -754,6 +754,10 @@
       "subBoardHint": "A sub-board is not a load row: add it as a board and set its “Fed from”. Its feeder is then drawn for you.",
       "subBoardRow": "Saved as a sub-board row. The next design refuses it: remove this row and add the sub-board as a board with “Fed from”.",
       "powerFactorDefault": "default 0.9"
+    },
+    "base": {
+      "held": "This work was made from revision {madeFrom}, which could not be opened now; revision {revision} is open. Saving waits until you choose. You can also restore it again from the copy kept in this browser.",
+      "heldAccept": "Count it as changes to revision {revision}"
     }
   },
   "design": {
@@ -1131,7 +1135,11 @@
       "link_not_a_feeder": "A link names a board that is not fed from another board. Set its “Fed from”, or clear the link.",
       "link_board_unknown": "A link names a board the project does not have.",
       "configuration_conflict": "The configuration carried from the latest revision no longer fits this project: {kind} {ref} cannot be found. Nothing was saved. Edit or remove that reference in the configuration, then save again.",
-      "configuration_not_recoverable": "Revision {revision} was built from a configuration saved before configurations were kept with each revision, so it cannot be carried forward without loss. Nothing was saved. Enter the configuration again, or remove it, then save."
+      "configuration_not_recoverable": "Revision {revision} was built from a configuration saved before configurations were kept with each revision, so it cannot be carried forward without loss. Nothing was saved. Enter the configuration again, or remove it, then save.",
+      "revision_stale_base": "Revision {latest} of this project was saved since you opened it, so this save was not made. Your changes are still here; open the latest revision to compare.",
+      "draft_too_large": "This draft is larger than the {max_bytes}-byte limit for drafts.",
+      "request_id_reused": "That draft attempt was already used with different content. Press Save as draft again.",
+      "server_drafts_need_account": "Drafts in an account need a signed-in account."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1270,7 +1278,7 @@
       "isCurrent": "Open now",
       "updated": "Saved {date}",
       "more": "Show more projects",
-      "draftsLocal": "Unsaved work is kept only in this browser tab, for each project separately, until it is saved. It is not stored on the server.",
+      "draftsLocal": "Unsaved work is kept only in this browser tab, for each project separately, until it is saved. It is not stored on the server unless you choose Save as draft where that is offered.",
       "switchTitle": "Save changes before switching?",
       "switchBody": "{name} has unsaved changes. Save them before opening {target}, or discard them?",
       "switchBodyNoSave": "{name} has unsaved changes that cannot be saved yet. Discard them to open {target}, or cancel to keep working?",
@@ -1282,7 +1290,18 @@
       "openGone": "That project is no longer available, so it was not opened. The list has been refreshed; what is open stays as it is.",
       "switchDiscardNew": "Discard the new project's unsaved work",
       "openFailed": "The project could not be opened. What is open stays as it is; try again.",
-      "hasKept": "Unsaved copy kept in this browser"
+      "hasKept": "Unsaved copy kept in this browser",
+      "baseHeld": "Saving is on hold: choose which revision this work counts as changes to (see the notice above).",
+      "staleIntro": "Not saved: revision {latest} was saved after revision {base}, which this work was made from. Your changes are still here and nothing was overwritten.",
+      "staleKeepOpen": "Keep my changes in this browser and open revision {latest}",
+      "staleDismiss": "Not now",
+      "staleConfirm": "I have checked revision {latest}. Saving my version makes it the newest revision in place of revision {latest}; revision {latest} stays in the history.",
+      "staleReconcile": "Count my work as changes to revision {latest}",
+      "staleReconciled": "Your work now counts as changes to revision {latest}. Press Save to publish it.",
+      "staleOpened": "Revision {latest} is open. Your changes are kept in this browser and offered for recovery.",
+      "staleNotKept": "Nothing was replaced: your changes could not be kept in this browser first.",
+      "staleOpenFailed": "Revision could not be opened. Nothing was replaced; your changes are still here.",
+      "staleChanged": "Nothing was replaced: you changed the work while revision was opening. Try again when you are ready."
     },
     "readiness": {
       "title": "Status",
@@ -1780,6 +1799,40 @@
       "discardNote": "Deletes them and the stored description from PanelPilot's live database. Rows already placed in the editor stay, as your own entries. Database backups keep a copy until they expire, and a copy the AI provider keeps under its own terms is not affected.",
       "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms.",
       "accountInactive": "Your account is no longer active in this team, so the AI request was not saved. Ask the team owner."
+    },
+    "serverDraft": {
+      "heading": "Draft in your account",
+      "save": "Save as draft",
+      "explain": "Only you can see it. It is not a revision and is not checked or approved.",
+      "statusSaving": "Saving draft…",
+      "statusSaved": "Saved as draft at {time}.",
+      "statusLocal": "Only on this device: changes since then are kept in this browser, not in your account.",
+      "statusNotSaved": "Not saved: these changes are only on this page.",
+      "kept": "A draft you saved at {time}, made from revision {revision}.",
+      "older": "Revision {latest} is newer than revision {revision} it was made from.",
+      "restore": "Restore draft",
+      "delete": "Delete draft",
+      "retry": "Try again",
+      "saved": "Saved as draft.",
+      "deleted": "Draft deleted.",
+      "restored": "Draft restored. Save it as a revision when it is ready.",
+      "restoredKept": "Draft restored. The work it replaced is kept in this browser and offered for recovery.",
+      "failed": "The draft could not be saved: no answer from the server. Your changes are still here. Try again sends the same attempt.",
+      "sessionExpired": "Your session has ended. Sign in again, then try again; your changes are still here.",
+      "expired": "That attempt is too old to send again. Press Save as draft to try a new one.",
+      "disabled": "Saving drafts to your account is turned off here. Changes are kept in this browser only.",
+      "unreadable": "Your account’s draft for this project could not be read.",
+      "preserveFailed": "Nothing was replaced: the work on this page could not be kept in this browser first. Save it as a revision, or free browser storage and try again.",
+      "conflictTitle": "Your draft changed elsewhere",
+      "conflictIntro": "The draft in your account is not the one this page last saw. Nothing was overwritten.",
+      "conflictMine": "This page: your current work, made from revision {revision}.",
+      "conflictServer": "In your account: “{name}”, saved at {time}, made from revision {revision}.",
+      "conflictDeleted": "In your account: the draft was deleted at {time}.",
+      "conflictKeepMineHint": "Keep mine replaces the draft in your account with this page’s work. Use the account’s version keeps this page’s work in this browser first.",
+      "conflictKeepMine": "Keep mine",
+      "conflictUseServer": "Use the account’s version",
+      "conflictCancel": "Cancel",
+      "changedSince": "The draft in your account changed since this page last saw it. Check it before restoring."
     }
   },
   "files": {

@@ -26,6 +26,7 @@ from app.domain.rate_limit import (
     RateLimitStore,
     RedisRateLimitStore,
     check_design_rate_limit,
+    check_draft_rate_limit,
     check_login_rate_limit,
     check_signup_rate_limit,
     check_trial_rate_limit,
@@ -186,6 +187,18 @@ def enforce_design_rate_limit(
         RateLimitExceededError: If this source has made too many design requests.
     """
     check_design_rate_limit(store=store, client_ip=_client_ip(request))
+
+
+def enforce_draft_rate_limit(
+    request: Request,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Throttle the server-backed draft routes, per source address, on their own budget.
+
+    Raises:
+        RateLimitExceededError: If this source has made too many draft requests.
+    """
+    check_draft_rate_limit(store=store, client_ip=_client_ip(request))
 
 
 def enforce_signup_rate_limit(

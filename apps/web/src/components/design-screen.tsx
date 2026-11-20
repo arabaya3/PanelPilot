@@ -200,6 +200,7 @@ import {
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import type { signIn } from '@/lib/auth';
 import { acquireTrial } from '@/lib/session';
+import { ServerDraft, serverBody, type PreserveOutcome } from '@/components/design/server-draft';
 import type { signupClaimingTrial } from '@/lib/trial';
 import { clearTrial, readTrial } from '@/lib/trial';
 
@@ -964,6 +965,18 @@ function DesignWorkspace({
   >(null);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const [draftProjectGone, setDraftProjectGone] = useState(false);
+  /**
+   * The editing base: the saved revision the work on the page was made from.
+   * It is the revision opened (or restored at, or answered by this page's own
+   * save), never the newest revision merely seen since. It moves only on an
+   * open, a restore, a successful save, or an explicit reconciliation
+   * (`baseOverride`). `baseHold`: restored work whose revision could not be
+   * reopened, so its base is not provable and saving waits for a decision.
+   */
+  const [baseOverride, setBaseOverride] = useState<{ project: string; revision: number } | null>(
+    null,
+  );
+  const [baseHold, setBaseHold] = useState<{ project: string; madeFrom: number } | null>(null);
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
@@ -981,6 +994,13 @@ function DesignWorkspace({
   // Said once local data was deleted at the engineer's request (focus goes there).
   const [deletedNote, setDeletedNote] = useState(false);
   const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
+  const holdLocalWrites = useRef(false);
+  // The project open as of the last commit (read by answers that arrive later).
+  const openedNow = useRef<{ id: string; revision: number } | null>(null);
+  const workMarkNow = useRef('');
+  useLayoutEffect(() => {
+    openedNow.current = opened ? { id: opened.id, revision: opened.revision } : null;
+  });
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
   const workspaceAt = useRef(0);
@@ -995,9 +1015,45 @@ function DesignWorkspace({
     settleDrafts(draftOwner);
     setDraftChecked(draftOwner);
   }, [draftOwner, draftChecked]);
+  /** The work on the page as a draft keeps it (in this browser, or as a server draft). */
+  function workDraft(owner: string): DesignDraft {
+    return {
+      session: owner,
+      project: opened ? { id: opened.id, revision: opened.revision } : null,
+      clean,
+      info,
+      boards: draftBoards(boards),
+      control: draftControl(boards, controlNeeds),
+      ...(aiDescription !== '' || aiProposal !== null
+        ? {
+            ai: {
+              description: aiDescription,
+              proposalId: aiProposal?.id ?? null,
+              controlTags: draftControlTags(boards, aiControlTags),
+            },
+          }
+        : {}),
+      profileText,
+      language: chosenLanguage,
+      market,
+      // Unsaved configuration edits come back with the rest after a reload.
+      ...(opened !== null && (configEdited || dropChosen)
+        ? {
+            configuration: {
+              doc: configDoc,
+              dropUnrecoverable,
+              ...(confirmed.length > 0 ? { confirmed } : {}),
+            },
+          }
+        : {}),
+    };
+  }
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
     if (draftOwner === null || draftChecked !== draftOwner) return;
+    // Between keeping the page's work for a server-draft restore and the
+    // restore landing: the same work is not kept a second time in the other copy.
+    if (holdLocalWrites.current) return;
     const here = opened?.id ?? null;
     if (!dirty || discardedSnapshot.current === discardMark) {
       // Only the copy this page wrote, for this project (M14).
@@ -1035,36 +1091,7 @@ function DesignWorkspace({
         return;
       }
     }
-    const draft: DesignDraft = {
-      session: draftOwner,
-      project: opened ? { id: opened.id, revision: opened.revision } : null,
-      clean,
-      info,
-      boards: draftBoards(boards),
-      control: draftControl(boards, controlNeeds),
-      ...(aiDescription !== '' || aiProposal !== null
-        ? {
-            ai: {
-              description: aiDescription,
-              proposalId: aiProposal?.id ?? null,
-              controlTags: draftControlTags(boards, aiControlTags),
-            },
-          }
-        : {}),
-      profileText,
-      language: chosenLanguage,
-      market,
-      // Unsaved configuration edits come back with the rest after a reload.
-      ...(opened !== null && (configEdited || dropChosen)
-        ? {
-            configuration: {
-              doc: configDoc,
-              dropUnrecoverable,
-              ...(confirmed.length > 0 ? { confirmed } : {}),
-            },
-          }
-        : {}),
-    };
+    const draft = workDraft(draftOwner);
     const text = `${String(copy)}|${JSON.stringify(draft)}`;
     if (text === lastWritten.current) return;
     const outcome = keepDraft(draft, tokenTenant, copy);
@@ -1140,7 +1167,88 @@ function DesignWorkspace({
           kept.project === null ? [] : [kept.project.id],
         );
 
-  async function restoreDraft(draft: StoredDraft) {
+  /**
+   * Keep the work on the page in a copy in this browser before something
+   * replaces it, and leave that copy alone afterwards. Nothing unsaved: nothing to keep.
+   */
+  function preserveLocal(hold = true): PreserveOutcome {
+    if (draftOwner === null || !dirty || discardedSnapshot.current === discardMark)
+      return 'nothing';
+    const here = opened?.id ?? null;
+    const mine = owned.current;
+    let copy =
+      mine !== null && mine.owner === draftOwner && mine.project === here ? mine.copy : null;
+    if (copy === null) {
+      const taken = new Set([
+        ...ownDrafts(draftOwner, null, here).map((kept) => kept.copy),
+        ...unreadableCopies(draftOwner)
+          .filter((slot) => slot.project === here)
+          .map((slot) => slot.copy),
+      ]);
+      copy = DRAFT_COPIES.find((each) => !taken.has(each)) ?? null;
+      if (copy === null) return 'failed';
+    }
+    const outcome = keepDraft(workDraft(draftOwner), tokenTenant, copy);
+    if (outcome !== 'kept') return outcome;
+    // That copy is now set apart: the page writes elsewhere from here on,
+    // and nothing until the restore that follows has landed.
+    owned.current = null;
+    holdLocalWrites.current = hold;
+    lastWritten.current = '';
+    setRecoveryTick((tick) => tick + 1);
+    return 'kept';
+  }
+
+  /**
+   * Stale-base reconciliation: keep the work on the page in this browser, then
+   * open revision `latest` in its place. Nothing is replaced unless the copy was kept.
+   */
+  async function keepThenOpen(
+    latest: number,
+  ): Promise<'opened' | 'notKept' | 'changed' | 'failed'> {
+    if (opened === null || token === null) return 'failed';
+    const unsaved = dirty && discardedSnapshot.current !== discardMark;
+    const kept = preserveLocal(true);
+    // Only work that was kept (or no unsaved work at all) is ever replaced.
+    if (kept === 'failed' || kept === 'blocked' || (kept === 'nothing' && unsaved)) {
+      return 'notKept';
+    }
+    const owner = ownerKey;
+    const keptMark = workMarkNow.current;
+    const outcome = await openImpl({ token, id: opened.id, revision: latest });
+    if (currentOwner.current !== owner) {
+      holdLocalWrites.current = false;
+      return 'failed';
+    }
+    // Typed while it was opening: that is not in the kept copy, so nothing is replaced.
+    if (workMarkNow.current !== keptMark) {
+      holdLocalWrites.current = false;
+      return 'changed';
+    }
+    if (outcome.kind !== 'saved') {
+      // Nothing changed on the page; local writes resume (the kept copy stays apart).
+      holdLocalWrites.current = false;
+      return 'failed';
+    }
+    onOpened(outcome.project, true);
+    return 'opened';
+  }
+
+  // What the page holds now, as one comparable value (kept current for answers arriving later).
+  const workMark = `${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}|${String(confirmed.length)}`;
+  workMarkNow.current = workMark;
+
+  // The base a publish states as `expected_revision` (null: held, see `baseHold`).
+  const editBase =
+    opened === null
+      ? null
+      : baseHold !== null && baseHold.project === opened.id
+        ? null
+        : baseOverride !== null && baseOverride.project === opened.id
+          ? baseOverride.revision
+          : opened.revision;
+
+  async function restoreDraft(draft: StoredDraft, own = true) {
     // The offer (and so the stored draft) stays until the work is back on the page.
     setRestoring(true);
     restoredDraft.current = true;
@@ -1154,6 +1262,7 @@ function DesignWorkspace({
       });
       // Opened for an identity the page has since left: not this one's work.
       if (currentOwner.current !== owner) {
+        holdLocalWrites.current = false;
         setRestoring(false);
         return;
       }
@@ -1196,15 +1305,30 @@ function DesignWorkspace({
       }
     }
     const restoredAt = workspaceAt.current;
-    setDraftProjectGone(!reopened);
+    setDraftProjectGone(!reopened && (opened === null || opened.id !== draft.project?.id));
+    // Restored onto the same project at another revision, its own revision not
+    // reopened: which revision it was made from cannot be shown, so it is held.
+    if (
+      !reopened &&
+      draft.project !== null &&
+      opened !== null &&
+      opened.id === draft.project.id &&
+      opened.revision !== draft.project.revision
+    ) {
+      setBaseHold({ project: draft.project.id, madeFrom: draft.project.revision });
+    }
     setRestoring(false);
     setArrival(false);
     // The restored copy is the page's own now (further edits update it), only
     // when it is back in its project; a copy whose project could not be opened
     // stays kept as it was, and the work on the page is kept in a copy of its own.
-    owned.current = reopened
-      ? { owner: draft.session, project: draft.project?.id ?? null, copy: draft.copy }
-      : null;
+    owned.current =
+      reopened && own
+        ? { owner: draft.session, project: draft.project?.id ?? null, copy: draft.copy }
+        : null;
+    // A server draft restored: further edits go to a free copy, never over the one kept just before.
+    if (!own) lastWritten.current = '';
+    holdLocalWrites.current = false;
     setRecoveryTick((tick) => tick + 1);
     const keyed = formBoards(draft.boards, nextKey.current);
     nextKey.current += Math.max(1, keyed.used);
@@ -1376,6 +1500,18 @@ function DesignWorkspace({
   const incomplete = token !== null && !complete;
 
   function onOpened(project: SavedProject, fill: boolean) {
+    // A new base (another revision on the page, or this page's save answered):
+    // any reconciliation or held base belonged to the one before. A refresh of
+    // the same revision (an approval, a resolution) keeps them.
+    if (
+      fill ||
+      project.id !== openedNow.current?.id ||
+      project.revision !== openedNow.current.revision
+    ) {
+      setBaseOverride(null);
+      setBaseHold(null);
+      holdLocalWrites.current = false;
+    }
     if (fill) {
       // M14: the form now holds another project (or another revision of it):
       // a new workspace, so nothing started for the one before is applied.
@@ -2290,6 +2426,28 @@ function DesignWorkspace({
             {tw('draft.deleteFailed')}
           </Notice>
         )}
+        {baseHold !== null && opened !== null && baseHold.project === opened.id && (
+          <Notice
+            tone="warning"
+            testId="base-held"
+            action={
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                data-testid="base-held-accept"
+                onClick={() => {
+                  // An explicit decision: this work counts as changes to the revision open.
+                  setBaseHold(null);
+                  setBaseOverride({ project: opened.id, revision: opened.revision });
+                }}
+              >
+                {tw('base.heldAccept', { revision: opened.revision })}
+              </button>
+            }
+          >
+            {tw('base.held', { madeFrom: baseHold.madeFrom, revision: opened.revision })}
+          </Notice>
+        )}
         {draftProjectGone && (
           <Notice tone="warning" live={false} testId="draft-project-gone">
             {tw('draft.projectGone')}
@@ -2381,12 +2539,17 @@ function DesignWorkspace({
                     : null
                 }
                 opened={opened}
+                base={editBase}
+                onReconcile={(latest: number) => {
+                  if (opened !== null) setBaseOverride({ project: opened.id, revision: latest });
+                }}
+                onKeepAndOpen={keepThenOpen}
                 accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 onNewProject={startNewProject}
                 keptFor={keptFor}
-                workMark={`${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}|${String(confirmed.length)}`}
+                workMark={workMark}
                 onDiscard={discardForSwitch}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
@@ -2451,6 +2614,37 @@ function DesignWorkspace({
               identity === 'trial' &&
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
+            {token !== null && identity === 'account' && opened !== null && draftOwner !== null ? (
+              <ServerDraft
+                key={`${identityKey}|${tokenTenant ?? ''}|${opened.id}`}
+                token={token}
+                project={{
+                  id: opened.id,
+                  // A draft keeps the base its work was made from (held or not).
+                  revision: editBase ?? baseHold?.madeFrom ?? opened.revision,
+                  latest: Math.max(opened.revision, ...opened.revisions),
+                }}
+                body={dirty ? serverBody(workDraft(draftOwner)) : null}
+                dirty={dirty}
+                locallyKept={owned.current !== null && draftWarning === null}
+                preserveLocal={preserveLocal}
+                onRestore={({ body, baseRevision }) => {
+                  void restoreDraft(
+                    {
+                      ...body,
+                      session: draftOwner,
+                      project: { id: opened.id, revision: baseRevision },
+                      savedAt: Date.now(),
+                      copy: 1,
+                    } as StoredDraft,
+                    false,
+                  );
+                }}
+                onUnauthorized={forOwner(() => {
+                  void reauthorize();
+                })}
+              />
+            ) : null}
             {refusedEntry !== null && (
               <Notice
                 tone="critical"
