@@ -119,15 +119,16 @@ export function ThreeWayReview({
     setPending((current) => (current === asked ? null : current));
     // Input, project, base, identity or round changed since: this answer is not shown.
     if (keyNow.current !== asked) return;
-    // Your work changed while this was fetched: the copy it compares is not your work now.
-    if (markNow.current !== captured.mark) {
-      setOutcome({ key: asked, kind: 'changedWhileFetching' });
-      return;
-    }
     const [b = { kind: 'failed' as const }, l = { kind: 'failed' as const }] = pair;
+    // A session that ended is renewed whatever else happened meanwhile.
     if (b.kind === 'unauthorized' || l.kind === 'unauthorized') {
       onUnauthorized?.();
       setOutcome({ key: asked, kind: 'failed' });
+      return;
+    }
+    // Your work changed while this was fetched: the copy it compares is not your work now.
+    if (markNow.current !== captured.mark) {
+      setOutcome({ key: asked, kind: 'changedWhileFetching' });
       return;
     }
     if (b.kind !== 'saved') {
