@@ -136,8 +136,11 @@ export function ThreeWayReview({
     if (b.kind === 'unauthorized' || l.kind === 'unauthorized') {
       // At most one renewal per round the engineer started (opening or Refresh):
       // a renewed token that is refused again does not renew, re-run and loop.
-      if (renewedRound.current !== asked.slice(asked.lastIndexOf('|') + 1)) {
-        renewedRound.current = asked.slice(asked.lastIndexOf('|') + 1);
+      // Keyed on the request without its token: a renewed token refused for the same
+      // project, base and round is not renewed again, but a new base or round is.
+      const askedRun = asked.slice(asked.indexOf('|') + 1);
+      if (renewedRound.current !== askedRun) {
+        renewedRound.current = askedRun;
         onUnauthorized?.();
       }
       setOutcome({ key: asked, kind: 'failed' });

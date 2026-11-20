@@ -434,6 +434,30 @@ describe('three-way review panel', () => {
       expect(resolvers).toHaveLength(0);
     });
 
+    it('after a renewal, a new base in the same round that is refused asks again (once)', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      const { all, view } = setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      // Renewed; later the editing base moves (a save) and that run is refused.
+      view.rerender(<ThreeWayReview {...all} onUnauthorized={onUnauthorized} token="tok-2" base={3} />);
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(2);
+    });
+
     it('a renewal that failed (token unchanged) leaves a recoverable state: Refresh asks again, once', async () => {
       const { resolvers, open } = delayed();
       const onUnauthorized = vi.fn();
