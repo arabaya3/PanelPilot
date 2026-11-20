@@ -80,7 +80,7 @@ const UNITS: Record<string, string> = {
   cross_section_mm2: 'mm²',
 };
 
-type Raw = Record<string, unknown>;
+export type Raw = Record<string, unknown>;
 
 function record(value: unknown): Raw | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -154,7 +154,7 @@ function decimalText(value: string): string {
   return negative && text !== '0' ? `-${text}` : text;
 }
 
-function same(a: Scalar | undefined, b: Scalar | undefined, field: string): boolean {
+export function same(a: Scalar | undefined, b: Scalar | undefined, field: string): boolean {
   const na = a ?? null;
   const nb = b ?? null;
   if (na === nb) return true;
@@ -208,7 +208,7 @@ export function fieldChanges(before: unknown, after: unknown, skip: string[] = [
   });
 }
 
-function valuesOf(value: unknown, skip: string[] = []): Record<string, Scalar> {
+export function valuesOf(value: unknown, skip: string[] = []): Record<string, Scalar> {
   const out: Record<string, Scalar> = {};
   for (const [key, inner] of flatten(value)) {
     if (skip.some((s) => key === s || key.startsWith(`${s}.`))) continue;
@@ -430,7 +430,7 @@ function compareLinks(a: SavedProject, b: SavedProject): Section {
   return { id: 'links', status: 'compared', unavailableIn: [], ...result };
 }
 
-function configurationOf(p: SavedProject): Raw | 'unavailable' {
+export function configurationOf(p: SavedProject): Raw | 'unavailable' {
   if (p.configuration_status === 'not_recoverable') return 'unavailable';
   if (
     p.snapshot_schema === 'pp-design/1' ||
@@ -452,7 +452,7 @@ function txt(value: unknown): string {
 }
 
 /** A pattern net's members and connections as a reader sees them (positions are 1-based). */
-function readableNet(net: Raw): Raw {
+export function readableNet(net: Raw): Raw {
   const members = records(net.members).map((member, index) =>
     member.slot !== undefined
       ? `${String(index + 1)}. ${txt(member.slot)}.${txt(member.terminal)}`
@@ -508,7 +508,7 @@ function comparePattern(x: Raw, y: Raw): Item {
   return { kind, type: 'pattern', label: ref, changes, children, ambiguous };
 }
 
-function netOf(config: Raw, patternRef: unknown, role: string): string | null {
+export function netOf(config: Raw, patternRef: unknown, role: string): string | null {
   const pattern = records(config.patterns).filter((item) => item.ref === patternRef);
   // One pattern and one net with that role, or no positional match at all.
   if (pattern.length !== 1) return null;
@@ -525,7 +525,7 @@ function netOf(config: Raw, patternRef: unknown, role: string): string | null {
  * marking for it; and the binding's cable when the net uses a cable core.
  * Nothing is resolved further or guessed: null when the net is not unique.
  */
-function endpointsOf(config: Raw, binding: Raw, role: string): string | null {
+export function endpointsOf(config: Raw, binding: Raw, role: string): string | null {
   const patterns = records(config.patterns).filter((item) => item.ref === binding.pattern);
   if (patterns.length !== 1) return null;
   const pattern = patterns[0] as Raw;

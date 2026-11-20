@@ -202,6 +202,7 @@ import type { signIn } from '@/lib/auth';
 import { acquireTrial } from '@/lib/session';
 import { ServerDraft, serverBody, type PreserveOutcome } from '@/components/design/server-draft';
 import { RevisionCompare } from '@/components/design/revision-compare';
+import { ThreeWayReview } from '@/components/design/three-way-review';
 import type { signupClaimingTrial } from '@/lib/trial';
 import { clearTrial, readTrial } from '@/lib/trial';
 
@@ -860,6 +861,8 @@ function DesignWorkspace({
   // an export, a panel's own request) is let go, and the panels holding that
   // project's previews, findings and confirmations start afresh.
   const [workspace, setWorkspace] = useState(0);
+  // M19: the read-only three-way review (opened only by the engineer).
+  const [reviewOpen, setReviewOpen] = useState(false);
   const ownerKey = `${identityKey}#${String(workspace)}`;
   // A way back belongs to the project it was made in: another project clears it.
   const projectKey = `${ownerKey}|${opened?.id ?? ''}`;
@@ -1512,6 +1515,8 @@ function DesignWorkspace({
       setBaseOverride(null);
       setBaseHold(null);
       holdLocalWrites.current = false;
+      // A review was of the work before: it is not carried over.
+      setReviewOpen(false);
     }
     if (fill) {
       // M14: the form now holds another project (or another revision of it):
@@ -2545,6 +2550,9 @@ function DesignWorkspace({
                   if (opened !== null) setBaseOverride({ project: opened.id, revision: latest });
                 }}
                 onKeepAndOpen={keepThenOpen}
+                onReview={() => {
+                  setReviewOpen(true);
+                }}
                 accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
@@ -2615,6 +2623,62 @@ function DesignWorkspace({
               identity === 'trial' &&
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
+            {token !== null &&
+            opened !== null &&
+            (reviewOpen ||
+              (dirty &&
+                (baseHold !== null ||
+                  (editBase !== null &&
+                    editBase < Math.max(opened.revision, ...opened.revisions))))) ? (
+              reviewOpen ? (
+                <ThreeWayReview
+                  // A restore, a switch, another project or identity starts over.
+                  key={`${identityKey}|${tokenTenant ?? ''}|${opened.id}|${String(workspace)}`}
+                  token={token}
+                  projectId={opened.id}
+                  base={editBase}
+                  madeFrom={baseHold?.project === opened.id ? baseHold.madeFrom : null}
+                  workMark={workMark}
+                  capture={() => ({
+                    // A copy of what the editor holds now (read, never written back).
+                    request: JSON.parse(JSON.stringify(toRequest(info, boards, profile))) as Record<
+                      string,
+                      unknown
+                    >,
+                    configuration:
+                      configStatus === 'not_recoverable' && !configEdited && !dropChosen
+                        ? 'unavailable'
+                        : (JSON.parse(JSON.stringify(configDoc)) as Record<string, unknown>),
+                    links: openedSchema === 'pp-design/3',
+                    mark: workMark,
+                  })}
+                  onClose={() => {
+                    setReviewOpen(false);
+                    window.setTimeout(() => {
+                      document.getElementById(`${id}-review-open`)?.focus();
+                    }, 0);
+                  }}
+                  onUnauthorized={() => {
+                    void reauthorize();
+                  }}
+                  impls={{ open: openImpl }}
+                />
+              ) : (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    id={`${id}-review-open`}
+                    className="btn btn-sm btn-secondary"
+                    data-testid="review-open"
+                    onClick={() => {
+                      setReviewOpen(true);
+                    }}
+                  >
+                    {tw('review.open')}
+                  </button>
+                </div>
+              )
+            ) : null}
             {token !== null && identity === 'account' && opened !== null && draftOwner !== null ? (
               <ServerDraft
                 key={`${identityKey}|${tokenTenant ?? ''}|${opened.id}`}

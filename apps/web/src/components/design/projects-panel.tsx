@@ -148,6 +148,7 @@ export function ProjectsPanel({
   base,
   onReconcile,
   onKeepAndOpen,
+  onReview,
   accountEmail = null,
   onNewProject,
   onDiscard,
@@ -200,6 +201,8 @@ export function ProjectsPanel({
   onReconcile?: (latest: number) => void;
   /** Keep the work in this browser, then open revision `latest` in its place. */
   onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'changed' | 'failed'>;
+  /** Open the read-only three-way review (base, your work, latest). */
+  onReview?: () => void;
   /** `fill` is true when the project was opened, so the form takes it. */
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
@@ -1021,6 +1024,16 @@ export function ProjectsPanel({
                 }}
               >
                 {t('staleKeepOpen', { latest: stale.latest })}
+              </button>
+            ) : null}
+            {onReview ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                data-testid="stale-review"
+                onClick={onReview}
+              >
+                {t('staleReview')}
               </button>
             ) : null}
             <button

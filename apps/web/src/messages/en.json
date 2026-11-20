@@ -740,11 +740,7 @@
       "compare": "Compare two revisions"
     },
     "review": {
-      "approval": "Approval",
-      "notSaved": "This project is not saved, so it cannot be approved.",
-      "saveAction": "Save it in the overview",
-      "notApproved": "Revision {revision} is not approved yet.",
-      "approveAction": "Approve in the overview"
+      "open": "Review changes against the latest revision"
     },
     "schedule": {
       "tableLabel": "Load schedule rows",
@@ -1302,7 +1298,8 @@
       "staleOpened": "Revision {latest} is open. Your changes are kept in this browser and offered for recovery.",
       "staleNotKept": "Nothing was replaced: your changes could not be kept in this browser first.",
       "staleOpenFailed": "Revision could not be opened. Nothing was replaced; your changes are still here.",
-      "staleChanged": "Nothing was replaced: you changed the work while revision was opening. Try again when you are ready."
+      "staleChanged": "Nothing was replaced: you changed the work while revision was opening. Try again when you are ready.",
+      "staleReview": "Review changes (read-only)"
     },
     "readiness": {
       "title": "Status",
@@ -1967,6 +1964,61 @@
         "severity": "Severity"
       },
       "ambiguousEndpoints": "Wire details of net “{label}” cannot be matched: the components, strips, terminal definitions, markings or cable its positions connect changed, so the same position may be another physical connection — {before} before, {after} after"
+    },
+    "review": {
+      "title": "Review changes against the latest revision",
+      "refresh": "Refresh",
+      "close": "Close review",
+      "scope": "Compares three sources, read-only: the revision your work was made from, your unsaved work as captured, and the latest saved revision as fetched. It does not check the design, recalculate anything, combine anything or save.",
+      "coverage": "What is compared",
+      "coverageCompared": "Entered input as the editor holds it: project details, boards and their loads, feeder links, and the configuration (templates, connection patterns, strips, components, bindings and their wire details).",
+      "coverageNot": "Not compared: stored results (your unsaved work has none), drawings, installation conditions, the company profile and title-block entries. Where the base and latest revisions differ in such stored fields, they are listed as changed outside this comparison.",
+      "coverageMatching": "Matched only by what identifies an item, never by position or generated ids. Wire details are matched by position only while the pattern net and everything it connects are the same in all three sources. A change on one side is not declared safe to combine: related changes on the other side are listed.",
+      "loading": "Fetching the base and latest revisions…",
+      "done": "{count, plural, =0 {Reviewed: no differences in what is compared.} one {Reviewed: 1 entry differs.} other {Reviewed: # entries differ.}}",
+      "noBase": "A three-way review cannot be established.",
+      "noBaseHeld": "Your work says it was made from revision {revision}, which could not be opened, so its base cannot be shown. A three-way review needs that base; it is never replaced by the latest revision.",
+      "noBaseExplain": "The revision your work was made from is not known, so a three-way review cannot be established. It is never replaced by the latest revision.",
+      "baseIntegrity": "Base revision {revision} failed its integrity check. A three-way review cannot be established.",
+      "latestIntegrity": "The latest revision ({revision}) failed its integrity check. A three-way review cannot be established.",
+      "baseNotFound": "Base revision {revision} is not available to you. A three-way review cannot be established.",
+      "latestNotFound": "The latest revision is not available to you. A three-way review cannot be established.",
+      "failed": "The revisions could not be read. Nothing is shown.",
+      "cannotEstablish": "Nothing is compared, and your work is unchanged.",
+      "outdated": "Your work changed after this review was captured. It may no longer match; press Refresh to review it again.",
+      "sourceBase": "Base: revision {revision}",
+      "sourceYours": "Your unsaved work",
+      "capturedAt": "Captured {time}",
+      "sourceLatest": "Latest saved revision when fetched: {revision}",
+      "fetchedAt": "Fetched {time}",
+      "latestCaveat": "Another revision may have been saved since.",
+      "noNewer": "No revision newer than {revision} existed when fetched: only your changes are shown.",
+      "outside": "Changed in the latest revision outside this comparison (not reviewed here):",
+      "unavailableIn": "Unavailable in {sources}",
+      "noChanges": "No differences",
+      "unavailableExplain": "At least one source does not hold this data, so it cannot be compared. This is not the same as unchanged.",
+      "statuses": {
+        "yours": "Only in yours",
+        "latest": "Only in latest",
+        "same": "Same change on both",
+        "both": "Changed on both (different fields)",
+        "conflict": "Conflict",
+        "unresolved": "Unresolved"
+      },
+      "sources": {
+        "base": "Base",
+        "yours": "Yours",
+        "latest": "Latest"
+      },
+      "fieldStatus": "Where",
+      "absent": "absent",
+      "present": "present",
+      "presence": "Base: {base}; yours: {yours}; latest: {latest}",
+      "wiresOf": "wire details of net “{role}”",
+      "unresolvedDuplicate": "Cannot be matched: several entries share this name. All three sources are listed.",
+      "unresolvedWires": "Cannot be matched: the net or what its positions connect differs between the sources, so a position may be another physical connection. All three sources are listed.",
+      "dependsLatest": "Related change in latest: {what}",
+      "dependsYours": "Related change in yours: {what}"
     }
   },
   "files": {
