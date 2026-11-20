@@ -151,10 +151,13 @@ export function ServerDraft({
       return;
     }
     if (outcome.kind === 'unauthorized') latestUnauthorized.current?.();
-    // A trial, a project no longer there: nothing to show.
+    // A trial, a project no longer there, or an API without drafts (an older
+    // version answers a bare 404): nothing to show.
     if (
       outcome.kind === 'refused' &&
-      (outcome.code === 'server_drafts_need_account' || outcome.code === 'project_not_found')
+      (outcome.code === undefined ||
+        outcome.code === 'server_drafts_need_account' ||
+        outcome.code === 'project_not_found')
     ) {
       setLoaded('none');
       return;

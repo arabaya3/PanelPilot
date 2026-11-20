@@ -361,6 +361,19 @@ describe('server drafts (slice 1)', () => {
     expect(screen.getByText(/turned off here/)).toBeTruthy();
   });
 
+  it('is not shown against an older API without the draft route', async () => {
+    const { get } = setup({
+      get: () => Promise.resolve({ kind: 'refused', detail: 'Not Found' }),
+    });
+    await waitFor(() => {
+      expect(get).toHaveBeenCalled();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('server-draft')).toBeNull();
+  });
+
   it('is not shown for a trial (the server needs an account)', async () => {
     const { get } = setup({
       get: () =>

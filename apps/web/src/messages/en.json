@@ -1274,7 +1274,7 @@
       "isCurrent": "Open now",
       "updated": "Saved {date}",
       "more": "Show more projects",
-      "draftsLocal": "Unsaved work is kept only in this browser tab, for each project separately, until it is saved. It is not stored on the server.",
+      "draftsLocal": "Unsaved work is kept only in this browser tab, for each project separately, until it is saved. It is not stored on the server unless you choose Save as draft where that is offered.",
       "switchTitle": "Save changes before switching?",
       "switchBody": "{name} has unsaved changes. Save them before opening {target}, or discard them?",
       "switchBodyNoSave": "{name} has unsaved changes that cannot be saved yet. Discard them to open {target}, or cancel to keep working?",
