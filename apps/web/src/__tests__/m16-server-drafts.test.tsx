@@ -388,6 +388,50 @@ describe('server drafts (slice 1)', () => {
   });
 });
 
+describe('review follow-ups', () => {
+  it('reads the server again after a replayed answer, rather than trusting its token', async () => {
+    let lookups = 0;
+    const { get, put } = setup({
+      get: () => {
+        lookups += 1;
+        return Promise.resolve({
+          kind: 'found',
+          lookup: { writes_enabled: true, draft: lookups === 1 ? null : state({ token: 'd1.9' }) },
+        });
+      },
+      put: () => Promise.resolve({ kind: 'kept', draft: state({ token: 'd1.1', replayed: true }) }),
+    });
+    fireEvent.click(await screen.findByTestId('server-draft-save'));
+    await waitFor(() => {
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId('server-draft')).toBeTruthy();
+    // The next save is made against the token now on the server.
+    fireEvent.click(await screen.findByTestId('server-draft-save'));
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledTimes(2);
+    });
+    expect(nth(put.mock.calls, 1)[0].ifMatch).toBe('d1.9');
+  });
+
+  it('a token change during a save leaves the panel usable', async () => {
+    let answer: (value: Awaited<ReturnType<Put>>) => void = () => undefined;
+    const { props, view } = setup({
+      put: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    fireEvent.click(await screen.findByTestId('server-draft-save'));
+    expect(screen.getByTestId('server-draft-save').hasAttribute('disabled')).toBe(true);
+    view.rerender(<ServerDraft {...props} token="tok-2" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('server-draft-save').hasAttribute('disabled')).toBe(false);
+    });
+    answer({ kind: 'failed' });
+  });
+});
+
 describe('comparing draft bodies', () => {
   it('ignores key order and fields the server spells as null', () => {
     expect(draftText({ b: 1, a: { d: null, c: [1, { f: 2, e: 3 }] } })).toBe(

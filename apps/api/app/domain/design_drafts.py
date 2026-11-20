@@ -92,12 +92,15 @@ def _project(session: Session, project_id: str, *, lock: bool = False) -> Design
     return found
 
 
-def _row(session: Session, project: uuid.UUID, author: uuid.UUID) -> DesignDraftRow | None:
-    return session.scalars(
-        select(DesignDraftRow).where(
-            DesignDraftRow.project_id == project, DesignDraftRow.author_user_id == author
-        )
-    ).one_or_none()
+def _row(
+    session: Session, project: uuid.UUID, author: uuid.UUID, *, lock: bool = False
+) -> DesignDraftRow | None:
+    query = select(DesignDraftRow).where(
+        DesignDraftRow.project_id == project, DesignDraftRow.author_user_id == author
+    )
+    # A write holds the draft row too: the purge then waits for it (and keeps a
+    # row written meanwhile), and a row the purge removed first reads as gone.
+    return session.scalars(query.with_for_update() if lock else query).one_or_none()
 
 
 def token_of(row: DesignDraftRow) -> str:
@@ -181,6 +184,18 @@ def _replay(
     return state.model_copy(update={"replayed": True})
 
 
+def _request_taken(session: Session, author: uuid.UUID, request_id: uuid.UUID) -> bool:
+    return (
+        session.scalars(
+            select(DesignDraftRequestRow.id).where(
+                DesignDraftRequestRow.author_user_id == author,
+                DesignDraftRequestRow.request_id == request_id,
+            )
+        ).first()
+        is not None
+    )
+
+
 def _record(
     session: Session,
     *,
@@ -250,7 +265,6 @@ def put_draft(
     _require_writes()
     tenant, author = _author(session, user)
     now = _now()
-    _check_issued(write.issued_at, now)
     body = write.body.model_dump(mode="json", exclude_none=True)
     encoded = json.dumps(body, separators=(",", ":"), sort_keys=True)
     if len(encoded.encode()) > DRAFT_BODY_MAX_BYTES:
@@ -276,7 +290,8 @@ def put_draft(
         if replayed is not None:
             session.rollback()
             return replayed
-        row = _row(session, project.id, author)
+        _check_issued(write.issued_at, now)
+        row = _row(session, project.id, author, lock=True)
         current = None if row is None else token_of(row)
         if write.if_match != current:
             error = _conflict(row)
@@ -328,6 +343,12 @@ def put_draft(
         # A first write racing another past the lock (the unique constraint is
         # the backstop): the other one won; this one changes nothing.
         session.rollback()
+        # The same request id first used at the same moment for another project.
+        if _request_taken(session, author, write.request_id):
+            raise ValidationError(
+                "this request id was already used for another request",
+                code="request_id_reused",
+            ) from exc
         raise _conflict(_row(session, uuid.UUID(project_id), author)) from exc
     except Exception:
         session.rollback()
@@ -348,7 +369,6 @@ def delete_draft(
     """
     tenant, author = _author(session, user)
     now = _now()
-    _check_issued(request.issued_at, now)
     try:
         project = _project(session, project_id, lock=True)
         fingerprint = _fingerprint(
@@ -360,7 +380,8 @@ def delete_draft(
         if replayed is not None:
             session.rollback()
             return replayed
-        row = _row(session, project.id, author)
+        _check_issued(request.issued_at, now)
+        row = _row(session, project.id, author, lock=True)
         if row is None or row.state != "live" or token_of(row) != request.if_match:
             error = _conflict(row)
             _record(

@@ -136,9 +136,10 @@ export function ServerDraft({
 
   const bodyText = body === null ? null : draftText(body);
 
-  async function load() {
+  /** Read the server's state; `quiet` keeps what is shown meanwhile (and focus with it). */
+  async function load(quiet = false) {
     const asked = scope;
-    setLoaded('loading');
+    if (!quiet) setLoaded('loading');
     const outcome = await get({ token, id: project.id });
     if (scopeNow.current !== asked) return;
     if (outcome.kind === 'found') {
@@ -163,6 +164,8 @@ export function ServerDraft({
     setKnown(null);
     setKeptText(null);
     setPending(null);
+    // An attempt in flight for the previous scope never answers here.
+    setBusy(false);
     setNote(null);
     setConflict(null);
     setPreserveFailed(false);
@@ -237,8 +240,16 @@ export function ServerDraft({
     setBusy(false);
     if (outcome.kind === 'kept') {
       setPending(null);
-      setKnown(outcome.draft);
-      setKeptText(attempt.kind === 'put' ? attempt.text : null);
+      if (outcome.draft.replayed) {
+        // The first answer to this attempt: its token may be older than the
+        // server's now, so the current state is read before the next save.
+        // Not known to be what the server holds now, so not marked as kept.
+        void load(true);
+        setKeptText(null);
+      } else {
+        setKnown(outcome.draft);
+        setKeptText(attempt.kind === 'put' ? attempt.text : null);
+      }
       setNote({ kind: 'key', key: attempt.kind === 'put' ? 'saved' : 'deleted' });
       return;
     }

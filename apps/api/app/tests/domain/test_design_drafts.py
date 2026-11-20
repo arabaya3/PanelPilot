@@ -569,3 +569,63 @@ def test_concurrent_saves_from_the_same_base_keep_one(tenants, new) -> None:  # 
     for thread in threads:
         thread.join()
     assert sorted(outcomes) == ["ok", "revision_stale_base"]
+
+
+def test_a_write_waiting_on_a_purge_gets_a_conflict_not_an_error(tenants, new, engine) -> None:  # type: ignore[no-untyped-def]
+    # Review finding: the purge deletes the row (not committed yet) while a
+    # write holding the current token comes in; it must wait and conflict.
+    a, _ = tenants
+    author = account(a)
+    project = _project(new, author)
+    saved = design_drafts.put_draft(
+        session=new(), user=author, project_id=project, write=_write(None, "Old")
+    )
+    _age(engine, 31)
+    purger = sessionmaker(bind=engine)()
+    with cross_tenant(purger, reason="test"):
+        assert design_drafts.purge_expired(session=purger)[0] == 1
+        outcome: list[object] = []
+
+        def write() -> None:
+            try:
+                design_drafts.put_draft(
+                    session=new(),
+                    user=author,
+                    project_id=project,
+                    write=_write(saved.token, "Late"),
+                )
+                outcome.append("kept")
+            except Exception as exc:  # the kind of error is the assertion
+                outcome.append(exc)
+
+        thread = threading.Thread(target=write)
+        thread.start()
+        thread.join(timeout=1)
+        assert thread.is_alive()  # waiting on the row the purge holds
+        purger.commit()
+    purger.close()
+    thread.join()
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], ConflictError)
+    assert outcome[0].params["state"] == "none"
+    assert design_drafts.get_draft(session=new(), user=author, project_id=project).draft is None
+
+
+def test_an_applied_write_retried_after_expiry_is_replayed(tenants, new, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    author = account(a)
+    project = _project(new, author)
+    rid = uuid.uuid4()
+    write = _write(None, "Kept", request_id=rid)
+    first = design_drafts.put_draft(session=new(), user=author, project_id=project, write=write)
+    later = datetime.now(UTC) + timedelta(hours=25)
+    monkeypatch.setattr(design_drafts, "_now", lambda: later)
+    again = design_drafts.put_draft(session=new(), user=author, project_id=project, write=write)
+    assert again.replayed
+    assert again.token == first.token
+    # A new attempt that old is still refused.
+    with pytest.raises(ConflictError) as raised:
+        design_drafts.put_draft(
+            session=new(), user=author, project_id=project, write=_write(first.token, "New")
+        )
+    assert raised.value.code == "request_expired"
