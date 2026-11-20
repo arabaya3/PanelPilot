@@ -578,11 +578,18 @@ function AmbiguousView({
       data-testid="compare-ambiguous"
     >
       <p className="font-semibold">
-        {t(group.reason === 'duplicate' ? 'ambiguousDuplicate' : 'ambiguousWires', {
-          label: group.label,
-          before: group.before.length,
-          after: group.after.length,
-        })}
+        {t(
+          group.reason === 'duplicate'
+            ? 'ambiguousDuplicate'
+            : group.reason === 'wire_endpoints'
+              ? 'ambiguousEndpoints'
+              : 'ambiguousWires',
+          {
+            label: group.label,
+            before: group.before.length,
+            after: group.after.length,
+          },
+        )}
       </p>
       <div className="mt-1 grid gap-2 sm:grid-cols-2">
         <div>

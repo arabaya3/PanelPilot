@@ -32,7 +32,7 @@ export type FieldChange = { field: string; before?: Scalar; after?: Scalar; unit
 export type ItemKind = 'added' | 'removed' | 'changed' | 'unchanged' | 'identical' | 'unavailable';
 export type Ambiguous = {
   label: string;
-  reason: 'duplicate' | 'wire_positions';
+  reason: 'duplicate' | 'wire_positions' | 'wire_endpoints';
   before: Record<string, Scalar>[];
   after: Record<string, Scalar>[];
 };
@@ -516,6 +516,67 @@ function netOf(config: Raw, patternRef: unknown, role: string): string | null {
   return nets.length === 1 ? canonical(nets[0]) : null;
 }
 
+/**
+ * What a binding's net positions for `role` connect, as stored: for each net
+ * member in order, the slot's mapping (component, device or other) with that
+ * component's stored definition and its template's stored definition (its
+ * terminals), or the point with its strip (the strip role's mapping and that
+ * strip's stored definition, with its points and markings) and the binding's
+ * marking for it; and the binding's cable when the net uses a cable core.
+ * Nothing is resolved further or guessed: null when the net is not unique.
+ */
+function endpointsOf(config: Raw, binding: Raw, role: string): string | null {
+  const patterns = records(config.patterns).filter((item) => item.ref === binding.pattern);
+  if (patterns.length !== 1) return null;
+  const pattern = patterns[0] as Raw;
+  const nets = records(pattern.nets).filter((item) => item.role === role);
+  if (nets.length !== 1) return null;
+  const net = nets[0] as Raw;
+  const board = binding.board;
+  const slots = record(binding.slots) ?? {};
+  const strips = record(binding.strips) ?? {};
+  const markings = record(binding.markings) ?? {};
+  const one = (list: Raw[]) =>
+    list.length === 1 ? list[0] : list.length === 0 ? null : 'not_unique';
+  const members = records(net.members).map((member) => {
+    if (member.slot !== undefined) {
+      const mapping = record(slots[str(member.slot) ?? '']) ?? null;
+      const componentId = mapping ? str(mapping.component) : null;
+      const component =
+        componentId === null
+          ? null
+          : one(
+              records(config.components).filter((c) => c.id === componentId && c.board === board),
+            );
+      const templateRef = record(component) ? (component as Raw).template : null;
+      const template =
+        typeof templateRef === 'string'
+          ? one(records(config.templates).filter((t) => t.ref === templateRef))
+          : null;
+      return { slot: member.slot, terminal: member.terminal, mapping, component, template };
+    }
+    const point = one(records(pattern.points).filter((pt) => pt.id === member.point));
+    const stripRole = record(point) ? str((point as Raw).strip) : null;
+    const stripId = stripRole === null ? null : str(strips[stripRole]);
+    const strip =
+      stripId === null
+        ? null
+        : one(records(config.strips).filter((st) => st.id === stripId && st.board === board));
+    return {
+      point: member.point,
+      side: member.side,
+      definition: point,
+      strip_role: stripRole,
+      strip,
+      marking: markings[str(member.point) ?? ''] ?? null,
+    };
+  });
+  const cable = records(net.connections).some((c) => c.via === 'cable_core')
+    ? (binding.cable ?? null)
+    : undefined;
+  return canonical({ members, cable });
+}
+
 function compareBinding(ca: Raw, cb: Raw, x: Raw, y: Raw): Item {
   const id = str(x.id) ?? '';
   const where = str(x.board) ?? '';
@@ -532,18 +593,20 @@ function compareBinding(ca: Raw, cb: Raw, x: Raw, y: Raw): Item {
       Object.keys(wires).filter((key) => (key.split('/')[0] ?? key) === role);
     const netA = netOf(ca, x.pattern, role);
     const netB = netOf(cb, y.pattern, role);
-    const positional = x.pattern === y.pattern && netA !== null && netA === netB;
-    if (!positional) {
+    const sameNet = x.pattern === y.pattern && netA !== null && netA === netB;
+    // A wire position names the same physical connection only if what its
+    // members resolve to (components, strips, terminal definitions, markings,
+    // cable) is unchanged too; a remapped slot or strip is another connection.
+    const sameEnds = sameNet && endpointsOf(ca, x, role) === endpointsOf(cb, y, role);
+    if (!sameEnds) {
       const left = keysOf(wiresA);
       const right = keysOf(wiresB);
-      // Same details on both sides: nothing to say, whatever the net.
-      if (
-        canonical(left.map((k) => [k, wiresA[k]])) === canonical(right.map((k) => [k, wiresB[k]]))
-      )
-        continue;
+      // No wire details on either side: nothing is claimed either way.
+      if (left.length === 0 && right.length === 0) continue;
+      // Even equal details are listed: they may now describe another connection.
       ambiguous.push({
         label: role,
-        reason: 'wire_positions',
+        reason: sameNet ? 'wire_endpoints' : 'wire_positions',
         before: left.map((k) => ({ wire: k, ...valuesOf(wiresA[k]) })),
         after: right.map((k) => ({ wire: k, ...valuesOf(wiresB[k]) })),
       });

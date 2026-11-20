@@ -548,6 +548,129 @@ describe('revision comparison model', () => {
     expect(bound?.ambiguous?.[0]).toMatchObject({ reason: 'wire_positions' });
   });
 
+  describe('connection identity behind a wire position', () => {
+    // One net "n1": slot src.A1 → point p1 → slot dst.A1, connected by wire then cable core.
+    const net = {
+      role: 'n1',
+      signal: 'S1',
+      scope: 'binding',
+      members: [
+        { slot: 'src', terminal: 'A1' },
+        { point: 'p1', side: 'inner' },
+        { slot: 'dst', terminal: 'A1' },
+      ],
+      connections: [
+        { from: 0, to: 1, via: 'wire', core: null, label: null },
+        { from: 1, to: 2, via: 'cable_core', core: 1, label: null },
+      ],
+    };
+    const pat = {
+      ref: 'pat/two',
+      slots: [
+        { id: 'src', template: 'tpl/a' },
+        { id: 'dst', template: 'tpl/a' },
+      ],
+      strips: ['out'],
+      points: [{ id: 'p1', strip: 'out', offset: 0, level: 0, kind: 'unspecified' }],
+      nets: [net],
+    };
+    const tpl = (terminals: string[]) => ({
+      ref: 'tpl/a',
+      terminals: terminals.map((id) => ({ id })),
+    });
+    const comp = (id: string) => ({ id, board: 'MDB', template: 'tpl/a', designation: null });
+    const strip = (id: string, marking = '1') => ({
+      id,
+      board: 'MDB',
+      template: null,
+      designation: null,
+      points: [{ id: 'sp1', marking }],
+    });
+    type Opts = {
+      src?: string;
+      strip?: string;
+      marking?: string;
+      cable?: string;
+      terminals?: string[];
+      stripMarking?: string;
+      wires?: Record<string, unknown>;
+    };
+    const configured = (o: Opts = {}) => ({
+      templates: [tpl(o.terminals ?? ['A1', 'A2'])],
+      patterns: [pat],
+      strips: [strip('st-1', o.stripMarking), strip('st-2')],
+      components: [comp('c-1'), comp('c-2'), comp('c-3')],
+      bindings: [
+        {
+          id: 'b-1',
+          pattern: 'pat/two',
+          board: 'MDB',
+          circuit: 'Pump',
+          slots: { src: { component: o.src ?? 'c-1' }, dst: { component: 'c-3' } },
+          strips: { out: o.strip ?? 'st-1' },
+          markings: { p1: o.marking ?? '21' },
+          cable: o.cable ?? 'cab-1',
+          wires: o.wires ?? { 'n1/0': { number: 'W7' } },
+        },
+      ],
+    });
+    const bindingOf = (o1: Opts, o2: Opts) =>
+      section(
+        compareRevisions(
+          project(1, { configuration: configured(o1) }),
+          project(2, { configuration: configured(o2) }),
+        ),
+        'configuration',
+      ).items.find((i) => i.type === 'binding');
+
+    it('an unchanged context keeps the positional match', () => {
+      const b = bindingOf({}, { wires: { 'n1/0': { number: 'W8' } } });
+      expect(b?.ambiguous).toEqual([]);
+      expect(b?.children?.[0]).toMatchObject({
+        type: 'wire',
+        label: 'n1/0',
+        changes: [{ field: 'number', before: 'W7', after: 'W8' }],
+      });
+    });
+
+    const cases: Array<[string, Opts, string | null]> = [
+      ['a slot mapped to another component', { src: 'c-2' }, 'slots.src.component'],
+      ['a strip role mapped to another strip', { strip: 'st-2' }, 'strips.out'],
+      ['a changed point marking', { marking: '22' }, 'markings.p1'],
+      ['a changed binding cable', { cable: 'cab-2' }, 'cable'],
+      ['changed terminal definitions of the slot template', { terminals: ['A1', 'B1'] }, null],
+      ['a changed marking on the mapped strip', { stripMarking: '9' }, null],
+    ];
+    for (const [name, change, field] of cases) {
+      it(`${name}: the change is shown and the wire is not claimed as the same connection`, () => {
+        // Same wire details on both sides: still listed, since the position may be another connection.
+        const b = bindingOf({}, change);
+        expect(b?.kind).toBe('changed');
+        if (field !== null) expect(b?.changes.map((c) => c.field)).toContain(field);
+        expect(b?.children).toEqual([]);
+        expect(b?.ambiguous?.[0]).toMatchObject({ label: 'n1', reason: 'wire_endpoints' });
+        expect(b?.ambiguous?.[0]?.before).toEqual([{ wire: 'n1/0', number: 'W7' }]);
+        expect(b?.ambiguous?.[0]?.after).toEqual([{ wire: 'n1/0', number: 'W7' }]);
+      });
+    }
+
+    it('a remapped component with changed wire details never reads as a changed wire', () => {
+      const b = bindingOf({}, { src: 'c-2', wires: { 'n1/0': { number: 'W9' } } });
+      expect(b?.children).toEqual([]);
+      expect(b?.ambiguous?.[0]).toMatchObject({ reason: 'wire_endpoints' });
+    });
+
+    it('a changed template definition or strip is shown in its own entry too', () => {
+      const c = compareRevisions(
+        project(1, { configuration: configured() }),
+        project(2, { configuration: configured({ terminals: ['A1', 'B1'], stripMarking: '9' }) }),
+      );
+      const items = section(c, 'configuration').items;
+      expect(items.find((i) => i.type === 'template')?.kind).toBe('changed');
+      expect(items.find((i) => i.type === 'strip' && i.label === 'st-1')?.kind).toBe('changed');
+    });
+  });
+
   it('decimals stored with different trailing zeros are one value', () => {
     const c = compareRevisions(
       project(1, { boards: [board('MDB', [load('A', { power_kw: '1.50' })])] }),
