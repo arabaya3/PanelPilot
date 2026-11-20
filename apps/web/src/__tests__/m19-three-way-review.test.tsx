@@ -447,7 +447,9 @@ describe('three-way review panel', () => {
       });
       expect(onUnauthorized).toHaveBeenCalledTimes(1);
       // Renewed; later the editing base moves (a save) and that run is refused.
-      view.rerender(<ThreeWayReview {...all} onUnauthorized={onUnauthorized} token="tok-2" base={3} />);
+      view.rerender(
+        <ThreeWayReview {...all} onUnauthorized={onUnauthorized} token="tok-2" base={3} />,
+      );
       await waitFor(() => {
         expect(resolvers).toHaveLength(2);
       });
