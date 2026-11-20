@@ -95,6 +95,15 @@ export function ThreeWayReview({
   const key = `${token}|${projectId}|${String(base)}|${String(round)}`;
   const keyNow = useRef(key);
   keyNow.current = key;
+  // Unmounted (another project, workspace or identity remounts the review):
+  // an answer still on its way does nothing at all, a 401 included.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   // What the editor holds now: an answer for an older copy is not shown.
   const markNow = useRef(workMark);
   markNow.current = workMark;
@@ -117,8 +126,9 @@ export function ThreeWayReview({
       pair = [{ kind: 'failed' }, { kind: 'failed' }];
     }
     setPending((current) => (current === asked ? null : current));
-    // Input, project, base, identity or round changed since: this answer is not shown.
-    if (keyNow.current !== asked) return;
+    // Unmounted, or project, base, identity or round changed since: this answer
+    // is not shown and asks for nothing (no renewal for another identity).
+    if (!alive.current || keyNow.current !== asked) return;
     const [b = { kind: 'failed' as const }, l = { kind: 'failed' as const }] = pair;
     // A session that ended is renewed whatever else happened meanwhile.
     if (b.kind === 'unauthorized' || l.kind === 'unauthorized') {

@@ -326,6 +326,109 @@ describe('three-way review panel', () => {
     expect(screen.queryByTestId('review-result')).toBeNull();
   });
 
+  describe('session renewal (SIMULATED delayed 401 answers)', () => {
+    function delayed() {
+      const resolvers: Array<(answer: Awaited<ReturnType<Open>>) => void> = [];
+      const open: Open = () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        });
+      return { resolvers, open };
+    }
+    const unauthorized = { kind: 'unauthorized' as const };
+
+    it('a 401 that arrives after you edited asks for renewal once, compares nothing, and does not re-run', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      const { all, view, capture, spy } = setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      view.rerender(
+        <ThreeWayReview {...all} onUnauthorized={onUnauthorized} workMark="m-edited" />,
+      );
+      await act(async () => {
+        for (const go of resolvers) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByTestId('review-status').textContent).toMatch(/could not be read/);
+      });
+      expect(screen.queryByTestId('review-result')).toBeNull();
+      // No retry loop: nothing more is asked for until the engineer refreshes (or the token changes).
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(capture).toHaveBeenCalledTimes(1);
+    });
+
+    it('an answer for a review that was closed or remounted asks for no renewal', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      const { view } = setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      view.unmount();
+      await act(async () => {
+        for (const go of resolvers) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it('a 401 for the identity before (the token changed meanwhile) asks for no renewal and shows nothing of it', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      const { all, view } = setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      view.rerender(
+        <ThreeWayReview {...all} onUnauthorized={onUnauthorized} token="tok-renewed" />,
+      );
+      await act(async () => {
+        resolvers[0]?.(unauthorized);
+        resolvers[1]?.(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      // The renewed token's own round runs and its answer is shown.
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(4);
+      });
+      await act(async () => {
+        resolvers[2]?.({ kind: 'saved', project: project(2, 'C2', '1.5') });
+        resolvers[3]?.({ kind: 'saved', project: project(3, 'C3', '1.5') });
+        await Promise.resolve();
+      });
+      expect(await screen.findByTestId('review-result')).toBeTruthy();
+    });
+
+    it('a renewal that failed (token unchanged) leaves a recoverable state: Refresh asks again, once', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByTestId('review-refresh'));
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('when no newer revision exists, says so and shows only your changes', async () => {
     setup(({ revision }) => ok(project(2, 'C2', '1.5', revision === null ? {} : {})));
     expect((await screen.findByTestId('review-no-newer')).textContent).toMatch(

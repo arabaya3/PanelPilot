@@ -863,6 +863,13 @@ function DesignWorkspace({
   const [workspace, setWorkspace] = useState(0);
   // M19: the read-only three-way review (opened only by the engineer).
   const [reviewOpen, setReviewOpen] = useState(false);
+  // Another identity (signed out, another account): a review opened for the
+  // one before is closed, never re-run for the new one.
+  const reviewFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (reviewFor.current !== null && reviewFor.current !== identityKey) setReviewOpen(false);
+    reviewFor.current = identityKey;
+  }, [identityKey]);
   const ownerKey = `${identityKey}#${String(workspace)}`;
   // A way back belongs to the project it was made in: another project clears it.
   const projectKey = `${ownerKey}|${opened?.id ?? ''}`;
@@ -2673,9 +2680,10 @@ function DesignWorkspace({
                       target?.focus();
                     }, 0);
                   }}
-                  onUnauthorized={() => {
+                  // Only for the identity and workspace it was opened for.
+                  onUnauthorized={forOwner(() => {
                     void reauthorize();
-                  }}
+                  })}
                   impls={{ open: openImpl }}
                 />
               ) : (
