@@ -201,6 +201,7 @@ import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } fr
 import type { signIn } from '@/lib/auth';
 import { acquireTrial } from '@/lib/session';
 import { ServerDraft, serverBody, type PreserveOutcome } from '@/components/design/server-draft';
+import { RevisionCompare } from '@/components/design/revision-compare';
 import type { signupClaimingTrial } from '@/lib/trial';
 import { clearTrial, readTrial } from '@/lib/trial';
 
@@ -3183,6 +3184,21 @@ function DesignWorkspace({
                 </EmptyState>
               )}
             </Panel>
+            {opened !== null && token !== null && history.length >= 2 ? (
+              <Panel title={tw('revisions.compare')}>
+                {/* M18: read-only; it never reaches the editor, its drafts or its base. */}
+                <RevisionCompare
+                  key={`${identityKey}|${tokenTenant ?? ''}|${opened.id}`}
+                  token={token}
+                  projectId={opened.id}
+                  revisions={history}
+                  onUnauthorized={() => {
+                    void reauthorize();
+                  }}
+                  impls={{ open: openImpl }}
+                />
+              </Panel>
+            ) : null}
             {titleRevisions.length > 0 && (
               <Panel title={tw('revisions.titleBlock')}>
                 <TableFrame label={tw('revisions.titleBlock')}>
