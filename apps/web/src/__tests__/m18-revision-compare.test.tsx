@@ -131,7 +131,9 @@ describe('revision comparison panel', () => {
   it('a request that throws says it failed and is not left busy', async () => {
     setup(() => Promise.reject(new Error('network')));
     fireEvent.click(screen.getByTestId('compare-run'));
-    expect((await screen.findByTestId('compare-status')).textContent).toMatch(/could not be read/);
+    await waitFor(() => {
+      expect(screen.getByTestId('compare-status').textContent).toMatch(/could not be read/);
+    });
     expect(screen.getByTestId('compare-run').getAttribute('aria-disabled')).toBe('false');
   });
 
@@ -205,16 +207,18 @@ describe('revision comparison panel', () => {
         : answer(revision ?? 3),
     );
     fireEvent.click(screen.getByTestId('compare-run'));
-    expect((await screen.findByTestId('compare-status')).textContent).toMatch(
-      /not available to you/,
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId('compare-status').textContent).toMatch(/not available to you/);
+    });
     expect(screen.queryByTestId('compare-result')).toBeNull();
   });
 
   it('an answer for another revision than asked is never shown as it', async () => {
     setup(() => answer(1));
     fireEvent.click(screen.getByTestId('compare-run'));
-    expect((await screen.findByTestId('compare-status')).textContent).toMatch(/could not be read/);
+    await waitFor(() => {
+      expect(screen.getByTestId('compare-status').textContent).toMatch(/could not be read/);
+    });
     expect(screen.queryByTestId('compare-result')).toBeNull();
   });
 
