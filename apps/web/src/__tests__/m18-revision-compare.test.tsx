@@ -106,6 +106,35 @@ describe('revision comparison panel', () => {
     expect(document.activeElement).toBe(screen.getByTestId('compare-run'));
   });
 
+  it('leaving a choice mid-request and coming back never leaves it stuck busy', async () => {
+    const pending: Array<() => void> = [];
+    const { spy } = setup(
+      ({ revision }) =>
+        new Promise((resolve) => {
+          pending.push(() => {
+            resolve({ kind: 'saved', project: project(revision ?? 0) });
+          });
+        }),
+    );
+    fireEvent.click(screen.getByTestId('compare-run'));
+    fireEvent.change(screen.getByTestId('compare-before'), { target: { value: '1' } });
+    await act(async () => {
+      for (const go of pending.splice(0)) go();
+      await Promise.resolve();
+    });
+    fireEvent.change(screen.getByTestId('compare-before'), { target: { value: '2' } });
+    expect(screen.getByTestId('compare-run').getAttribute('aria-disabled')).toBe('false');
+    fireEvent.click(screen.getByTestId('compare-run'));
+    expect(spy).toHaveBeenCalledTimes(4);
+  });
+
+  it('a request that throws says it failed and is not left busy', async () => {
+    setup(() => Promise.reject(new Error('network')));
+    fireEvent.click(screen.getByTestId('compare-run'));
+    expect((await screen.findByTestId('compare-status')).textContent).toMatch(/could not be read/);
+    expect(screen.getByTestId('compare-run').getAttribute('aria-disabled')).toBe('false');
+  });
+
   it('says when the author was not recorded', async () => {
     setup(({ revision }) => answer(revision ?? 1));
     fireEvent.change(screen.getByTestId('compare-before'), { target: { value: '1' } });

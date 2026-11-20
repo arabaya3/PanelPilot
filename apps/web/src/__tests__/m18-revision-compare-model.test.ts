@@ -489,6 +489,65 @@ describe('revision comparison model', () => {
     });
   });
 
+  it('labels are never normalised as numbers: a job or wire number "01" is not "1"', () => {
+    const c = compareRevisions(
+      project(1, { info: { number: '01' } }),
+      project(2, { info: { number: '1' } }),
+    );
+    expect(section(c, 'details').items[0]?.changes).toEqual([
+      { field: 'number', before: '01', after: '1' },
+    ]);
+    // A quantity still is: digit by digit, no float rounding.
+    const q = compareRevisions(
+      project(1, { boards: [board('MDB', [load('A', { power_kw: '0.30000000000000001' })])] }),
+      project(2, { boards: [board('MDB', [load('A', { power_kw: '0.3' })])] }),
+    );
+    expect(boardItem(q, 'MDB').kind).toBe('changed');
+  });
+
+  it('a stored design held by one revision only is unavailable, never "no differences"', () => {
+    const c = compareRevisions(project(1, { snapshot_sha256: null, validated: true }), project(2));
+    const outputs = section(c, 'outputs');
+    expect(outputs.items.find((i) => i.label === 'stored_design')).toMatchObject({
+      kind: 'unavailable',
+      count: 1,
+    });
+    expect(changedCount(outputs)).toBeGreaterThan(0);
+  });
+
+  it('two nets with one role never allow a positional wire match', () => {
+    const twoNets = (terminal: string) => ({
+      ...pattern('pat/dol', members),
+      nets: [
+        { role: 'coil', signal: 'ctrl', scope: 'local', members, connections: [] },
+        {
+          role: 'coil',
+          signal: 'ctrl',
+          scope: 'local',
+          members: [{ slot: 'K', terminal }],
+          connections: [],
+        },
+      ],
+    });
+    const c = compareRevisions(
+      project(1, {
+        configuration: config(
+          [twoNets('A1')],
+          [binding('b-1', 'MDB', { 'coil/0': { number: '1' } })],
+        ),
+      }),
+      project(2, {
+        configuration: config(
+          [twoNets('A2')],
+          [binding('b-1', 'MDB', { 'coil/0': { number: '2' } })],
+        ),
+      }),
+    );
+    const bound = section(c, 'configuration').items.find((i) => i.type === 'binding');
+    expect(bound?.children).toEqual([]);
+    expect(bound?.ambiguous?.[0]).toMatchObject({ reason: 'wire_positions' });
+  });
+
   it('decimals stored with different trailing zeros are one value', () => {
     const c = compareRevisions(
       project(1, { boards: [board('MDB', [load('A', { power_kw: '1.50' })])] }),

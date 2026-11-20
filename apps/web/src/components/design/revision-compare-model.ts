@@ -29,7 +29,7 @@ import type { SavedProject } from '@/lib/design';
 export type Scalar = string | number | boolean | null;
 /** `undefined`: the value is not set on that side. */
 export type FieldChange = { field: string; before?: Scalar; after?: Scalar; unit?: string };
-export type ItemKind = 'added' | 'removed' | 'changed' | 'unchanged' | 'identical';
+export type ItemKind = 'added' | 'removed' | 'changed' | 'unchanged' | 'identical' | 'unavailable';
 export type Ambiguous = {
   label: string;
   reason: 'duplicate' | 'wire_positions';
@@ -141,13 +141,37 @@ export function flatten(value: unknown, prefix = ''): Map<string, Scalar> {
 
 const DECIMAL = /^-?\d+(\.\d+)?$/;
 
-function same(a: Scalar | undefined, b: Scalar | undefined): boolean {
+/** Fields that hold a decimal quantity (so "1.50" and "1.5" are one value); labels never are. */
+const QUANTITIES = new Set([...Object.keys(UNITS), 'power_factor']);
+
+/** A decimal written canonically, digit by digit (no float rounding): "01.50" → "1.5". */
+function decimalText(value: string): string {
+  const negative = value.startsWith('-');
+  const [whole = '0', fraction = ''] = (negative ? value.slice(1) : value).split('.');
+  const w = whole.replace(/^0+(?=\d)/, '');
+  const f = fraction.replace(/0+$/, '');
+  const text = f === '' ? w : `${w}.${f}`;
+  return negative && text !== '0' ? `-${text}` : text;
+}
+
+function same(a: Scalar | undefined, b: Scalar | undefined, field: string): boolean {
   const na = a ?? null;
   const nb = b ?? null;
   if (na === nb) return true;
-  // "1.50" and "1.5" are one value as stored decimals.
-  if (typeof na === 'string' && typeof nb === 'string' && DECIMAL.test(na) && DECIMAL.test(nb)) {
-    return Number(na) === Number(nb);
+  // Only a quantity is normalised: a wire or job "number" of "01" is not "1".
+  const last =
+    field
+      .split('.')
+      .filter((part) => part !== 'value')
+      .pop() ?? '';
+  if (
+    QUANTITIES.has(last) &&
+    typeof na === 'string' &&
+    typeof nb === 'string' &&
+    DECIMAL.test(na) &&
+    DECIMAL.test(nb)
+  ) {
+    return decimalText(na) === decimalText(nb);
   }
   return false;
 }
@@ -171,7 +195,7 @@ export function fieldChanges(before: unknown, after: unknown, skip: string[] = [
   return keys.flatMap((field) => {
     const x = a.get(field) ?? null;
     const y = b.get(field) ?? null;
-    if (same(x, y)) return [];
+    if (same(x, y, field)) return [];
     const unit = unitOf(field);
     return [
       {
@@ -485,9 +509,11 @@ function comparePattern(x: Raw, y: Raw): Item {
 }
 
 function netOf(config: Raw, patternRef: unknown, role: string): string | null {
-  const pattern = records(config.patterns).find((item) => item.ref === patternRef);
-  const net = records(pattern?.nets).find((item) => item.role === role);
-  return net ? canonical(net) : null;
+  const pattern = records(config.patterns).filter((item) => item.ref === patternRef);
+  // One pattern and one net with that role, or no positional match at all.
+  if (pattern.length !== 1) return null;
+  const nets = records(pattern[0]?.nets).filter((item) => item.role === role);
+  return nets.length === 1 ? canonical(nets[0]) : null;
 }
 
 function compareBinding(ca: Raw, cb: Raw, x: Raw, y: Raw): Item {
@@ -661,6 +687,15 @@ function compareOutputs(a: SavedProject, b: SavedProject): Section {
       type: 'output',
       label: 'stored_design',
       changes: [],
+    });
+  } else if (hashA !== null || hashB !== null) {
+    // One side holds no stored design: that is unavailable, never "unchanged".
+    items.push({
+      kind: 'unavailable',
+      type: 'output',
+      label: 'stored_design',
+      changes: [],
+      count: hashA === null ? a.revision : b.revision,
     });
   }
   // Findings as stored, counted by what they say (never by their generated ids).

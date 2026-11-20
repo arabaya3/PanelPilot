@@ -138,13 +138,20 @@ export function RevisionCompare({
     const asked = key;
     setPending(asked);
     setOutcome(null);
-    const [a, b] = await Promise.all([
-      open({ token, id: projectId, revision: before }),
-      open({ token, id: projectId, revision: after }),
-    ]);
+    let pair: Awaited<ReturnType<typeof open>>[];
+    try {
+      pair = await Promise.all([
+        open({ token, id: projectId, revision: before }),
+        open({ token, id: projectId, revision: after }),
+      ]);
+    } catch {
+      pair = [{ kind: 'failed' }, { kind: 'failed' }];
+    }
+    // This request is answered, whatever happens next (never left busy).
+    setPending((current) => (current === asked ? null : current));
     // A choice, project or identity changed meanwhile: this answer is not shown.
     if (keyNow.current !== asked) return;
-    setPending(null);
+    const [a = { kind: 'failed' as const }, b = { kind: 'failed' as const }] = pair;
     if (a.kind === 'unauthorized' || b.kind === 'unauthorized') {
       onUnauthorized?.();
       setOutcome({ key: asked, kind: 'failed' });
@@ -310,7 +317,7 @@ export function RevisionCompare({
             })}
           </div>
           {shown.comparison.kind === 'integrity' ? (
-            <p role="alert" className="mt-3 text-sm" data-testid="compare-integrity">
+            <p className="mt-3 text-sm" data-testid="compare-integrity">
               {t('integrityDetail', { revisions: shown.comparison.failed.join(', ') })}
             </p>
           ) : (
@@ -444,6 +451,15 @@ function ItemView({
   value: (v: Scalar | undefined, unit?: string) => string;
 }) {
   const children = (item.children ?? []).filter((child) => child.kind !== 'unchanged');
+  if (item.kind === 'unavailable') {
+    return (
+      <p className="mt-2 text-sm" data-testid="compare-item" data-kind="unavailable">
+        <span className="font-semibold">{t(`labels.${item.label}`)}</span>
+        {': '}
+        {t('unavailableIn', { revisions: item.count ?? '' })}
+      </p>
+    );
+  }
   return (
     <div className="mt-2 text-sm" data-testid="compare-item" data-kind={item.kind}>
       <p>
