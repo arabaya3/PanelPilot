@@ -293,7 +293,7 @@ async function call<T>(
   try {
     response = await fetchImpl(
       endpoint,
-      method === 'GET' || method === 'DELETE'
+      method === 'GET' || (method === 'DELETE' && body === undefined)
         ? { method, headers: auth }
         : {
             method,
@@ -576,6 +576,11 @@ export function reviseProject(
     requirementsInput?: RequirementsInput | null;
     /** References the user keeps for the load now at their position. */
     referencesConfirmed?: ReferenceConfirmation[];
+    /**
+     * The latest revision the page knows of. The server refuses the save
+     * (`revision_stale_base`) when another was saved since; absent, it does not check.
+     */
+    expectedRevision?: number;
   },
 ): Promise<ProjectOutcome> {
   const {
@@ -586,6 +591,7 @@ export function reviseProject(
     configurationRemoved,
     requirementsInput,
     referencesConfirmed,
+    expectedRevision,
   } = options;
   return call(
     options,
@@ -602,8 +608,91 @@ export function reviseProject(
       ...(referencesConfirmed && referencesConfirmed.length > 0
         ? { references_confirmed: referencesConfirmed }
         : {}),
+      ...(expectedRevision !== undefined ? { expected_revision: expectedRevision } : {}),
     },
     saved,
+  );
+}
+
+/** Unsaved work as a server draft keeps it (structure only; never validated). */
+export type ServerDraftBody = components['schemas']['DraftBody'];
+export type ServerDraftState = components['schemas']['DraftState'];
+export type ServerDraftLookup = components['schemas']['DraftLookup'];
+
+export type ServerDraftLookupOutcome = { kind: 'found'; lookup: ServerDraftLookup } | Failure;
+export type ServerDraftOutcome = { kind: 'kept'; draft: ServerDraftState } | Failure;
+
+/**
+ * One explicit draft write or delete. Its `request_id` and `issued_at` are
+ * chosen once; a retry of the same attempt sends them unchanged, so the
+ * server replays its first answer instead of applying it twice.
+ */
+export type ServerDraftAttempt = { request_id: string; issued_at: string };
+
+export function newDraftAttempt(now: Date = new Date()): ServerDraftAttempt {
+  return { request_id: crypto.randomUUID(), issued_at: now.toISOString() };
+}
+
+function draftPath(id: string): string {
+  return `${PROJECTS}/${encodeURIComponent(id)}/draft`;
+}
+
+function draftState(payload: object): ServerDraftOutcome | null {
+  return has(payload, 'token', 'state', 'base_revision')
+    ? { kind: 'kept', draft: payload as ServerDraftState }
+    : null;
+}
+
+/** The caller's own draft of a saved project: `GET /api/v1/design/projects/{id}/draft`. */
+export function getServerDraft(
+  options: Transport & { id: string },
+): Promise<ServerDraftLookupOutcome> {
+  return call<ServerDraftLookupOutcome>(
+    options,
+    draftPath(options.id),
+    undefined,
+    (payload) =>
+      has(payload, 'writes_enabled', 'draft')
+        ? { kind: 'found', lookup: payload as ServerDraftLookup }
+        : null,
+    undefined,
+    'GET',
+  );
+}
+
+/** Keep the work as the caller's draft: `PUT /api/v1/design/projects/{id}/draft`. */
+export function putServerDraft(
+  options: Transport & {
+    id: string;
+    attempt: ServerDraftAttempt;
+    ifMatch: string | null;
+    baseRevision: number;
+    body: ServerDraftBody;
+  },
+): Promise<ServerDraftOutcome> {
+  const { id, attempt, ifMatch, baseRevision, body } = options;
+  return call(
+    options,
+    draftPath(id),
+    { ...attempt, if_match: ifMatch, base_revision: baseRevision, body },
+    draftState,
+    undefined,
+    'PUT',
+  );
+}
+
+/** Delete the caller's draft: `DELETE /api/v1/design/projects/{id}/draft`. */
+export function deleteServerDraft(
+  options: Transport & { id: string; attempt: ServerDraftAttempt; ifMatch: string },
+): Promise<ServerDraftOutcome> {
+  const { id, attempt, ifMatch } = options;
+  return call(
+    options,
+    draftPath(id),
+    { ...attempt, if_match: ifMatch },
+    draftState,
+    undefined,
+    'DELETE',
   );
 }
 

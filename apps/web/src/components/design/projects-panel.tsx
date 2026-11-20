@@ -367,6 +367,8 @@ export function ProjectsPanel({
       ? await revise({
           token,
           id: opened.id,
+          // The latest revision this page knows: refused if another was saved since.
+          expectedRevision: Math.max(opened.revision, ...opened.revisions),
           request: current.request,
           note,
           ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
