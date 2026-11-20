@@ -995,7 +995,7 @@ export function ProjectsPanel({
             {onKeepAndOpen ? (
               <button
                 type="button"
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-secondary h-auto max-w-full whitespace-normal text-start"
                 disabled={staleBusy}
                 data-testid="stale-keep-open"
                 onClick={() => {
@@ -1029,7 +1029,7 @@ export function ProjectsPanel({
             {onReview ? (
               <button
                 type="button"
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-secondary h-auto max-w-full whitespace-normal text-start"
                 data-testid="stale-review"
                 onClick={onReview}
               >
@@ -1038,7 +1038,7 @@ export function ProjectsPanel({
             ) : null}
             <button
               type="button"
-              className="btn btn-sm btn-secondary"
+              className="btn btn-sm btn-secondary h-auto max-w-full whitespace-normal text-start"
               data-testid="stale-dismiss"
               onClick={() => {
                 setStale(null);
@@ -1062,7 +1062,7 @@ export function ProjectsPanel({
               </label>
               <button
                 type="button"
-                className="btn btn-sm btn-primary mt-2"
+                className="btn btn-sm btn-primary mt-2 h-auto max-w-full whitespace-normal text-start"
                 disabled={!staleConfirm}
                 data-testid="stale-reconcile-accept"
                 onClick={() => {

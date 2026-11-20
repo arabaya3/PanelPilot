@@ -2654,8 +2654,23 @@ function DesignWorkspace({
                   })}
                   onClose={() => {
                     setReviewOpen(false);
+                    // Back to what opened it: the review button, else the refusal's own
+                    // review button, else the projects panel (never left on the page).
                     window.setTimeout(() => {
-                      document.getElementById(`${id}-review-open`)?.focus();
+                      const target =
+                        document.getElementById(`${id}-review-open`) ??
+                        document.querySelector<HTMLElement>('[data-testid="stale-review"]') ??
+                        document.querySelector<HTMLElement>(
+                          '[data-testid="projects-panel"] h2, [data-testid="projects-panel"] h3',
+                        );
+                      if (
+                        target &&
+                        !target.hasAttribute('tabindex') &&
+                        !/^(BUTTON|A|INPUT|SELECT)$/.test(target.tagName)
+                      ) {
+                        target.setAttribute('tabindex', '-1');
+                      }
+                      target?.focus();
                     }, 0);
                   }}
                   onUnauthorized={() => {
