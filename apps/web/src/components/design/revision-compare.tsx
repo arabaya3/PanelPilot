@@ -24,6 +24,7 @@ import {
   type Item,
   type Scalar,
   type Section,
+  unitOf,
 } from '@/components/design/revision-compare-model';
 import { openProject, type SavedProject } from '@/lib/design';
 
@@ -263,7 +264,10 @@ export function RevisionCompare({
         <button
           type="button"
           className="btn btn-sm btn-secondary"
-          disabled={busy || before === after}
+          // Busy is only announced, never a native disabled: focus stays on the button
+          // while it works (a disabled button drops focus to the page).
+          disabled={before === after}
+          aria-disabled={busy}
           data-testid="compare-run"
           onClick={() => {
             void compare();
@@ -448,7 +452,7 @@ function ItemView({
         <ul className="ms-4 list-disc ps-4 text-text-muted">
           {Object.entries(item.values).map(([field, v]) => (
             <li key={field} className="break-words">
-              {fieldLabel(field)}: <bdi>{value(v)}</bdi>
+              {fieldLabel(field)}: <bdi>{value(v, unitOf(field))}</bdi>
             </li>
           ))}
         </ul>
@@ -533,7 +537,7 @@ function AmbiguousView({
         {entries.map((entry, index) => (
           <li key={index} className="break-words">
             {Object.entries(entry)
-              .map(([field, v]) => `${fieldLabel(field)}: ${value(v)}`)
+              .map(([field, v]) => `${fieldLabel(field)}: ${value(v, unitOf(field))}`)
               .join('; ')}
           </li>
         ))}

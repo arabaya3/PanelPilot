@@ -152,7 +152,7 @@ function same(a: Scalar | undefined, b: Scalar | undefined): boolean {
   return false;
 }
 
-function unitOf(path: string): string | undefined {
+export function unitOf(path: string): string | undefined {
   const parts = path.split('.');
   // A wire detail stores `{value, source}`: its unit is its field's.
   const last =
@@ -343,6 +343,7 @@ function compareBoards(a: SavedProject, b: SavedProject): Section {
         (load) => str(load.description),
         (load) => str(load.description) ?? '',
         (l, r) => leaf('load', str(l.description) ?? '', l, r, ['description'], name),
+        ['description'],
       );
       const own = fieldChanges(x, y, ['loads', 'name']);
       const changedLoads = loads.items.some(

@@ -83,6 +83,29 @@ describe('revision comparison panel', () => {
     }
   });
 
+  it('keeps keyboard focus on Compare while it works and after', async () => {
+    let finish: () => void = () => undefined;
+    setup(
+      ({ revision }) =>
+        new Promise((resolve) => {
+          finish = () => {
+            resolve({ kind: 'saved', project: project(revision ?? 3) });
+          };
+        }),
+    );
+    const run = screen.getByTestId('compare-run');
+    run.focus();
+    fireEvent.click(run);
+    expect(run.hasAttribute('disabled')).toBe(false);
+    expect(run.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(run);
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('compare-run'));
+  });
+
   it('says when the author was not recorded', async () => {
     setup(({ revision }) => answer(revision ?? 1));
     fireEvent.change(screen.getByTestId('compare-before'), { target: { value: '1' } });
