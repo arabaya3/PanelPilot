@@ -40,6 +40,8 @@ TENANT_SCOPED = {
     "model_usage",
     # A customer's saved designs: their projects, clients and loads.
     "design_projects",
+    "design_drafts",
+    "design_draft_requests",
     "design_project_revisions",
     "company_settings",
     # What a customer pays for, and the plan it asked for.
