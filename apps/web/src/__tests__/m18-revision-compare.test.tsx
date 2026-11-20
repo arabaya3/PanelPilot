@@ -215,13 +215,22 @@ describe('revision comparison panel', () => {
     expect(summary.textContent).toMatch(/Configuration and wiring: Unavailable in revision 2/);
   });
 
-  it('the summary links to each section', async () => {
+  it('each summary entry opens its section and moves focus to it, without navigating', async () => {
     setup(({ revision }) => answer(revision ?? 3));
     fireEvent.click(screen.getByTestId('compare-run'));
     const summary = await screen.findByTestId('compare-summary');
-    for (const link of Array.from(summary.querySelectorAll('a'))) {
-      const target = link.getAttribute('href')?.slice(1) ?? '';
-      expect(document.getElementById(target)).not.toBeNull();
+    expect(summary.querySelectorAll('a')).toHaveLength(0);
+    const entries = Array.from(summary.querySelectorAll('button'));
+    expect(entries).toHaveLength(5);
+    for (const entry of entries) {
+      const target = document.getElementById(
+        entry.getAttribute('data-section') ?? '',
+      ) as HTMLDetailsElement;
+      expect(target).not.toBeNull();
+      target.open = false;
+      fireEvent.click(entry);
+      expect(target.open).toBe(true);
+      expect(document.activeElement).toBe(target.querySelector('summary'));
     }
   });
 });

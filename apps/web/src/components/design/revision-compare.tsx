@@ -350,9 +350,22 @@ function Sections({
         <ul className="text-sm" data-testid="compare-summary">
           {sections.map((s) => (
             <li key={s.id}>
-              <a className="link" href={`#${anchor(s)}`}>
+              {/* A button, not a link: an in-page jump is not navigation (the page's
+                  unsaved-work guard treats link clicks as leaving the page). */}
+              <button
+                type="button"
+                className="link"
+                data-section={anchor(s)}
+                onClick={() => {
+                  const target = document.getElementById(anchor(s));
+                  if (!(target instanceof HTMLDetailsElement)) return;
+                  target.open = true;
+                  // Focusing the section's heading also scrolls it into view.
+                  target.querySelector('summary')?.focus();
+                }}
+              >
                 {t(`sections.${s.id}`)}
-              </a>
+              </button>
               {': '}
               {s.status === 'unavailable'
                 ? t('unavailableIn', { revisions: s.unavailableIn.join(', ') })
