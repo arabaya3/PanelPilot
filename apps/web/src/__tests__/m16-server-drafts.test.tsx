@@ -546,6 +546,49 @@ describe('draft and revise requests', () => {
     expect(sentJson(sent, 0)).toEqual({ ...attempt, if_match: 'd1.1' });
   });
 
+  it('against an API without expected_revision, the same save is sent once without it', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const fetchImpl = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      const payload = JSON.parse(init?.body as string) as Record<string, unknown>;
+      sent.push(payload);
+      return Promise.resolve(
+        'expected_revision' in payload
+          ? new Response(
+              JSON.stringify({
+                detail: [
+                  {
+                    type: 'extra_forbidden',
+                    loc: ['body', 'expected_revision'],
+                    msg: 'Extra inputs are not permitted',
+                  },
+                ],
+              }),
+              { status: 422, headers: { 'Content-Type': 'application/json' } },
+            )
+          : new Response(JSON.stringify({ id: 'p1', revisions: [], request: {} }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+      );
+    }) as unknown as typeof fetch;
+    const request = { boards: [] } as unknown as Parameters<typeof reviseProject>[0]['request'];
+    const outcome = await reviseProject({
+      token: 't',
+      fetchImpl,
+      id: 'p1',
+      request,
+      note: 'n',
+      expectedRevision: 3,
+    });
+    expect(outcome.kind).toBe('saved');
+    expect(sent).toHaveLength(2);
+    expect(nth(sent, 1)).not.toHaveProperty('expected_revision');
+    expect({ ...nth(sent, 0), expected_revision: undefined }).toEqual({
+      ...nth(sent, 1),
+      expected_revision: undefined,
+    });
+  });
+
   it('revise sends expected_revision only when given (older callers keep their contract)', async () => {
     const { sent, fetchImpl } = capture();
     const request = { boards: [] } as unknown as Parameters<typeof reviseProject>[0]['request'];

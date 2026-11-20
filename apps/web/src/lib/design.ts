@@ -565,7 +565,7 @@ export function saveProject(
  * With a `configuration`, the server composes it into a `pp-design/2` revision,
  * or refuses (`configuration_requires_v2` where this deployment writes v1).
  */
-export function reviseProject(
+export async function reviseProject(
   options: Transport & {
     id: string;
     request: ProjectDesignRequest;
@@ -593,25 +593,40 @@ export function reviseProject(
     referencesConfirmed,
     expectedRevision,
   } = options;
-  return call(
-    options,
-    `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
-    {
-      request,
-      note,
-      ...(configurationRemoved
-        ? { configuration: null, configuration_removed: true }
-        : configuration
-          ? { configuration }
+  const send = (withExpected: boolean) =>
+    call(
+      options,
+      `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
+      {
+        request,
+        note,
+        ...(configurationRemoved
+          ? { configuration: null, configuration_removed: true }
+          : configuration
+            ? { configuration }
+            : {}),
+        ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
+        ...(referencesConfirmed && referencesConfirmed.length > 0
+          ? { references_confirmed: referencesConfirmed }
           : {}),
-      ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
-      ...(referencesConfirmed && referencesConfirmed.length > 0
-        ? { references_confirmed: referencesConfirmed }
-        : {}),
-      ...(expectedRevision !== undefined ? { expected_revision: expectedRevision } : {}),
-    },
-    saved,
-  );
+        ...(withExpected && expectedRevision !== undefined
+          ? { expected_revision: expectedRevision }
+          : {}),
+      },
+      saved,
+    );
+  const outcome = await send(true);
+  // An API from before `expected_revision` refuses the field and saves
+  // nothing; the same save is sent once more without it (its old contract).
+  if (
+    expectedRevision !== undefined &&
+    outcome.kind === 'refused' &&
+    outcome.unknownFields?.length === 1 &&
+    outcome.unknownFields[0] === 'expected_revision'
+  ) {
+    return send(false);
+  }
+  return outcome;
 }
 
 /** Unsaved work as a server draft keeps it (structure only; never validated). */
