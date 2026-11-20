@@ -1887,7 +1887,10 @@
         "binding": "שיוך",
         "wire": "חוט",
         "output": "",
-        "finding": "ממצא"
+        "finding": "ממצא",
+        "slot": "משבצת",
+        "point": "נקודה",
+        "net": "רשת"
       },
       "labels": {
         "project": "פרטי הפרויקט",
@@ -1945,7 +1948,23 @@
         "pattern": "תבנית חיבור",
         "circuit": "מעגל",
         "template": "תבנית",
-        "board": "לוח"
+        "board": "לוח",
+        "colour_value": "צבע",
+        "colour_source": "הצבע הוזן כ־",
+        "number_value": "מספר חוט",
+        "number_source": "מספר החוט הוזן כ־",
+        "cross_section_mm2_value": "חתך",
+        "cross_section_mm2_source": "החתך הוזן כ־",
+        "signal": "אות",
+        "scope": "היקף",
+        "members": "חברים",
+        "connections": "חיבורים",
+        "device_kind": "סוג התקן",
+        "strip": "פס",
+        "offset": "היסט",
+        "level": "רמה",
+        "kind": "סוג",
+        "severity": "חומרה"
       }
     }
   },

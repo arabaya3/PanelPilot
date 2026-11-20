@@ -1887,7 +1887,10 @@
         "binding": "binding",
         "wire": "wire",
         "output": "",
-        "finding": "finding"
+        "finding": "finding",
+        "slot": "slot",
+        "point": "point",
+        "net": "net"
       },
       "labels": {
         "project": "Project details",
@@ -1945,7 +1948,23 @@
         "pattern": "Pattern",
         "circuit": "Circuit",
         "template": "Template",
-        "board": "Board"
+        "board": "Board",
+        "colour_value": "Colour",
+        "colour_source": "Colour entered as",
+        "number_value": "Wire number",
+        "number_source": "Wire number entered as",
+        "cross_section_mm2_value": "Cross-section",
+        "cross_section_mm2_source": "Cross-section entered as",
+        "signal": "Signal",
+        "scope": "Scope",
+        "members": "Members",
+        "connections": "Connections",
+        "device_kind": "Device kind",
+        "strip": "Strip",
+        "offset": "Offset",
+        "level": "Level",
+        "kind": "Kind",
+        "severity": "Severity"
       }
     }
   },

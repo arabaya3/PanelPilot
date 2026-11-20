@@ -72,6 +72,22 @@ const FIELD_KEYS = new Set([
   'circuit',
   'template',
   'board',
+  'colour.value',
+  'colour.source',
+  'number.value',
+  'number.source',
+  'cross_section_mm2.value',
+  'cross_section_mm2.source',
+  'signal',
+  'scope',
+  'members',
+  'connections',
+  'device_kind',
+  'strip',
+  'offset',
+  'level',
+  'kind',
+  'severity',
 ]);
 
 export function RevisionCompare({

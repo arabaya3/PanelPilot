@@ -444,6 +444,51 @@ describe('revision comparison model', () => {
     ]);
   });
 
+  it('a finding whose message names a regenerated wire id is the same finding, not removed and added', () => {
+    const unset = (wire: string) => ({
+      source: 'integrity',
+      code: 'wire_attribute_unset',
+      severity: 'warning',
+      message: `wire ${wire} has no colour`,
+    });
+    const c = compareRevisions(
+      project(1, { findings: [unset('w-aaa')] }),
+      project(2, { findings: [unset('w-bbb')] }),
+    );
+    expect(section(c, 'outputs').items.filter((i) => i.type === 'finding')).toEqual([]);
+  });
+
+  it('pattern nets compare by role, as readable members and connections', () => {
+    const c = compareRevisions(
+      project(1, { configuration: config([pattern('pat/dol', members)], []) }),
+      project(2, {
+        configuration: config(
+          [
+            {
+              ...pattern('pat/dol', members),
+              nets: [
+                {
+                  role: 'coil',
+                  signal: 'ctrl',
+                  scope: 'local',
+                  members,
+                  connections: [{ from: 0, to: 1, via: 'cable_core', core: 1, label: 'BN' }],
+                },
+              ],
+            },
+          ],
+          [],
+        ),
+      }),
+    );
+    const pat = section(c, 'configuration').items.find((i) => i.type === 'pattern');
+    expect(pat?.children?.[0]).toMatchObject({
+      type: 'net',
+      label: 'coil',
+      changes: [{ field: 'connections', before: '1→2 wire', after: '1→2 cable_core core 1 “BN”' }],
+    });
+  });
+
   it('decimals stored with different trailing zeros are one value', () => {
     const c = compareRevisions(
       project(1, { boards: [board('MDB', [load('A', { power_kw: '1.50' })])] }),

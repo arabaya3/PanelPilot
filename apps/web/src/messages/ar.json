@@ -1887,7 +1887,10 @@
         "binding": "ربط",
         "wire": "سلك",
         "output": "",
-        "finding": "نتيجة فحص"
+        "finding": "نتيجة فحص",
+        "slot": "فتحة",
+        "point": "نقطة",
+        "net": "شبكة"
       },
       "labels": {
         "project": "تفاصيل المشروع",
@@ -1945,7 +1948,23 @@
         "pattern": "النمط",
         "circuit": "الدائرة",
         "template": "القالب",
-        "board": "اللوحة"
+        "board": "اللوحة",
+        "colour_value": "اللون",
+        "colour_source": "أُدخل اللون كـ",
+        "number_value": "رقم السلك",
+        "number_source": "أُدخل رقم السلك كـ",
+        "cross_section_mm2_value": "المقطع",
+        "cross_section_mm2_source": "أُدخل المقطع كـ",
+        "signal": "الإشارة",
+        "scope": "النطاق",
+        "members": "الأعضاء",
+        "connections": "التوصيلات",
+        "device_kind": "نوع الجهاز",
+        "strip": "الشريحة",
+        "offset": "الإزاحة",
+        "level": "المستوى",
+        "kind": "النوع",
+        "severity": "الشدة"
       }
     }
   },

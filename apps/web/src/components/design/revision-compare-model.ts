@@ -153,7 +153,11 @@ function same(a: Scalar | undefined, b: Scalar | undefined): boolean {
 }
 
 function unitOf(path: string): string | undefined {
-  return UNITS[path.split('.').pop() ?? ''];
+  const parts = path.split('.');
+  // A wire detail stores `{value, source}`: its unit is its field's.
+  const last =
+    parts[parts.length - 1] === 'value' ? parts[parts.length - 2] : parts[parts.length - 1];
+  return UNITS[last ?? ''];
 }
 
 /** Field-by-field differences of two values of one matched item. */
@@ -310,7 +314,9 @@ function compareDetails(a: SavedProject, b: SavedProject): Section {
     (item) => str(item.index) ?? '',
     (x) => ({ kind: 'unchanged', type: 'title_revision', label: str(x.index) ?? '', changes: [] }),
   );
-  items.push(...titled.items);
+  items.push(
+    ...titled.items.sort((x, y) => x.label.localeCompare(y.label, 'en', { numeric: true })),
+  );
   return {
     id: 'details',
     status: 'compared',
@@ -413,6 +419,70 @@ function configurationOf(p: SavedProject): Raw | 'unavailable' {
   return record(p.configuration) ?? {};
 }
 
+/** A stored value as text (scalars as they are, anything else as canonical JSON). */
+function txt(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : canonical(value);
+}
+
+/** A pattern net's members and connections as a reader sees them (positions are 1-based). */
+function readableNet(net: Raw): Raw {
+  const members = records(net.members).map((member, index) =>
+    member.slot !== undefined
+      ? `${String(index + 1)}. ${txt(member.slot)}.${txt(member.terminal)}`
+      : `${String(index + 1)}. ${txt(member.point)} (${txt(member.side)})`,
+  );
+  const connections = records(net.connections).map((c) =>
+    [
+      `${String(Number(c.from) + 1)}→${String(Number(c.to) + 1)}`,
+      txt(c.via),
+      c.core === null || c.core === undefined ? null : `core ${txt(c.core)}`,
+      typeof c.label === 'string' && c.label !== '' ? `“${c.label}”` : null,
+    ]
+      .filter((part) => part !== null)
+      .join(' '),
+  );
+  return {
+    signal: net.signal ?? null,
+    scope: net.scope ?? null,
+    members: members.length === 0 ? null : members.join('; '),
+    connections: connections.length === 0 ? null : connections.join('; '),
+  };
+}
+
+/** A pattern: its own fields, then slots and points by id and nets by role (never by position). */
+function comparePattern(x: Raw, y: Raw): Item {
+  const ref = str(x.ref) ?? '';
+  const changes = fieldChanges(x, y, ['ref', 'slots', 'points', 'nets']);
+  const children: Item[] = [];
+  const ambiguous: Ambiguous[] = [];
+  const part = (type: string, key: string, shape: (item: Raw) => Raw) => {
+    const r = matchBy(
+      type,
+      records(x[key]).map(shape),
+      records(y[key]).map(shape),
+      (item) => str(item.key),
+      (item) => str(item.key) ?? '',
+      (l, rr) => leaf(type, str(l.key) ?? '', l, rr, ['key'], ref),
+      ['key'],
+    );
+    for (const item of r.items)
+      if (item.kind !== 'unchanged') children.push({ ...item, where: ref });
+    ambiguous.push(...r.ambiguous);
+  };
+  const keyed = (field: string) => (item: Raw) => {
+    const { [field]: key, ...rest } = item;
+    return { key: key ?? null, ...rest };
+  };
+  part('slot', 'slots', keyed('id'));
+  part('point', 'points', keyed('id'));
+  part('net', 'nets', (item) => ({ key: item.role ?? null, ...readableNet(item) }));
+  const kind =
+    changes.length > 0 || children.length > 0 || ambiguous.length > 0 ? 'changed' : 'unchanged';
+  return { kind, type: 'pattern', label: ref, changes, children, ambiguous };
+}
+
 function netOf(config: Raw, patternRef: unknown, role: string): string | null {
   const pattern = records(config.patterns).find((item) => item.ref === patternRef);
   const net = records(pattern?.nets).find((item) => item.role === role);
@@ -508,7 +578,17 @@ function compareConfiguration(a: SavedProject, b: SavedProject): Section {
     ambiguous.push(...r.ambiguous);
   };
   byRef('template', 'templates');
-  byRef('pattern', 'patterns');
+  const patterns = matchBy(
+    'pattern',
+    records(ca.patterns),
+    records(cb.patterns),
+    (item) => str(item.ref),
+    (item) => str(item.ref) ?? '',
+    comparePattern,
+    ['ref'],
+  );
+  items.push(...patterns.items);
+  ambiguous.push(...patterns.ambiguous);
   const byId = (type: string, key: string, compare?: (x: Raw, y: Raw) => Item) => {
     const r = matchBy(
       type,
@@ -538,13 +618,13 @@ function compareConfiguration(a: SavedProject, b: SavedProject): Section {
   return { id: 'configuration', status: 'compared', unavailableIn: [], items, ambiguous };
 }
 
+// Findings are counted by what kind they are: their messages and values can
+// name generated ids (a wire's id), which are not identity across revisions.
 function findingKey(finding: Raw): string {
   return canonical({
     source: finding.source ?? null,
     code: finding.code ?? null,
     severity: finding.severity ?? null,
-    message: finding.message ?? null,
-    values: finding.values ?? null,
   });
 }
 
@@ -598,7 +678,7 @@ function compareOutputs(a: SavedProject, b: SavedProject): Section {
     const left = fa.get(key);
     const right = fb.get(key);
     const finding = (left ?? right)?.finding ?? {};
-    const label = `${str(finding.code) ?? ''}: ${str(finding.message) ?? ''}`;
+    const label = str(finding.code) ?? '';
     const values = { severity: (str(finding.severity) ?? null) as Scalar };
     if (left && right) {
       if (left.n !== right.n) {
