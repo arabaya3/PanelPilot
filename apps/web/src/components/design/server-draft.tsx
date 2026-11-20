@@ -123,6 +123,8 @@ export function ServerDraft({
   // Restoring would have replaced work that could not be kept in this browser first.
   const [preserveFailed, setPreserveFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -163,6 +165,8 @@ export function ServerDraft({
       return;
     }
     setLoaded('unreadable');
+    // Said in the one live region (the block shown holds the Retry button).
+    setNote({ kind: 'key', key: 'unreadable' });
   }
 
   useEffect(() => {
@@ -315,8 +319,10 @@ export function ServerDraft({
     if (server.state !== 'live' || !server.body) return;
     const kept = dirty ? preserveLocal() : 'nothing';
     if (kept === 'failed' || kept === 'blocked') {
-      // Nothing is replaced: the work stays on the page, and the page says how to keep it.
+      // Nothing is replaced: the work stays on the page, and the page says how
+      // to keep it: in the dialog when it is open, else in the panel's one status.
       setPreserveFailed(true);
+      if (conflict === null) setNote({ kind: 'key', key: 'preserveFailed' });
       return;
     }
     setPreserveFailed(false);
@@ -358,15 +364,15 @@ export function ServerDraft({
       className="mt-3 rounded-md border border-border p-3 text-sm"
       data-testid="server-draft"
     >
-      <h3 id={`${id}-heading`} className="font-semibold">
+      <h3 id={`${id}-heading`} ref={headingRef} tabIndex={-1} className="font-semibold">
         {t('heading')}
       </h3>
-      <p role="status" aria-live="polite" className="mt-1" data-testid="server-draft-status">
+      {/* Where the work stands, shown (not announced): the one live region below says what happened. */}
+      <p className="mt-1" data-testid="server-draft-status">
         {status}
       </p>
       {loaded === 'unreadable' ? (
         <p className="mt-1" data-testid="server-draft-unreadable">
-          {t('unreadable')}{' '}
           <button type="button" className="btn btn-sm btn-secondary" onClick={() => void load()}>
             {t('retry')}
           </button>
@@ -409,11 +415,6 @@ export function ServerDraft({
           {t('older', { revision: live.base_revision, latest: project.latest })}
         </p>
       ) : null}
-      {preserveFailed && conflict === null ? (
-        <p role="alert" className="mt-2" data-testid="server-draft-preserve-failed">
-          {t('preserveFailed')}
-        </p>
-      ) : null}
       {writesEnabled ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
@@ -444,15 +445,19 @@ export function ServerDraft({
       ) : (
         <p className="mt-1 text-text-muted">{t('disabled')}</p>
       )}
-      {noteText ? (
-        <p role="status" className="mt-1" data-testid="server-draft-note">
-          {noteText}
-        </p>
-      ) : null}
+      {/* The panel's one live region: always present, so each outcome is announced once. */}
+      <p role="status" className="mt-1 empty:hidden" data-testid="server-draft-note">
+        {noteText}
+      </p>
       {mounted
         ? createPortal(
             <Dialog
               open={conflict !== null}
+              initialFocus={cancelRef}
+              onClosed={(returned) => {
+                // What opened it may be gone or disabled now: focus goes to the panel.
+                if (!returned) headingRef.current?.focus();
+              }}
               onClose={() => {
                 setConflict(null);
                 setPreserveFailed(false);
@@ -471,6 +476,7 @@ export function ServerDraft({
                       setConflict(null);
                       setPreserveFailed(false);
                     }}
+                    ref={cancelRef}
                     data-testid="conflict-cancel"
                   >
                     {t('conflictCancel')}

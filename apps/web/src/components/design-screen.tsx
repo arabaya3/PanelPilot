@@ -965,6 +965,18 @@ function DesignWorkspace({
   >(null);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const [draftProjectGone, setDraftProjectGone] = useState(false);
+  /**
+   * The editing base: the saved revision the work on the page was made from.
+   * It is the revision opened (or restored at, or answered by this page's own
+   * save), never the newest revision merely seen since. It moves only on an
+   * open, a restore, a successful save, or an explicit reconciliation
+   * (`baseOverride`). `baseHold`: restored work whose revision could not be
+   * reopened, so its base is not provable and saving waits for a decision.
+   */
+  const [baseOverride, setBaseOverride] = useState<{ project: string; revision: number } | null>(
+    null,
+  );
+  const [baseHold, setBaseHold] = useState<{ project: string; madeFrom: number } | null>(null);
   const [restoring, setRestoring] = useState(false);
   // The snapshot the engineer chose to discard: not kept unless edited again.
   const discardedSnapshot = useRef<string | null>(null);
@@ -983,6 +995,11 @@ function DesignWorkspace({
   const [deletedNote, setDeletedNote] = useState(false);
   const owned = useRef<{ owner: string; project: string | null; copy: DraftCopy } | null>(null);
   const holdLocalWrites = useRef(false);
+  // The project open as of the last commit (read by answers that arrive later).
+  const openedNow = useRef<{ id: string; revision: number } | null>(null);
+  useLayoutEffect(() => {
+    openedNow.current = opened ? { id: opened.id, revision: opened.revision } : null;
+  });
   // M14: bumped with each switch, synchronously (the state follows), so an
   // answer started before one can tell it is no longer this workspace's.
   const workspaceAt = useRef(0);
@@ -1153,7 +1170,7 @@ function DesignWorkspace({
    * Keep the work on the page in a copy in this browser before something
    * replaces it, and leave that copy alone afterwards. Nothing unsaved: nothing to keep.
    */
-  function preserveLocal(): PreserveOutcome {
+  function preserveLocal(hold = true): PreserveOutcome {
     if (draftOwner === null || !dirty || discardedSnapshot.current === discardMark)
       return 'nothing';
     const here = opened?.id ?? null;
@@ -1175,11 +1192,44 @@ function DesignWorkspace({
     // That copy is now set apart: the page writes elsewhere from here on,
     // and nothing until the restore that follows has landed.
     owned.current = null;
-    holdLocalWrites.current = true;
+    holdLocalWrites.current = hold;
     lastWritten.current = '';
     setRecoveryTick((tick) => tick + 1);
     return 'kept';
   }
+
+  /**
+   * Stale-base reconciliation: keep the work on the page in this browser, then
+   * open revision `latest` in its place. Nothing is replaced unless the copy was kept.
+   */
+  async function keepThenOpen(latest: number): Promise<'opened' | 'notKept' | 'failed'> {
+    if (opened === null || token === null) return 'failed';
+    const kept = preserveLocal(true);
+    if (kept === 'failed' || kept === 'blocked') return 'notKept';
+    const owner = ownerKey;
+    const outcome = await openImpl({ token, id: opened.id, revision: latest });
+    if (currentOwner.current !== owner) {
+      holdLocalWrites.current = false;
+      return 'failed';
+    }
+    if (outcome.kind !== 'saved') {
+      // Nothing changed on the page; local writes resume (the kept copy stays apart).
+      holdLocalWrites.current = false;
+      return 'failed';
+    }
+    onOpened(outcome.project, true);
+    return 'opened';
+  }
+
+  // The base a publish states as `expected_revision` (null: held, see `baseHold`).
+  const editBase =
+    opened === null
+      ? null
+      : baseHold !== null && baseHold.project === opened.id
+        ? null
+        : baseOverride !== null && baseOverride.project === opened.id
+          ? baseOverride.revision
+          : opened.revision;
 
   async function restoreDraft(draft: StoredDraft, own = true) {
     // The offer (and so the stored draft) stays until the work is back on the page.
@@ -1238,7 +1288,18 @@ function DesignWorkspace({
       }
     }
     const restoredAt = workspaceAt.current;
-    setDraftProjectGone(!reopened);
+    setDraftProjectGone(!reopened && (opened === null || opened.id !== draft.project?.id));
+    // Restored onto the same project at another revision, its own revision not
+    // reopened: which revision it was made from cannot be shown, so it is held.
+    if (
+      !reopened &&
+      draft.project !== null &&
+      opened !== null &&
+      opened.id === draft.project.id &&
+      opened.revision !== draft.project.revision
+    ) {
+      setBaseHold({ project: draft.project.id, madeFrom: draft.project.revision });
+    }
     setRestoring(false);
     setArrival(false);
     // The restored copy is the page's own now (further edits update it), only
@@ -1422,6 +1483,18 @@ function DesignWorkspace({
   const incomplete = token !== null && !complete;
 
   function onOpened(project: SavedProject, fill: boolean) {
+    // A new base (another revision on the page, or this page's save answered):
+    // any reconciliation or held base belonged to the one before. A refresh of
+    // the same revision (an approval, a resolution) keeps them.
+    if (
+      fill ||
+      project.id !== openedNow.current?.id ||
+      project.revision !== openedNow.current.revision
+    ) {
+      setBaseOverride(null);
+      setBaseHold(null);
+      holdLocalWrites.current = false;
+    }
     if (fill) {
       // M14: the form now holds another project (or another revision of it):
       // a new workspace, so nothing started for the one before is applied.
@@ -2336,6 +2409,28 @@ function DesignWorkspace({
             {tw('draft.deleteFailed')}
           </Notice>
         )}
+        {baseHold !== null && opened !== null && baseHold.project === opened.id && (
+          <Notice
+            tone="warning"
+            testId="base-held"
+            action={
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                data-testid="base-held-accept"
+                onClick={() => {
+                  // An explicit decision: this work counts as changes to the revision open.
+                  setBaseHold(null);
+                  setBaseOverride({ project: opened.id, revision: opened.revision });
+                }}
+              >
+                {tw('base.heldAccept', { revision: opened.revision })}
+              </button>
+            }
+          >
+            {tw('base.held', { madeFrom: baseHold.madeFrom, revision: opened.revision })}
+          </Notice>
+        )}
         {draftProjectGone && (
           <Notice tone="warning" live={false} testId="draft-project-gone">
             {tw('draft.projectGone')}
@@ -2427,6 +2522,11 @@ function DesignWorkspace({
                     : null
                 }
                 opened={opened}
+                base={editBase}
+                onReconcile={(latest: number) => {
+                  if (opened !== null) setBaseOverride({ project: opened.id, revision: latest });
+                }}
+                onKeepAndOpen={keepThenOpen}
                 accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
@@ -2503,7 +2603,8 @@ function DesignWorkspace({
                 token={token}
                 project={{
                   id: opened.id,
-                  revision: opened.revision,
+                  // A draft keeps the base its work was made from (held or not).
+                  revision: editBase ?? baseHold?.madeFrom ?? opened.revision,
                   latest: Math.max(opened.revision, ...opened.revisions),
                 }}
                 body={dirty ? serverBody(workDraft(draftOwner)) : null}

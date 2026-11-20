@@ -754,6 +754,10 @@
       "subBoardHint": "A sub-board is not a load row: add it as a board and set its “Fed from”. Its feeder is then drawn for you.",
       "subBoardRow": "Saved as a sub-board row. The next design refuses it: remove this row and add the sub-board as a board with “Fed from”.",
       "powerFactorDefault": "default 0.9"
+    },
+    "base": {
+      "held": "This work was made from revision {madeFrom}, which could not be opened now; revision {revision} is open. Saving waits until you choose. You can also restore it again from the copy kept in this browser.",
+      "heldAccept": "Count it as changes to revision {revision}"
     }
   },
   "design": {
@@ -1286,7 +1290,17 @@
       "openGone": "That project is no longer available, so it was not opened. The list has been refreshed; what is open stays as it is.",
       "switchDiscardNew": "Discard the new project's unsaved work",
       "openFailed": "The project could not be opened. What is open stays as it is; try again.",
-      "hasKept": "Unsaved copy kept in this browser"
+      "hasKept": "Unsaved copy kept in this browser",
+      "baseHeld": "Saving is on hold: choose which revision this work counts as changes to (see the notice above).",
+      "staleIntro": "Not saved: revision {latest} was saved after revision {base}, which this work was made from. Your changes are still here and nothing was overwritten.",
+      "staleKeepOpen": "Keep my changes in this browser and open revision {latest}",
+      "staleDismiss": "Not now",
+      "staleConfirm": "I have checked revision {latest}. Saving my version makes it the newest revision in place of revision {latest}; revision {latest} stays in the history.",
+      "staleReconcile": "Count my work as changes to revision {latest}",
+      "staleReconciled": "Your work now counts as changes to revision {latest}. Press Save to publish it.",
+      "staleOpened": "Revision {latest} is open. Your changes are kept in this browser and offered for recovery.",
+      "staleNotKept": "Nothing was replaced: your changes could not be kept in this browser first.",
+      "staleOpenFailed": "Revision could not be opened. Nothing was replaced; your changes are still here."
     },
     "readiness": {
       "title": "Status",

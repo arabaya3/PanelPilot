@@ -273,9 +273,7 @@ describe('server drafts (slice 1)', () => {
     fireEvent.click(await screen.findByTestId('server-draft-restore'));
     expect(preserveLocal).toHaveBeenCalled();
     expect(onRestore).not.toHaveBeenCalled();
-    expect(screen.getByTestId('server-draft-preserve-failed').textContent).toMatch(
-      /Nothing was replaced/,
-    );
+    expect(screen.getByTestId('server-draft-note').textContent).toMatch(/Nothing was replaced/);
   });
 
   it('an unchanged page restores without keeping anything', async () => {
