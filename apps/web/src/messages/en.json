@@ -1816,7 +1816,8 @@
       "conflictKeepMineHint": "Keep mine replaces the draft in your account with this page’s work. Use the account’s version keeps this page’s work in this browser first.",
       "conflictKeepMine": "Keep mine",
       "conflictUseServer": "Use the account’s version",
-      "conflictCancel": "Cancel"
+      "conflictCancel": "Cancel",
+      "changedSince": "The draft in your account changed since this page last saw it. Check it before restoring."
     }
   },
   "files": {

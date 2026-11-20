@@ -127,8 +127,10 @@ export function ServerDraft({
     setMounted(true);
   }, []);
 
-  // Answers for another project (or account) than the one open now are dropped.
-  const scope = `${token}|${project.id}`;
+  // Answers for another project are dropped. Another account or tenant
+  // remounts this panel (its key); a renewed token for the same account does
+  // not, so an attempt in flight, and its retry, survive a token refresh.
+  const scope = project.id;
   const scopeNow = useRef(scope);
   scopeNow.current = scope;
   const latestUnauthorized = useRef(onUnauthorized);
@@ -281,6 +283,31 @@ export function ServerDraft({
   }
 
   /** Put `server` on the page, once the page's own work is kept in this browser. */
+  /** Restore `server`; a state known only from a write answer (no body) is read first. */
+  async function restoreLatest(server: ServerDraftState) {
+    if (server.body) {
+      restore(server);
+      return;
+    }
+    const asked = scope;
+    setBusy(true);
+    const outcome = await get({ token, id: project.id });
+    if (scopeNow.current !== asked) return;
+    setBusy(false);
+    if (outcome.kind !== 'found') {
+      failure(outcome, false);
+      return;
+    }
+    const latest = outcome.lookup.draft ?? null;
+    setKnown(latest);
+    // Changed on the server since: what it holds now is shown, not restored unseen.
+    if (latest?.token !== server.token) {
+      setNote({ kind: 'key', key: 'changedSince' });
+      return;
+    }
+    restore(latest);
+  }
+
   function restore(server: ServerDraftState) {
     if (server.state !== 'live' || !server.body) return;
     const kept = dirty ? preserveLocal() : 'nothing';
@@ -356,7 +383,7 @@ export function ServerDraft({
               className="btn btn-sm btn-secondary"
               disabled={busy}
               onClick={() => {
-                restore(live);
+                void restoreLatest(live);
               }}
               data-testid="server-draft-restore"
             >

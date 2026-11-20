@@ -414,21 +414,57 @@ describe('review follow-ups', () => {
     expect(nth(put.mock.calls, 1)[0].ifMatch).toBe('d1.9');
   });
 
-  it('a token change during a save leaves the panel usable', async () => {
+  it('a renewed token keeps the attempt in flight and its retry', async () => {
     let answer: (value: Awaited<ReturnType<Put>>) => void = () => undefined;
-    const { props, view } = setup({
+    const { props, view, put } = setup({
       put: () =>
         new Promise((resolve) => {
           answer = resolve;
         }),
     });
     fireEvent.click(await screen.findByTestId('server-draft-save'));
-    expect(screen.getByTestId('server-draft-save').hasAttribute('disabled')).toBe(true);
     view.rerender(<ServerDraft {...props} token="tok-2" />);
-    await waitFor(() => {
-      expect(screen.getByTestId('server-draft-save').hasAttribute('disabled')).toBe(false);
+    act(() => {
+      answer({ kind: 'unauthorized' });
     });
-    answer({ kind: 'failed' });
+    expect((await screen.findByTestId('server-draft-note')).textContent).toMatch(
+      /session has ended/,
+    );
+    expect(screen.getByTestId('server-draft-save').hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByTestId('server-draft-retry'));
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledTimes(2);
+    });
+    expect(nth(put.mock.calls, 1)[0].attempt).toEqual(nth(put.mock.calls, 0)[0].attempt);
+    expect(nth(put.mock.calls, 1)[0].token).toBe('tok-2');
+  });
+});
+
+describe('restoring after a save in this view', () => {
+  it('reads the body first (a write answer carries none), then restores it', async () => {
+    let lookups = 0;
+    const { onRestore, props, view } = setup({
+      get: () => {
+        lookups += 1;
+        return Promise.resolve({
+          kind: 'found',
+          lookup: {
+            writes_enabled: true,
+            draft: lookups === 1 ? null : state({ token: 'd1.1', body: body('Kept earlier') }),
+          },
+        });
+      },
+      put: () => Promise.resolve({ kind: 'kept', draft: state({ token: 'd1.1', body: null }) }),
+    });
+    fireEvent.click(await screen.findByTestId('server-draft-save'));
+    await screen.findByText('Saved as draft.');
+    // The page changes after the save, so Restore is offered again.
+    view.rerender(<ServerDraft {...props} body={body('Changed since')} />);
+    fireEvent.click(await screen.findByTestId('server-draft-restore'));
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledTimes(1);
+    });
+    expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({ baseRevision: 2 }));
   });
 });
 
