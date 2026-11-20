@@ -1,6 +1,8 @@
 // Tests of the npm audit gate: the recorded exception passes only exactly as recorded,
 // and everything else fails closed. Fixtures are the real `npm audit --omit=dev
 // --audit-level=high --json` output and lockfile entries of main at 8508fcd (2026-11-17).
+// The exception record is the one that was in security/exceptions/ until its advisory was
+// withdrawn (2026-11-18); it is kept here only as a fixture for the gate's matching rules.
 // Run: node --test scripts/security/
 
 import assert from 'node:assert/strict';
@@ -12,7 +14,7 @@ import { evaluate } from './npm-audit-gate.mjs';
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const AUDIT = read('./fixtures/audit-2026-11-17.json');
 const LOCK = read('./fixtures/lock-2026-11-17.json');
-const RECORD = read('../../security/exceptions/GHSA-fc5q-39xc-vjpf.json');
+const RECORD = read('./fixtures/exception-GHSA-fc5q-39xc-vjpf-2026-11-17.json');
 
 const approved = () => ({
   ...structuredClone(RECORD),
