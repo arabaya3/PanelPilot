@@ -42,7 +42,7 @@ function setup(
     open?: OpenedProject;
     base?: number | null;
     revise?: typeof reviseProject;
-    onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'failed'>;
+    onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'changed' | 'failed'>;
   } = {},
 ) {
   const list = vi.fn<typeof listProjects>().mockResolvedValue({
@@ -148,6 +148,26 @@ describe('publishing base', () => {
     expect((await screen.findByTestId('projects-message')).textContent).toMatch(
       /Nothing was replaced/,
     );
+  });
+
+  it('says nothing was replaced when the work changed while the revision was opening', async () => {
+    setup({ onKeepAndOpen: () => Promise.resolve('changed') });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save as new revision' }));
+    fireEvent.click(await screen.findByTestId('stale-keep-open'));
+    expect((await screen.findByTestId('projects-message')).textContent).toMatch(
+      /you changed the work while revision was opening/,
+    );
+  });
+
+  it('a failed keep-and-open never leaves the choice disabled', async () => {
+    setup({ onKeepAndOpen: () => Promise.reject(new Error('network')) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save as new revision' }));
+    const keep = await screen.findByTestId('stale-keep-open');
+    fireEvent.click(keep);
+    await waitFor(() => {
+      expect(screen.getByTestId('stale-keep-open').hasAttribute('disabled')).toBe(false);
+    });
+    expect(screen.getByTestId('projects-message').textContent).toMatch(/could not be opened/);
   });
 
   it('a successful save answers the question: the next base is the new revision', async () => {

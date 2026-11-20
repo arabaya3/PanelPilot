@@ -199,7 +199,7 @@ export function ProjectsPanel({
   /** An explicit reconciliation: the work now counts as changes to revision `latest`. */
   onReconcile?: (latest: number) => void;
   /** Keep the work in this browser, then open revision `latest` in its place. */
-  onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'failed'>;
+  onKeepAndOpen?: (latest: number) => Promise<'opened' | 'notKept' | 'changed' | 'failed'>;
   /** `fill` is true when the project was opened, so the form takes it. */
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
@@ -292,6 +292,7 @@ export function ProjectsPanel({
   useEffect(() => {
     setStale(null);
     setStaleConfirm(false);
+    setStaleBusy(false);
   }, [staleFor]);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -997,14 +998,26 @@ export function ProjectsPanel({
                 onClick={() => {
                   const target = stale.latest;
                   setStaleBusy(true);
-                  void onKeepAndOpen(target).then((outcome) => {
-                    setStaleBusy(false);
-                    if (outcome === 'opened') {
-                      setMessage(t('staleOpened', { latest: target }));
-                    } else {
-                      setMessage(t(outcome === 'notKept' ? 'staleNotKept' : 'staleOpenFailed'));
-                    }
-                  });
+                  void onKeepAndOpen(target)
+                    .then((outcome) => {
+                      setMessage(
+                        outcome === 'opened'
+                          ? t('staleOpened', { latest: target })
+                          : t(
+                              outcome === 'notKept'
+                                ? 'staleNotKept'
+                                : outcome === 'changed'
+                                  ? 'staleChanged'
+                                  : 'staleOpenFailed',
+                            ),
+                      );
+                    })
+                    .catch(() => {
+                      setMessage(t('staleOpenFailed'));
+                    })
+                    .finally(() => {
+                      setStaleBusy(false);
+                    });
                 }}
               >
                 {t('staleKeepOpen', { latest: stale.latest })}

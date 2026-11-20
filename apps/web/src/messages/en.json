@@ -1300,7 +1300,8 @@
       "staleReconciled": "Your work now counts as changes to revision {latest}. Press Save to publish it.",
       "staleOpened": "Revision {latest} is open. Your changes are kept in this browser and offered for recovery.",
       "staleNotKept": "Nothing was replaced: your changes could not be kept in this browser first.",
-      "staleOpenFailed": "Revision could not be opened. Nothing was replaced; your changes are still here."
+      "staleOpenFailed": "Revision could not be opened. Nothing was replaced; your changes are still here.",
+      "staleChanged": "Nothing was replaced: you changed the work while revision was opening. Try again when you are ready."
     },
     "readiness": {
       "title": "Status",

@@ -997,6 +997,7 @@ function DesignWorkspace({
   const holdLocalWrites = useRef(false);
   // The project open as of the last commit (read by answers that arrive later).
   const openedNow = useRef<{ id: string; revision: number } | null>(null);
+  const workMarkNow = useRef('');
   useLayoutEffect(() => {
     openedNow.current = opened ? { id: opened.id, revision: opened.revision } : null;
   });
@@ -1202,15 +1203,27 @@ function DesignWorkspace({
    * Stale-base reconciliation: keep the work on the page in this browser, then
    * open revision `latest` in its place. Nothing is replaced unless the copy was kept.
    */
-  async function keepThenOpen(latest: number): Promise<'opened' | 'notKept' | 'failed'> {
+  async function keepThenOpen(
+    latest: number,
+  ): Promise<'opened' | 'notKept' | 'changed' | 'failed'> {
     if (opened === null || token === null) return 'failed';
+    const unsaved = dirty && discardedSnapshot.current !== discardMark;
     const kept = preserveLocal(true);
-    if (kept === 'failed' || kept === 'blocked') return 'notKept';
+    // Only work that was kept (or no unsaved work at all) is ever replaced.
+    if (kept === 'failed' || kept === 'blocked' || (kept === 'nothing' && unsaved)) {
+      return 'notKept';
+    }
     const owner = ownerKey;
+    const keptMark = workMarkNow.current;
     const outcome = await openImpl({ token, id: opened.id, revision: latest });
     if (currentOwner.current !== owner) {
       holdLocalWrites.current = false;
       return 'failed';
+    }
+    // Typed while it was opening: that is not in the kept copy, so nothing is replaced.
+    if (workMarkNow.current !== keptMark) {
+      holdLocalWrites.current = false;
+      return 'changed';
     }
     if (outcome.kind !== 'saved') {
       // Nothing changed on the page; local writes resume (the kept copy stays apart).
@@ -1220,6 +1233,10 @@ function DesignWorkspace({
     onOpened(outcome.project, true);
     return 'opened';
   }
+
+  // What the page holds now, as one comparable value (kept current for answers arriving later).
+  const workMark = `${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}|${String(confirmed.length)}`;
+  workMarkNow.current = workMark;
 
   // The base a publish states as `expected_revision` (null: held, see `baseHold`).
   const editBase =
@@ -2532,7 +2549,7 @@ function DesignWorkspace({
                 beforeOpen={unsaved.guard}
                 onNewProject={startNewProject}
                 keptFor={keptFor}
-                workMark={`${snapshot}|${sortedJson(configDoc)}|${String(dropUnrecoverable)}|${String(confirmed.length)}`}
+                workMark={workMark}
                 onDiscard={discardForSwitch}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
