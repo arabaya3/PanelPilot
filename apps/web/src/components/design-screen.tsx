@@ -862,14 +862,9 @@ function DesignWorkspace({
   // project's previews, findings and confirmations start afresh.
   const [workspace, setWorkspace] = useState(0);
   // M19: the read-only three-way review (opened only by the engineer).
-  const [reviewOpen, setReviewOpen] = useState(false);
-  // Another identity (signed out, another account): a review opened for the
-  // one before is closed, never re-run for the new one.
-  const reviewFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (reviewFor.current !== null && reviewFor.current !== identityKey) setReviewOpen(false);
-    reviewFor.current = identityKey;
-  }, [identityKey]);
+  // Who opened it: shown only for that identity, so another identity (signed
+  // out, another account) never sees it, and it never runs for the new one.
+  const [reviewOpenFor, setReviewOpenFor] = useState<string | null>(null);
   const ownerKey = `${identityKey}#${String(workspace)}`;
   // A way back belongs to the project it was made in: another project clears it.
   const projectKey = `${ownerKey}|${opened?.id ?? ''}`;
@@ -1523,7 +1518,7 @@ function DesignWorkspace({
       setBaseHold(null);
       holdLocalWrites.current = false;
       // A review was of the work before: it is not carried over.
-      setReviewOpen(false);
+      setReviewOpenFor(null);
     }
     if (fill) {
       // M14: the form now holds another project (or another revision of it):
@@ -2558,7 +2553,7 @@ function DesignWorkspace({
                 }}
                 onKeepAndOpen={keepThenOpen}
                 onReview={() => {
-                  setReviewOpen(true);
+                  setReviewOpenFor(identityKey);
                 }}
                 accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
@@ -2632,12 +2627,12 @@ function DesignWorkspace({
             )}
             {token !== null &&
             opened !== null &&
-            (reviewOpen ||
+            (reviewOpenFor === identityKey ||
               (dirty &&
                 (baseHold !== null ||
                   (editBase !== null &&
                     editBase < Math.max(opened.revision, ...opened.revisions))))) ? (
-              reviewOpen ? (
+              reviewOpenFor === identityKey ? (
                 <ThreeWayReview
                   // A restore, a switch, another project or identity starts over.
                   key={`${identityKey}|${tokenTenant ?? ''}|${opened.id}|${String(workspace)}`}
@@ -2660,7 +2655,7 @@ function DesignWorkspace({
                     mark: workMark,
                   })}
                   onClose={() => {
-                    setReviewOpen(false);
+                    setReviewOpenFor(null);
                     // Back to what opened it: the review button, else the refusal's own
                     // review button, else the projects panel (never left on the page).
                     window.setTimeout(() => {
@@ -2694,7 +2689,7 @@ function DesignWorkspace({
                     className="btn btn-sm btn-secondary"
                     data-testid="review-open"
                     onClick={() => {
-                      setReviewOpen(true);
+                      setReviewOpenFor(identityKey);
                     }}
                   >
                     {tw('review.open')}

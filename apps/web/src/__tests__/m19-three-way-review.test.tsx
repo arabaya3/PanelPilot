@@ -405,6 +405,35 @@ describe('three-way review panel', () => {
       expect(await screen.findByTestId('review-result')).toBeTruthy();
     });
 
+    it('a renewed token that is refused again does not renew again (no loop)', async () => {
+      const { resolvers, open } = delayed();
+      const onUnauthorized = vi.fn();
+      const { all, view } = setup(open, { onUnauthorized });
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      // The renewal hands a new token; the review re-runs once with it and is refused again.
+      view.rerender(<ThreeWayReview {...all} onUnauthorized={onUnauthorized} token="tok-2" />);
+      await waitFor(() => {
+        expect(resolvers).toHaveLength(2);
+      });
+      await act(async () => {
+        for (const go of resolvers.splice(0)) go(unauthorized);
+        await Promise.resolve();
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByTestId('review-status').textContent).toMatch(/could not be read/);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(resolvers).toHaveLength(0);
+    });
+
     it('a renewal that failed (token unchanged) leaves a recoverable state: Refresh asks again, once', async () => {
       const { resolvers, open } = delayed();
       const onUnauthorized = vi.fn();

@@ -98,6 +98,8 @@ export function ThreeWayReview({
   // Unmounted (another project, workspace or identity remounts the review):
   // an answer still on its way does nothing at all, a 401 included.
   const alive = useRef(true);
+  // The round (opening or Refresh) that already asked for a renewal.
+  const renewedRound = useRef<string | null>(null);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -132,7 +134,12 @@ export function ThreeWayReview({
     const [b = { kind: 'failed' as const }, l = { kind: 'failed' as const }] = pair;
     // A session that ended is renewed whatever else happened meanwhile.
     if (b.kind === 'unauthorized' || l.kind === 'unauthorized') {
-      onUnauthorized?.();
+      // At most one renewal per round the engineer started (opening or Refresh):
+      // a renewed token that is refused again does not renew, re-run and loop.
+      if (renewedRound.current !== asked.slice(asked.lastIndexOf('|') + 1)) {
+        renewedRound.current = asked.slice(asked.lastIndexOf('|') + 1);
+        onUnauthorized?.();
+      }
       setOutcome({ key: asked, kind: 'failed' });
       return;
     }
