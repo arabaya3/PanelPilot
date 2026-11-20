@@ -548,12 +548,25 @@ function endpointsOf(config: Raw, binding: Raw, role: string): string | null {
           : one(
               records(config.components).filter((c) => c.id === componentId && c.board === board),
             );
-      const templateRef = record(component) ? (component as Raw).template : null;
+      // The pattern's own slot (its template is what a device-mapped slot is built on).
+      const slotDefinition = one(records(pattern.slots).filter((sl) => sl.id === member.slot));
+      const templateRef = record(component)
+        ? (component as Raw).template
+        : record(slotDefinition)
+          ? (slotDefinition as Raw).template
+          : null;
       const template =
         typeof templateRef === 'string'
           ? one(records(config.templates).filter((t) => t.ref === templateRef))
           : null;
-      return { slot: member.slot, terminal: member.terminal, mapping, component, template };
+      return {
+        slot: member.slot,
+        terminal: member.terminal,
+        slot_definition: slotDefinition,
+        mapping,
+        component,
+        template,
+      };
     }
     const point = one(records(pattern.points).filter((pt) => pt.id === member.point));
     const stripRole = record(point) ? str((point as Raw).strip) : null;
@@ -568,7 +581,9 @@ function endpointsOf(config: Raw, binding: Raw, role: string): string | null {
       definition: point,
       strip_role: stripRole,
       strip,
-      marking: markings[str(member.point) ?? ''] ?? null,
+      marking: Object.hasOwn(markings, str(member.point) ?? '')
+        ? markings[str(member.point) ?? '']
+        : null,
     };
   });
   const cable = records(net.connections).some((c) => c.via === 'cable_core')

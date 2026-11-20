@@ -1841,7 +1841,7 @@
       "scopeDetails": "What is compared",
       "scopeCompared": "Entered input: project details, boards and their loads, feeder links, and the configuration (templates, connection patterns, strips, components, bindings and their wire details).",
       "scopeOutputs": "Stored results as saved: whether each revision was validated, its rules version and stored-design schema, whether its stored design is the same, and its findings. Nothing is recalculated under today’s rules.",
-      "scopeNotCompared": "Not compared: drawings and sheets, numbering inside the stored design (components, terminals, wires, nets), requirements and control needs, pricing, approvals and the company profile.",
+      "scopeNotCompared": "Not compared: drawings and sheets, numbering inside the stored design (components, terminals, wires, nets), requirements and control needs, pricing, approvals and the company profile. For a slot mapped to a device, only the device reference is compared, not the device record.",
       "scopeMatching": "Items are matched only by what identifies them: boards by name, loads by description within a board, feeder links by fed board, configuration entries by their own reference on the same board. Never by position. A rename shows as one removed and one added; entries that cannot be told apart are listed side by side. Wire details are matched by their position only while the pattern net and everything its positions connect (components, strips, terminal definitions, markings, cable) are unchanged; otherwise both sides are listed.",
       "before": "Before",
       "after": "After",

@@ -654,6 +654,64 @@ describe('revision comparison model', () => {
       });
     }
 
+    // A slot mapped to a device (not a configuration component) is built on the pattern slot's template.
+    const deviceConfig = (slotTemplate: string, terminals: string[]) => {
+      const c = configured({ terminals });
+      const p0 = c.patterns[0] as typeof pat;
+      c.patterns = [
+        {
+          ...p0,
+          slots: [
+            { id: 'src', template: slotTemplate },
+            { id: 'dst', template: 'tpl/b' },
+          ],
+        },
+      ];
+      const bnd = c.bindings[0] as Record<string, unknown>;
+      // Both slots device-mapped; only src uses tpl/a, so a tpl/a change is src's alone.
+      bnd.slots = { src: { device: 'dev-1' }, dst: { device: 'dev-2' } };
+      c.templates = [tpl(terminals), { ref: 'tpl/b', terminals: [{ id: 'A1' }] }];
+      return c;
+    };
+    const deviceBinding = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+      section(
+        compareRevisions(project(1, { configuration: a }), project(2, { configuration: b })),
+        'configuration',
+      ).items.find((i) => i.type === 'binding');
+
+    it('a device-mapped slot: changed terminals of its slot template are not matched by position', () => {
+      const b = deviceBinding(
+        deviceConfig('tpl/a', ['A1', 'A2']),
+        deviceConfig('tpl/a', ['A1', 'B1']),
+      );
+      expect(b?.ambiguous?.[0]).toMatchObject({ reason: 'wire_endpoints' });
+    });
+
+    it('a device-mapped slot: a pattern slot moved to another template is not matched by position', () => {
+      const b = deviceBinding(
+        deviceConfig('tpl/a', ['A1', 'A2']),
+        deviceConfig('tpl/b', ['A1', 'A2']),
+      );
+      expect(b?.children).toEqual([]);
+      expect(b?.ambiguous?.[0]).toMatchObject({ label: 'n1' });
+    });
+
+    it('a device-mapped slot with nothing changed keeps the positional match', () => {
+      const a = deviceConfig('tpl/a', ['A1', 'A2']);
+      const b = deviceConfig('tpl/a', ['A1', 'A2']);
+      (b.bindings[0] as Record<string, unknown>).wires = { 'n1/0': { number: 'W8' } };
+      expect(deviceBinding(a, b)?.children?.[0]).toMatchObject({
+        type: 'wire',
+        changes: [{ field: 'number', before: 'W7', after: 'W8' }],
+      });
+    });
+
+    it('a changed context with no wire details on either side claims nothing', () => {
+      const b = bindingOf({ wires: {} }, { src: 'c-2', wires: {} });
+      expect(b?.ambiguous).toEqual([]);
+      expect(b?.changes.map((c) => c.field)).toContain('slots.src.component');
+    });
+
     it('a remapped component with changed wire details never reads as a changed wire', () => {
       const b = bindingOf({}, { src: 'c-2', wires: { 'n1/0': { number: 'W9' } } });
       expect(b?.children).toEqual([]);
