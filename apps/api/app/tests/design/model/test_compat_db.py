@@ -180,8 +180,12 @@ def _write_snapshot(
     stored: Any,
     sha256: str,
     findings: list[dict[str, Any]] | None = None,
+    record: tuple[Any, str | None] | None = None,
 ) -> None:
     """Write a snapshot and its hash into revision 1; with ``findings``, those too.
+
+    With ``record``, the calculation record and its hash too (ADR 0004): a
+    whole fixture row carries its own, or none.
 
     A whole fixture row is written with its own findings, so the row is the
     fixture's whatever schema the save wrote: its v1 snapshot is never left
@@ -192,6 +196,10 @@ def _write_snapshot(
     if findings is not None:
         sets += ", findings = CAST(:f AS JSONB)"
         params["f"] = json.dumps(findings)
+    if record is not None:
+        sets += ", calculation_record = CAST(:r AS JSONB), calculation_record_sha256 = :rh"
+        params["r"] = None if record[0] is None else json.dumps(record[0])
+        params["rh"] = record[1]
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -281,9 +289,14 @@ def test_a_committed_fixture_row_exports_and_approves(
         copy.deepcopy(stored["design_snapshot"]),
         stored["snapshot_sha256"],
         findings=copy.deepcopy(stored["findings"]),
+        record=(
+            copy.deepcopy(stored.get("calculation_record")),
+            stored.get("calculation_record_sha256"),
+        ),
     )
     row = _row(engine, project_id)
     assert row["design_snapshot"] == stored["design_snapshot"]
+    assert row["calculation_record"] == stored.get("calculation_record")
     assert row["findings"] == stored["findings"]
     # The row is the fixture's: the profile it was saved under is the fixture's too.
     assert row["profile_sha256"] == stored["profile_sha256"]

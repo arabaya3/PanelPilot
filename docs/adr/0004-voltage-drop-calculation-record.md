@@ -63,7 +63,10 @@ Forces:
 4. **Bound to the revision.** The record states the `snapshot_sha256`,
    `profile_sha256` and `rules_version` of the revision it was written with.
    It *matches* only when its hash equals `calculation_record_sha256`, its
-   shape validates, and those three equal the row's own. A record that does not
+   shape validates, and its `snapshot_sha256` equals the row's own. The
+   profile hash and rules version it states are information: the row's own
+   are already held by the stale checks, which report a change of either as
+   `revision_stale` rather than as an altered record. A record that does not
    match is an integrity failure (`snapshot_integrity_failed`, reason
    `calculation_record_mismatch`), refused for approval and export exactly as
    a requirements mismatch is.
@@ -78,10 +81,13 @@ Forces:
 6. **Historical compatibility.**
    - A revision saved before this change has no record. It reads as
      **not recorded**; nothing is derived or backfilled.
-   - Unlike the requirements binding, an approval with no recorded binding on a
-     row with **no record** still counts: a missing historical record alone
-     never invalidates an approval. (An approval with no binding on a row that
-     *has* a record cannot be written by this software and does not count.)
+   - Unlike the requirements binding, an approval with no recorded binding is
+     read as one made before records were bound, and is not checked against a
+     record: a missing historical record alone never invalidates an approval.
+     Every approval this software writes records the binding. (Treating an
+     unbound approval on a recorded row as not counting was considered; it adds
+     nothing against someone able to write approval columns, who could write
+     the binding as well, and it misreads rows prepared as legacy approvals.)
    - Snapshots, hashes, findings and exports of existing revisions are
      unchanged. PDFs and other exports do not print the record in this slice.
 

@@ -248,9 +248,11 @@ def _calculation_record_match(row: DesignRevisionRow) -> bool:
 
     ``True`` when none is stored (a revision saved before records were
     written reads as not recorded). Otherwise its hash must equal the one
-    recorded, its envelope must validate, and the snapshot hash, profile hash
-    and rules version it states must be the row's own: a record moved from
-    another revision, or rehashed after an edit, is refused as altered.
+    recorded, its envelope must validate, and the snapshot hash it states must
+    be the row's own: a record moved from another revision, or a snapshot
+    rewritten under it, is refused as altered. The profile hash and rules
+    version it states are information; the row's own are held by the stale
+    checks, which report a change of either as such.
     """
     record = row.calculation_record
     if record is None:
@@ -261,11 +263,7 @@ def _calculation_record_match(row: DesignRevisionRow) -> bool:
         envelope = vd_record.CalculationRecord.model_validate(record)
     except (TypeError, ValueError, RecursionError, PydanticValidationError):
         return False
-    return (
-        envelope.snapshot_sha256 == row.snapshot_sha256
-        and envelope.profile_sha256 == row.profile_sha256
-        and envelope.rules_version == row.rules_version
-    )
+    return envelope.snapshot_sha256 == row.snapshot_sha256
 
 
 def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
@@ -684,13 +682,13 @@ def _calculation_record_binding(row: DesignRevisionRow) -> str:
 def _calculation_record_changed(row: DesignRevisionRow) -> bool:
     """Whether the calculation record no longer is what the approval was granted with.
 
-    An approval made before records were bound (no binding recorded) still
-    counts on a revision with no record: a missing historical record alone
-    never invalidates an approval (ADR 0004). This software never writes an
-    unbound approval on a revision that has a record, so that does not count.
+    An approval with no binding recorded was made before records were bound:
+    it is not checked against a record (ADR 0004), so a missing historical
+    record alone never invalidates an approval. Every approval this software
+    writes now records the binding.
     """
     if row.approved_calculation_record_sha256 is None:
-        return row.calculation_record is not None or row.calculation_record_sha256 is not None
+        return False
     return row.approved_calculation_record_sha256 != _calculation_record_binding(
         row
     ) or not _calculation_record_match(row)

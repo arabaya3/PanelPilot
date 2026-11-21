@@ -258,15 +258,29 @@ def test_a_revision_saved_before_records_reads_not_recorded_and_keeps_its_approv
         assert after[column] == before[column], column
 
 
-def test_an_unbound_approval_on_a_revision_with_a_record_does_not_count(
+def test_an_approval_with_no_binding_is_read_as_made_before_records(
+    client: TestClient, engine: Engine
+) -> None:
+    # An approval written before the binding existed is not checked against a
+    # record; one this software writes always records it (ADR 0004).
+    saved = save(client, REQUEST)
+    assert approve(client, saved["id"], 1).status_code == 200
+    assert revision_row(engine, saved["id"], 1)["approved_calculation_record_sha256"]
+    update_row(engine, saved["id"], 1, approved_calculation_record_sha256=None)
+    opened = _opened(client, saved["id"])
+    assert opened["approval_current"] is True
+    assert "calculation_record" not in opened["approval_changed"]
+
+
+def test_a_rules_version_edit_reads_stale_not_as_an_altered_record(
     client: TestClient, engine: Engine
 ) -> None:
     saved = save(client, REQUEST)
-    assert approve(client, saved["id"], 1).status_code == 200
-    update_row(engine, saved["id"], 1, approved_calculation_record_sha256=None)
-    opened = _opened(client, saved["id"])
-    assert opened["approval_current"] is False
-    assert "calculation_record" in opened["approval_changed"]
+    update_row(engine, saved["id"], 1, rules_version="0.0.0")
+    assert _record(client, saved["id"]).status_code == 200
+    exported = revision_export(client, saved["id"], 1, "calculations_pdf")
+    assert exported.status_code == 409
+    assert exported.json()["code"] == "revision_stale"
 
 
 def test_a_refused_design_has_no_record(client: TestClient, engine: Engine) -> None:
