@@ -54,6 +54,7 @@ catalogue is chosen, and the parts list says so rather than naming one.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
 
@@ -71,6 +72,7 @@ from app.models.schemas.design import (
     Device,
     DeviceKind,
     DistributionBoardRequest,
+    InstallationConditions,
     LoadInput,
     MotorStarter,
     Phase,
@@ -79,6 +81,8 @@ from app.models.schemas.design import (
 #: The power factor assumed when a load gives none: the handbook's Annex B
 #: load-current table is drawn up for cosφ = 0.9.
 DEFAULT_POWER_FACTOR = Decimal("0.9")
+
+_HUNDREDTH = Decimal("0.01")
 
 #: Rated currents (AC-1) of modular installation contactors, as the common
 #: ranges list them; the contactor is rated no lower than its breaker.
@@ -106,6 +110,27 @@ _SQRT3 = Decimal(3).sqrt()
 
 
 @dataclass
+class _DropCheck:
+    """A voltage-drop check as made, to be made again on a larger cable.
+
+    Attributes:
+        run: What the cable carries and how far.
+        measure: How the drop is read (running or while a motor starts).
+        section_mm2: The section the drop was last worked on.
+        limit: The limit from the origin it is held to.
+        upstream: What the feeders before the board dropped.
+        exceeded: The note saying no tabulated section is within, if one was given.
+    """
+
+    run: voltage_drop.Run
+    measure: Callable[[voltage_drop.Run, Decimal, InstallationConditions], Decimal]
+    section_mm2: Decimal
+    limit: Decimal
+    upstream: Decimal
+    exceeded: DesignNote | None = None
+
+
+@dataclass
 class _Sized:
     load: LoadInput
     index: int
@@ -128,6 +153,10 @@ class _Sized:
     parallel: int = 1
     #: The moulded-case breaker selected beyond the largest miniature one.
     moulded: mccb.Mccb | None = None
+    #: How its running and starting drops were checked, so that a check that
+    #: enlarges the cable afterwards has them worked again on the final cable.
+    running: _DropCheck | None = None
+    starting: _DropCheck | None = None
 
     @property
     def magnetic_trip_a(self) -> Decimal | None:
@@ -232,7 +261,7 @@ def _size(
         if load.length_m
         else None
     )
-    section, drop = _check_drop(request, profile, budget, load, run, section, notes)
+    section, drop, running = _check_drop(request, profile, budget, load, run, section, notes)
     sized = _Sized(
         load=load,
         index=index,
@@ -244,14 +273,14 @@ def _size(
         drop_percent=drop,
         parallel=parallel,
         moulded=moulded,
+        running=running,
     )
     # Short circuit first: the earth fault loop, checked last, only ever
     # enlarges the cable further, which a short circuit trips on sooner.
     _check_short_circuit(request, sized, notes)
     _check_disconnection(request, profile, sized, notes)
-    if sized.section_mm2 != section:
-        # A larger cable drops less; the drop shown is the one it has.
-        _redo_drop(request, sized)
+    # A larger cable drops less; the drop shown is the one it has.
+    _settle_drops(request, sized, notes)
     return sized
 
 
@@ -422,20 +451,74 @@ def _check_short_circuit(
         item.section_mm2 = checked.section_mm2
 
 
-def _redo_drop(request: DistributionBoardRequest, item: _Sized) -> None:
-    """The drop along an item's cable again, after the cable was enlarged."""
-    load = item.load
-    if item.drop_percent is None or load.length_m is None:
-        return
-    three_phase = load.phases == 3
-    run = voltage_drop.Run(
-        item.current_a / item.parallel,
-        load.length_m,
-        three_phase,
-        request.supply.voltage_v if three_phase else _phase_voltage(request),
-    )
-    item.drop_percent = voltage_drop.percent(run, item.section_mm2, request.conditions).quantize(
-        Decimal("0.01")
+def _settle_drops(request: DistributionBoardRequest, item: _Sized, notes: list[DesignNote]) -> None:
+    """Work an item's drops again on its final cable, where a later check enlarged it.
+
+    The short-circuit, earth-fault and starting checks run after the running
+    drop is checked and can only enlarge the cable. Each drop is read again,
+    by the same method and against the same limit, on the section the cable
+    ends at, so the drop the circuit shows and a note saying no section is
+    within both describe that cable. Notes that enlarged the cable (for
+    voltage drop or anything else) are kept: they say why it grew.
+    """
+    if item.running is not None and item.drop_percent is not None:
+        item.drop_percent = _settle(request, item.load, item.running, item.section_mm2, notes)
+    if item.starting is not None:
+        _settle(request, item.load, item.starting, item.section_mm2, notes)
+
+
+def _settle(
+    request: DistributionBoardRequest,
+    load: LoadInput,
+    check: _DropCheck,
+    section: Decimal,
+    notes: list[DesignNote],
+) -> Decimal:
+    """One drop on the final section, and its exceeded note restated for it.
+
+    Returns:
+        The drop on ``section``, to a hundredth.
+    """
+    drop = check.measure(check.run, section, request.conditions)
+    shown = drop.quantize(_HUNDREDTH)
+    if section == check.section_mm2 or check.exceeded is None:
+        check.section_mm2 = section
+        return shown
+    index = next((i for i, n in enumerate(notes) if n is check.exceeded), None)
+    if index is None:
+        raise RuntimeError("the exceeded note to restate is no longer among the board's notes")
+    if drop <= check.limit - check.upstream:
+        # Within on the larger cable: the finding no longer holds.
+        del notes[index]
+        check.exceeded = None
+    else:
+        check.exceeded = _exceeded_note(check, load, shown, section)
+        notes[index] = check.exceeded
+    check.section_mm2 = section
+    return shown
+
+
+def _exceeded_note(
+    check: _DropCheck, load: LoadInput, shown: Decimal, section: Decimal
+) -> DesignNote:
+    """The note that no tabulated section brings a drop within its limit."""
+    total = shown + check.upstream
+    if check.measure is voltage_drop.starting_percent:
+        return note(
+            "starting_drop_exceeded",
+            load=load.description,
+            total=_plain(total),
+            limit=_plain(check.limit),
+            section=_plain(section),
+        )
+    return note(
+        "voltage_drop_exceeded",
+        load=load.description,
+        total=_plain(total),
+        own=_plain(shown),
+        upstream=_plain(check.upstream),
+        limit=_plain(check.limit),
+        section=_plain(section),
     )
 
 
@@ -528,14 +611,15 @@ def _check_drop(
     run: voltage_drop.Run | None,
     section: Decimal,
     notes: list[DesignNote],
-) -> tuple[Decimal, Decimal | None]:
+) -> tuple[Decimal, Decimal | None, _DropCheck | None]:
     """Hold a cable's voltage drop within the limit, enlarging it if need be.
 
     Returns:
-        The cable's section, and the drop along it where it was checked.
+        The cable's section, the drop along it where it was checked, and how
+        it was checked, for working it again if a later check enlarges it.
     """
     if run is None:
-        return section, None
+        return section, None, None
     checked = voltage_drop.fit(
         run,
         section,
@@ -546,21 +630,15 @@ def _check_drop(
         notes.append(
             note("voltage_drop_untabulated", load=load.description, section=_plain(section))
         )
-        return section, None
+        return section, None, None
     limit = budget.limit(profile, load.load, load.feeds)
     total = checked.percent + budget.upstream_percent
+    check = _DropCheck(
+        run, voltage_drop.percent, checked.section_mm2, limit, budget.upstream_percent
+    )
     if not checked.within:
-        notes.append(
-            note(
-                "voltage_drop_exceeded",
-                load=load.description,
-                total=_plain(total),
-                own=_plain(checked.percent),
-                upstream=_plain(budget.upstream_percent),
-                limit=_plain(limit),
-                section=_plain(section),
-            )
-        )
+        check.exceeded = _exceeded_note(check, load, checked.percent, section)
+        notes.append(check.exceeded)
     elif checked.section_mm2 != section:
         notes.append(
             note(
@@ -573,7 +651,7 @@ def _check_drop(
                 limit=_plain(limit),
             )
         )
-    return checked.section_mm2, checked.percent
+    return checked.section_mm2, checked.percent, check
 
 
 def _size_motor(
@@ -615,9 +693,12 @@ def _size_motor(
             three_phase=not star_delta,
             voltage_v=request.supply.voltage_v,
         )
-    section, drop = _check_drop(request, profile, budget, load, run, cable.cross_section_mm2, notes)
+    section, drop, running = _check_drop(
+        request, profile, budget, load, run, cable.cross_section_mm2, notes
+    )
+    starting: _DropCheck | None = None
     if load.length_m and load.starter is not None:
-        section = _check_starting(request, profile, budget, load, motor, section, notes)
+        section, starting = _check_starting(request, profile, budget, load, motor, section, notes)
     sized = _Sized(
         load=load,
         index=index,
@@ -627,11 +708,16 @@ def _size_motor(
         section_mm2=section,
         motor=motor,
         drop_percent=drop,
+        running=running,
+        starting=starting,
     )
     # A starter's breaker trips on short circuit only, at the threshold I3 its
     # coordination table prints; a drive's fuses are not checked, and such a
     # circuit is counted as unchecked.
     _check_disconnection(request, profile, sized, notes)
+    # The starting and earth-fault checks may have enlarged the cable since
+    # its running drop was read: both drops are those of the final cable.
+    _settle_drops(request, sized, notes)
     return sized
 
 
@@ -653,7 +739,7 @@ def _check_starting(
     motor: motors.MotorCircuit,
     section: Decimal,
     notes: list[DesignNote],
-) -> Decimal:
+) -> tuple[Decimal, _DropCheck | None]:
     """Hold the drop while a motor starts within the company's limit.
 
     The starting current flows in the three line conductors only (a star-delta
@@ -661,14 +747,15 @@ def _check_starting(
     A drive limits it to the running current, which the running check covers.
 
     Returns:
-        The cable's section, enlarged where starting needs it.
+        The cable's section, enlarged where starting needs it, and how the
+        drop was checked, for working it again if a later check enlarges it.
     """
     multiple = STARTING_MULTIPLE.get(load.starter) if load.starter else None
     if multiple is None or load.length_m is None:
-        return section
+        return section, None
     if request.conditions.conductor_material is not ConductorMaterial.COPPER:
         notes.append(note("starting_drop_unchecked", load=load.description))
-        return section
+        return section, None
     run = voltage_drop.Run(
         current_a=motor.current_a * multiple,
         length_m=load.length_m,
@@ -684,18 +771,14 @@ def _check_starting(
         voltage_drop.starting_percent,
     )
     if checked is None:
-        return section
+        return section, None
     total = checked.percent + budget.upstream_percent
+    check = _DropCheck(
+        run, voltage_drop.starting_percent, checked.section_mm2, limit, budget.upstream_percent
+    )
     if not checked.within:
-        notes.append(
-            note(
-                "starting_drop_exceeded",
-                load=load.description,
-                total=_plain(total),
-                limit=_plain(limit),
-                section=_plain(section),
-            )
-        )
+        check.exceeded = _exceeded_note(check, load, checked.percent, section)
+        notes.append(check.exceeded)
     elif checked.section_mm2 != section:
         notes.append(
             note(
@@ -708,7 +791,7 @@ def _check_starting(
                 limit=_plain(limit),
             )
         )
-    return checked.section_mm2
+    return checked.section_mm2, check
 
 
 def demand_currents(circuits: list[Circuit], profile: CompanyProfile) -> dict[Phase, Decimal]:
