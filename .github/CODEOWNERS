@@ -1,0 +1,12 @@
+# Code owners: changes to these paths need review by the repository owner when branch
+# protection requires code-owner review (see docs/security/branch-protection.md).
+#
+# They protect the security-exception workflow: the exception records, the audit gate and
+# runner-image check, the workflow that runs them, and this file itself. Without required
+# code-owner review in branch protection, this file only requests a review; it enforces
+# nothing on its own.
+
+/security/exceptions/   @arabaya3
+/scripts/security/      @arabaya3
+/.github/workflows/     @arabaya3
+/.github/CODEOWNERS     @arabaya3
