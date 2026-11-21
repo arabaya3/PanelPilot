@@ -4,7 +4,7 @@
 #: Bump it whenever a sizing rule, a table, a note's meaning or the findings
 #: policy changes: a saved revision designed under another version is stale,
 #: and is refused for export rather than silently re-designed under this one.
-RULES_VERSION = "2026.11.03.1"
+RULES_VERSION = "2026.11.21.1"
 
 #: The parts catalogue a design selects articles from. None is wired into the
 #: design yet (devices carry ratings, not articles), so it is ``"none"``.
@@ -33,11 +33,11 @@ RENDERER_VERSION = "2026.11.11.3"
 #: (``tests/design/test_renderer_version.py`` holds both to their fingerprints).
 RENDERER_VERSIONS: dict[str, str] = {
     "pp-design/1": RENDERER_VERSION,
-    "pp-design/2": "2026.11.11.v2-27",
+    "pp-design/2": "2026.11.21.v2-28",
     # M7a: a v3 export is a v2 export plus the board-to-board links (the wire
     # schedule's section, the drawing's link sheets, the JSON's ``links``)
     # and their findings. Bump it for any change of what a v3 export says.
-    "pp-design/3": "2026.11.11.v3-6",
+    "pp-design/3": "2026.11.21.v3-7",
 }
 
 
