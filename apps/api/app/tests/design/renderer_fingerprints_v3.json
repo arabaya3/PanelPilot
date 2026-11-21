@@ -1,5 +1,5 @@
 {
-  "renderer_version": "2026.11.11.v3-6",
+  "renderer_version": "2026.11.21.v3-7",
   "variants": {
     "unentered": {
       "pdf": "edbd43f147118b6fedc0173213608f2eddcdf17f81bdd4c2daa3efa6b1358d2a",
@@ -7,9 +7,9 @@
       "quotation_pdf": "b93a06aeaa8fcdcc45a72ed2092dcff31567443084cbbdee083201d557ee940a",
       "dxf": "4f4acf01b7ea3f1150f03d0f736148dd93916dfa006342eb553baf02ee84f1dd",
       "json": "0cc6b6d33194c668720810ba9366491e795bab7115aa11fed47a80a8f51b9f23",
-      "terminal_schedule_pdf": "98b50a176c227233eb349d3dd1abd84560bd4bc302eebb926d603c503a67f9f3",
-      "wire_schedule_pdf": "140950b2d8dcdd7f52308fec092010b1afbc11a006466557ae22661d04797d98",
-      "connection_drawing_pdf": "56fa1554b851f7f67ef934e12492de79d642f7c8b6cff1f1bdf3150d0404e792"
+      "terminal_schedule_pdf": "79107c9e800bb375206edfe1eced720c7566e6ee81fd520d0e5dbd6fbc0d8000",
+      "wire_schedule_pdf": "b02067ec4d9cdb9459a9905c9db762fed8267657e1c9a9a56114bde50a4a2f27",
+      "connection_drawing_pdf": "25ebaca0a2662c4426a73c6c61dc50b5de3c98a03a4f8eb05d45113f5734b07a"
     },
     "entered": {
       "pdf": "31c53921e98609c94f6ff7b6594620b5be19e11309338f341aa48edf2aef6c57",
@@ -17,9 +17,9 @@
       "quotation_pdf": "b7d6c97243e94728ae7b332e942614f43b1781d1cb52d7ebf8da2005a1fbd3d2",
       "dxf": "93389dfb5a9999af8a330e7f9f928d967e0b5ecf3dac8a4a2cf12902ca506843",
       "json": "54d87bed1d1cfeb64ba938637d4ce2135adb215feb580782397b88aae8d3005a",
-      "terminal_schedule_pdf": "9e1b5e7a184033d35d4fc155a27e1e4780c9c7e460e081c7deaddf205e3ee35e",
-      "wire_schedule_pdf": "071379bbdbd4004277f18ef7ae424785b1dee63f08db377b47c304e3aab21ecc",
-      "connection_drawing_pdf": "b11f657e95db391ae105c866e16c87c4d8ce6054c8c5b87816c11241c8a18ff8"
+      "terminal_schedule_pdf": "291b3a06249fcf7c0a37ff816e1b6dd47743e29999cf571146053ff031ec65ab",
+      "wire_schedule_pdf": "25ff7c223d78e4cc6f9e3126c16bf2ef1c2fa6d611f15ebda3fda0e3a866fa61",
+      "connection_drawing_pdf": "99b9bbae376e78decc56d16161db4c352e4f0ba8d275d839c4ac6edf838c36cb"
     }
   }
 }
