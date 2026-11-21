@@ -70,6 +70,7 @@
                 },
                 "power_factor": {
                   "origin": "derived by the software from the design of board M-01",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
                   "value": "0.85"
                 },
                 "power_kw": {
@@ -228,7 +229,7 @@
       "snapshot_sha256": "492b50ab314569f9883149304832b748561eda6221fdb46d04ad9e4faa4fbfc2",
       "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
     },
-    "calculation_record_sha256": "e925fd04308952134bbcd7c715585c87f3530773f80e80956ab09a1cdae8bec6",
+    "calculation_record_sha256": "59c170c8df1ac0241047b5aa5cbf458a60e4051cce55f15780117cc2706ab19d",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

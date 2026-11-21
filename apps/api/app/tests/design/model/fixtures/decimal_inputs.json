@@ -60,6 +60,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -108,6 +109,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -161,6 +163,7 @@
                 },
                 "power_factor": {
                   "origin": "not entered",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
                   "value": null
                 },
                 "power_kw": {
@@ -217,7 +220,7 @@
       "snapshot_sha256": "7a6e1d4b1ea027e98805622fc6e1391d29a35bdb1479850d7f7a1235482cedb1",
       "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
     },
-    "calculation_record_sha256": "5c042fdaae726d40dc1d55caf298f8837071db634e2cbb594cee173a04fd6720",
+    "calculation_record_sha256": "67c84c9567963076a265f1bb0a027cf5668a3155187b696d9ca411e9e8f86875",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

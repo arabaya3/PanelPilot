@@ -55,6 +55,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -103,6 +104,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -160,7 +162,7 @@
       "snapshot_sha256": "0c77e61e7008fdccb523cff4ef9eef8b4c9b3d268b0a5ea9aa88ff0b84bbf76f",
       "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
     },
-    "calculation_record_sha256": "a09c35d90758325e24dd8ac7ea374885dc9db3de0ae29e2806831da2638c5242",
+    "calculation_record_sha256": "8d6b866bcd6bcd615b6d32f29cb352770783887f10f12969e756490a5cfb4a22",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

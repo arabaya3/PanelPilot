@@ -558,6 +558,14 @@ def _circuit_trace(
             "value": None if load.power_factor is None else str(load.power_factor),
             "origin": origins["power_factor"] if load.power_factor is not None else "not entered",
         }
+    # What the power factor is used for (review L1): never to pick a column;
+    # the drop is read at the tables' worst-case columns (each reading names its own).
+    power_factor["use"] = (
+        "motor rated current (app.design.motors), where its formula applies; not the "
+        "voltage-drop table column"
+        if load.starter is not None
+        else "design current Ib; not the voltage-drop table column"
+    )
     trace = vd_record.CircuitTrace(
         circuit_id=f"c{index + 1}",
         description=load.description,

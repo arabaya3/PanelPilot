@@ -89,6 +89,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -137,6 +138,7 @@
                 },
                 "power_factor": {
                   "origin": "derived by the software from the design of board SMDB-1",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "1"
                 },
                 "power_kw": {
@@ -246,6 +248,7 @@
                 },
                 "power_factor": {
                   "origin": "derived by the software from the design of board SMDB-2",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "1"
                 },
                 "power_kw": {
@@ -312,6 +315,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -365,6 +369,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -438,6 +443,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -491,6 +497,7 @@
                 },
                 "power_factor": {
                   "origin": "derived by the software from the design of board DB-2A",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "1"
                 },
                 "power_kw": {
@@ -564,6 +571,7 @@
                 },
                 "power_factor": {
                   "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
                   "value": "0.9"
                 },
                 "power_kw": {
@@ -629,7 +637,7 @@
       "snapshot_sha256": "d387aa3f164d0e9f54c346fc12dd66720eed9da57a644fdd566151f71e682dea",
       "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
     },
-    "calculation_record_sha256": "f7f3abb196e57d15dfc96a104e61093f733ce44b720439abb98f0d6d72683e30",
+    "calculation_record_sha256": "83c341b5cb3b793e334186279413bc6632b1acb4b1e62be375b2f87754e436c5",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

@@ -148,6 +148,7 @@ def test_an_unchanged_circuit_records_its_inputs_and_defaults() -> None:
     assert rack["inputs"]["power_factor"] == {
         "value": "0.9",
         "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+        "use": "design current Ib; not the voltage-drop table column",
     }
     assert rack["inputs"]["length_m"] == {"value": "20", "origin": "entered"}
     assert rack["current"]["design_current_a"] == "4.81"

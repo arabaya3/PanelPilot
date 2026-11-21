@@ -65,6 +65,7 @@
                 },
                 "power_factor": {
                   "origin": "not entered",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
                   "value": null
                 },
                 "power_kw": {
@@ -219,6 +220,7 @@
                 },
                 "power_factor": {
                   "origin": "not entered",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
                   "value": null
                 },
                 "power_kw": {
@@ -271,6 +273,7 @@
                 },
                 "power_factor": {
                   "origin": "not entered",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
                   "value": null
                 },
                 "power_kw": {
@@ -327,7 +330,7 @@
       "snapshot_sha256": "70872fc3ef446ef64df5509d7c1648eb4849127d4b568d836302e73daf06c5d4",
       "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
     },
-    "calculation_record_sha256": "4f58a576d9949e8a5d1e632535a5b3ff92f1e5459df7f3aec4ec09946c8630c0",
+    "calculation_record_sha256": "6d7ac6ed0f2d938de5e61c3d28e7eb2ab0b78bc12fa6b3bb5fe67fdf8716919a",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [
