@@ -129,12 +129,13 @@ def _snapshot_circuits(stored: dict[str, Any]) -> dict[str, str]:
 def test_a_failed_save_stores_neither_revision_nor_record(
     client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.domain import design_projects
+    from app.design import vd_record
 
     def broken(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         raise RuntimeError("synthetic failure while building the record")
 
-    monkeypatch.setattr(design_projects.vd_record, "build", broken)
+    # _validate calls vd_record.build at save time, after the design ran.
+    monkeypatch.setattr(vd_record, "build", broken)
     response = client.post(
         "/design/projects", json={"name": "ATOMIC", "request": REQUEST, "note": "rev 1"}
     )

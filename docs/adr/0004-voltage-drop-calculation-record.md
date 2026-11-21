@@ -30,7 +30,7 @@ Forces:
   solves this: its own JSONB column, its own SHA-256 checked on every read, and
   `approved_requirements_sha256` set in the approval's locked transaction.
 - **One engine.** A trace rebuilt by a second, independent calculation would
-  be a claim about what the engine *should* do, not evidence of what it did.
+  be a claim about what the engine _should_ do, not evidence of what it did.
 - **It is not engineering validation.** The record says what the software
   computed and from which recorded sources. It does not say the method,
   tables or limits are right; several are open engineering questions.
@@ -43,7 +43,7 @@ Forces:
    - `calculation_record_sha256`: SHA-256 of its canonical JSON
      (`app.design.snapshot.canonical_json`, the snapshot's own encoding);
    - `approved_calculation_record_sha256`: set with an approval.
-   The snapshot, its schema and its hash are unchanged.
+     The snapshot, its schema and its hash are unchanged.
 
 2. **Written once, atomically, with the revision.** The record is built from
    the same design call that builds the snapshot (`_validate`) and returned in
@@ -62,7 +62,7 @@ Forces:
 
 4. **Bound to the revision.** The record states the `snapshot_sha256`,
    `profile_sha256` and `rules_version` of the revision it was written with.
-   It *matches* only when its hash equals `calculation_record_sha256`, its
+   It _matches_ only when its hash equals `calculation_record_sha256`, its
    shape validates, and its `snapshot_sha256` equals the row's own. The
    profile hash and rules version it states are information: the row's own
    are already held by the stale checks, which report a change of either as
