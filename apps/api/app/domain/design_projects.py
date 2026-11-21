@@ -74,6 +74,7 @@ from app.design import (
     safety_review,
     schedule_pdf,
     snapshot,
+    vd_record,
 )
 from app.design import project as project_design
 from app.design.model import (
@@ -97,6 +98,7 @@ from app.models.schemas.design import (
     ApprovalHeld,
     ApproveRevisionRequest,
     BoardDesignResponse,
+    CalculationRecordView,
     ConfigurationReview,
     ConfigurationValidateRequest,
     ConfirmedLoad,
@@ -239,6 +241,31 @@ def _requirements_match(row: DesignRevisionRow) -> bool:
     except PydanticValidationError:
         return False
     return True
+
+
+def _calculation_record_match(row: DesignRevisionRow) -> bool:
+    """Whether a stored calculation record is intact and bound to this revision (ADR 0004).
+
+    ``True`` when none is stored (a revision saved before records were
+    written reads as not recorded). Otherwise its hash must equal the one
+    recorded, its envelope must validate, and the snapshot hash, profile hash
+    and rules version it states must be the row's own: a record moved from
+    another revision, or rehashed after an edit, is refused as altered.
+    """
+    record = row.calculation_record
+    if record is None:
+        return row.calculation_record_sha256 is None
+    try:
+        if snapshot.sha256_of(record) != row.calculation_record_sha256:
+            return False
+        envelope = vd_record.CalculationRecord.model_validate(record)
+    except (TypeError, ValueError, RecursionError, PydanticValidationError):
+        return False
+    return (
+        envelope.snapshot_sha256 == row.snapshot_sha256
+        and envelope.profile_sha256 == row.profile_sha256
+        and envelope.rules_version == row.rules_version
+    )
 
 
 def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
@@ -649,6 +676,26 @@ def _requirements_binding(row: DesignRevisionRow) -> str:
     return row.requirements_sha256 or snapshot.sha256_of(None)
 
 
+def _calculation_record_binding(row: DesignRevisionRow) -> str:
+    """What an approval binds of the calculation record: its hash, or JSON null's for none."""
+    return row.calculation_record_sha256 or snapshot.sha256_of(None)
+
+
+def _calculation_record_changed(row: DesignRevisionRow) -> bool:
+    """Whether the calculation record no longer is what the approval was granted with.
+
+    An approval made before records were bound (no binding recorded) still
+    counts on a revision with no record: a missing historical record alone
+    never invalidates an approval (ADR 0004). This software never writes an
+    unbound approval on a revision that has a record, so that does not count.
+    """
+    if row.approved_calculation_record_sha256 is None:
+        return row.calculation_record is not None or row.calculation_record_sha256 is not None
+    return row.approved_calculation_record_sha256 != _calculation_record_binding(
+        row
+    ) or not _calculation_record_match(row)
+
+
 def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
     """What no longer matches what the revision's approval was granted under.
 
@@ -680,6 +727,8 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         or not _requirements_match(row)
     ):
         changed.append("requirements")
+    if _calculation_record_changed(row):
+        changed.append("calculation_record")
     if (row.approved_rules_version or row.rules_version) != applicable.rules_version:
         changed.append("rules_version")
     if (row.approved_catalogue_version or row.catalogue_version) != applicable.catalogue_version:
@@ -785,6 +834,8 @@ def _read_classified(
         return _integrity_finding("hash_mismatch"), None
     if not _requirements_match(row):
         return _integrity_finding("requirements_mismatch"), None
+    if not _calculation_record_match(row):
+        return _integrity_finding("calculation_record_mismatch"), None
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotSchemaUnknownError as exc:
@@ -893,6 +944,8 @@ _INTEGRITY_MESSAGES: dict[str, str] = {
     "its stored design under the rules it records",
     "requirements_mismatch": "The requirements record stored with this revision does not "
     "match its recorded hash",
+    "calculation_record_mismatch": "The calculation record stored with this revision does not "
+    "match its recorded hash or is not bound to this revision",
 }
 
 
@@ -1286,8 +1339,9 @@ def _validate(
     as_entered = request.model_copy(
         update={"info": request.info.model_copy(update={"revisions": []})}
     )
+    trace = vd_record.ProjectTrace()
     try:
-        designed, company = design_domain.build_design(as_entered)
+        designed, company = design_domain.build_design(as_entered, trace)
     except ValidationError as exc:
         if configuration is not None:
             raise ValidationError(
@@ -1344,13 +1398,25 @@ def _validate(
     if v2 is not None:
         v2 = anchoring.anchor_model(v2, anchor)
     findings = _design_findings(designed, conditions, v2, links)
+    snapshot_sha256 = snapshot.sha256_of(stored)
+    profile_sha256 = snapshot.profile_sha256(company)
+    # ADR 0004: what the design computed for voltage drop, captured as it ran,
+    # bound to this snapshot and stored in the same row (same transaction).
+    record = vd_record.build(
+        trace,
+        snapshot_sha256=snapshot_sha256,
+        profile_sha256=profile_sha256,
+        rules_version=RULES_VERSION,
+    )
     return {
         "design_snapshot": stored,
-        "snapshot_sha256": snapshot.sha256_of(stored),
-        "profile_sha256": snapshot.profile_sha256(company),
+        "snapshot_sha256": snapshot_sha256,
+        "profile_sha256": profile_sha256,
         "rules_version": RULES_VERSION,
         "catalogue_version": CATALOGUE_VERSION,
         "findings": [found.model_dump(mode="json") for found in findings],
+        "calculation_record": record,
+        "calculation_record_sha256": snapshot.sha256_of(record),
     }
 
 
@@ -1958,6 +2024,52 @@ def open_project(
     return _opened(session, project, revision, user)
 
 
+def calculation_record(
+    *, session: Session, user: CurrentUser, project_id: str, number: int
+) -> CalculationRecordView:
+    """A revision's voltage-drop calculation record, refused if it was altered (ADR 0004).
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+        project_id: The project.
+        number: The revision.
+
+    Returns:
+        The record and its hash, or ``not_recorded`` for a revision with none.
+
+    Raises:
+        NotFoundError: If no such project or revision is the caller's
+            (``revision_not_found``).
+        ConflictError: If the stored record does not match its hash or is not
+            bound to the revision (``snapshot_integrity_failed``).
+    """
+    _scope_to(session, user)
+    project = _revision_project(session, project_id)
+    row = session.scalars(
+        select(DesignRevisionRow).where(
+            DesignRevisionRow.project_id == project.id, DesignRevisionRow.number == number
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFoundError("no such revision", code="revision_not_found")
+    if not _calculation_record_match(row):
+        raise ConflictError(
+            f"revision {number}'s calculation record does not match its recorded hash "
+            "or is not bound to this revision",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "calculation_record_mismatch"},
+        )
+    if row.calculation_record is None:
+        return CalculationRecordView(revision=number, status="not_recorded")
+    return CalculationRecordView(
+        revision=number,
+        status="recorded",
+        sha256=row.calculation_record_sha256,
+        record=row.calculation_record,
+    )
+
+
 def _revision_project(session: Session, project_id: str, *, lock: bool = False) -> DesignProjectRow:
     """The project a revision endpoint names; a missing one is ``revision_not_found``.
 
@@ -2017,6 +2129,13 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             f"revision {number}'s requirements record does not match its recorded hash",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "requirements_mismatch"},
+        )
+    if not _calculation_record_match(row):
+        raise ConflictError(
+            f"revision {number}'s calculation record does not match its recorded hash "
+            "or is not bound to this revision",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "calculation_record_mismatch"},
         )
     try:
         read = read_snapshot(row.design_snapshot)
@@ -2172,6 +2291,9 @@ def approve_revision(
         row.approved_snapshot_sha256 = row.snapshot_sha256
         # Checked against its hash under the lock (``_check_snapshot``).
         row.approved_requirements_sha256 = _requirements_binding(row)
+        # The calculation record (ADR 0004), checked against its hash under the
+        # lock (``_check_snapshot``): the approval binds exactly that record.
+        row.approved_calculation_record_sha256 = _calculation_record_binding(row)
         # The policy it is granted under (checked current just now), and the
         # name it is granted by, as every export will print them.
         row.approved_profile_sha256 = applicable.profile_sha256

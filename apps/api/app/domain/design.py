@@ -48,6 +48,7 @@ from app.design import (
     schedule_import,
     schedule_split,
     snapshot,
+    vd_record,
 )
 from app.design.notes import note
 from app.design.sheet import Sheet
@@ -310,11 +311,15 @@ def design_board(
     )
 
 
-def build_design(request: ProjectDesignRequest) -> tuple[DesignProject, CompanyProfile]:
+def build_design(
+    request: ProjectDesignRequest, trace: vd_record.ProjectTrace | None = None
+) -> tuple[DesignProject, CompanyProfile]:
     """Design every board in a request and designate the project under its profile.
 
     Args:
         request: Title-block data, each board's schedule, and the profile.
+        trace: Where the boards' voltage-drop calculations are kept as they
+            run (ADR 0004); the design is the same either way.
 
     Returns:
         The designated project, and the profile it was designed under.
@@ -324,7 +329,7 @@ def build_design(request: ProjectDesignRequest) -> tuple[DesignProject, CompanyP
             inconsistent, or a load cannot be protected or cabled.
     """
     company = _profile(request.profile)
-    boards = project.design_boards(request.boards, company)
+    boards = project.design_boards(request.boards, company, trace)
     designed = designations.designate_project(
         DesignProject(info=request.info, boards=boards, parts=motors.parts_for(boards)), company
     )

@@ -39,6 +39,295 @@
   },
   "source": "pipeline",
   "stored": {
+    "calculation_record": {
+      "boards": [
+        {
+          "board": "MCC-1",
+          "circuits": [
+            {
+              "circuit_id": "c1",
+              "current": {
+                "design_current_a": "11.5",
+                "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+                "run_basis": "Ir, three-phase",
+                "run_current_a": "11.5"
+              },
+              "description": "Pump DOL",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "entered",
+                  "value": "20"
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 3
+                },
+                "power_factor": {
+                  "origin": "not entered",
+                  "value": null
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "5.5"
+                },
+                "starter": "dol"
+              },
+              "load": "motor",
+              "running": {
+                "attempts": [
+                  {
+                    "raw_percent": "1.437500",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "25",
+                        "column": "three-phase lighting",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "1",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "5.750"
+                      },
+                      {
+                        "cell_v_per_a_km": "20",
+                        "column": "three-phase motor cos phi 0.8",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.8",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "4.600"
+                      }
+                    ],
+                    "section_mm2": "1.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "1.437500",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "25",
+                      "column": "three-phase lighting",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "1",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "5.750"
+                    },
+                    {
+                      "cell_v_per_a_km": "20",
+                      "column": "three-phase motor cos phi 0.8",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.8",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "4.600"
+                    }
+                  ],
+                  "rounded_percent": "1.44",
+                  "section_mm2": "1.5"
+                },
+                "kind": "running",
+                "limit_percent": "5",
+                "limit_source": "company profile default_max_voltage_drop_percent",
+                "selected_by_check_mm2": "1.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "1.44",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "saved_voltage_drop_percent": "1.44",
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": {
+                "attempts": [
+                  {
+                    "raw_percent": "3.24300",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "9.4",
+                        "column": "three-phase motor cos phi 0.35",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.35",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "12.9720"
+                      }
+                    ],
+                    "section_mm2": "1.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "3.24300",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "9.4",
+                      "column": "three-phase motor cos phi 0.35",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.35",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "12.9720"
+                    }
+                  ],
+                  "rounded_percent": "3.24",
+                  "section_mm2": "1.5"
+                },
+                "kind": "starting",
+                "limit_percent": "15",
+                "limit_source": "company profile max_starting_voltage_drop_percent",
+                "selected_by_check_mm2": "1.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "3.24",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "voltage": {
+                "basis": "supply line voltage",
+                "value_v": "400"
+              }
+            },
+            {
+              "circuit_id": "c2",
+              "current": {
+                "design_current_a": "42",
+                "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+                "run_basis": "star-delta: Ir / sqrt 3 in each of three single-phase loops",
+                "run_current_a": null
+              },
+              "description": "Fan star-delta",
+              "final_section_mm2": "4",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 3
+                },
+                "power_factor": {
+                  "origin": "not entered",
+                  "value": null
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "22"
+                },
+                "starter": "star_delta"
+              },
+              "load": "motor",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "4",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": {
+                "kind": "starting",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "voltage": {
+                "basis": "supply line voltage",
+                "value_v": "400"
+              }
+            },
+            {
+              "circuit_id": "c3",
+              "current": {
+                "design_current_a": "28.30",
+                "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+                "run_basis": "Ir, three-phase",
+                "run_current_a": null
+              },
+              "description": "Compressor drive",
+              "final_section_mm2": "6",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 3
+                },
+                "power_factor": {
+                  "origin": "not entered",
+                  "value": null
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "15"
+                },
+                "starter": "drive"
+              },
+              "load": "motor",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "6",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": {
+                "kind": "starting",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "voltage": {
+                "basis": "supply line voltage",
+                "value_v": "400"
+              }
+            }
+          ],
+          "conditions": {
+            "conductor_material": "copper",
+            "installation_method": "B1"
+          },
+          "supply": {
+            "phases": 3,
+            "voltage_v": "400"
+          },
+          "upstream": {
+            "complete": true,
+            "contributions": [],
+            "percent_counted": "0"
+          }
+        }
+      ],
+      "not_modelled": [
+        "The drop before the project's first board (the supply cable to it) is not modelled; the software takes it as 0."
+      ],
+      "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+      "rules_version": "2026.11.21.1",
+      "schema": "pp-vdrec/1",
+      "snapshot_sha256": "70872fc3ef446ef64df5509d7c1648eb4849127d4b568d836302e73daf06c5d4",
+      "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
+    },
+    "calculation_record_sha256": "4f58a576d9949e8a5d1e632535a5b3ff92f1e5459df7f3aec4ec09946c8630c0",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

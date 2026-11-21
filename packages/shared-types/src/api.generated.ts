@@ -780,6 +780,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/calculation-record': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Calculation Record
+     * @description A revision's voltage-drop calculation record, or ``not_recorded`` (ADR 0004).
+     */
+    get: operations['get_calculation_record_api_v1_design_projects__project_id__revisions__number__calculation_record_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}/revisions': {
     parameters: {
       query?: never;
@@ -2272,6 +2292,36 @@ export interface components {
       derated_ampacity_a: string;
       /** Applied Factors */
       applied_factors: components['schemas']['AppliedFactor'][];
+    };
+    /**
+     * CalculationRecordView
+     * @description A revision's voltage-drop calculation record (ADR 0004), as stored.
+     *
+     *     Evidence of what the software computed when the revision was saved, not
+     *     engineering validation (the record says so itself).
+     *
+     *     Attributes:
+     *         revision: The revision it is of.
+     *         status: ``recorded``, or ``not_recorded`` for a revision saved before
+     *             records were written (or whose design was refused). Nothing is
+     *             derived for one that has none.
+     *         sha256: The record's SHA-256, which an approval binds.
+     *         record: The record (``pp-vdrec/1``).
+     */
+    CalculationRecordView: {
+      /** Revision */
+      revision: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'recorded' | 'not_recorded';
+      /** Sha256 */
+      sha256?: string | null;
+      /** Record */
+      record?: {
+        [key: string]: unknown;
+      } | null;
     };
     /**
      * Circuit
@@ -8708,6 +8758,52 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_calculation_record_api_v1_design_projects__project_id__revisions__number__calculation_record_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CalculationRecordView'];
+        };
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `snapshot_integrity_failed` (`calculation_record_mismatch`) */
+      409: {
         headers: {
           [name: string]: unknown;
         };

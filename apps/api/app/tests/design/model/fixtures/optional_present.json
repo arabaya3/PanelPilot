@@ -44,6 +44,191 @@
   },
   "source": "pipeline",
   "stored": {
+    "calculation_record": {
+      "boards": [
+        {
+          "board": "DB-FULL",
+          "circuits": [
+            {
+              "circuit_id": "c1",
+              "current": {
+                "design_current_a": "5.66",
+                "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+                "run_basis": "Ir, three-phase",
+                "run_current_a": "5.66"
+              },
+              "description": "Fully specified",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "entered (feeder length of board M-01)",
+                  "value": "35"
+                },
+                "phases": {
+                  "origin": "derived by the software from the design of board M-01",
+                  "value": 3
+                },
+                "power_factor": {
+                  "origin": "derived by the software from the design of board M-01",
+                  "value": "0.85"
+                },
+                "power_kw": {
+                  "origin": "derived by the software from the design of board M-01",
+                  "value": "3"
+                },
+                "starter": "dol"
+              },
+              "load": "motor",
+              "running": {
+                "attempts": [
+                  {
+                    "raw_percent": "1.23812500",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "25",
+                        "column": "three-phase lighting",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "1",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "4.95250"
+                      },
+                      {
+                        "cell_v_per_a_km": "20",
+                        "column": "three-phase motor cos phi 0.8",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.8",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "3.96200"
+                      }
+                    ],
+                    "section_mm2": "1.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "1.23812500",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "25",
+                      "column": "three-phase lighting",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "1",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "4.95250"
+                    },
+                    {
+                      "cell_v_per_a_km": "20",
+                      "column": "three-phase motor cos phi 0.8",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.8",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "3.96200"
+                    }
+                  ],
+                  "rounded_percent": "1.24",
+                  "section_mm2": "1.5"
+                },
+                "kind": "running",
+                "limit_percent": "5",
+                "limit_source": "company profile default_max_voltage_drop_percent",
+                "selected_by_check_mm2": "1.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "1.24",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "saved_voltage_drop_percent": "1.24",
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": {
+                "attempts": [
+                  {
+                    "raw_percent": "2.7932100",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "9.4",
+                        "column": "three-phase motor cos phi 0.35",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.35",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "11.172840"
+                      }
+                    ],
+                    "section_mm2": "1.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "2.7932100",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "9.4",
+                      "column": "three-phase motor cos phi 0.35",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.35",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "11.172840"
+                    }
+                  ],
+                  "rounded_percent": "2.79",
+                  "section_mm2": "1.5"
+                },
+                "kind": "starting",
+                "limit_percent": "15",
+                "limit_source": "company profile max_starting_voltage_drop_percent",
+                "selected_by_check_mm2": "1.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "2.79",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "voltage": {
+                "basis": "supply line voltage",
+                "value_v": "400"
+              }
+            }
+          ],
+          "conditions": {
+            "conductor_material": "copper",
+            "installation_method": "C"
+          },
+          "supply": {
+            "phases": 3,
+            "voltage_v": "400"
+          },
+          "upstream": {
+            "complete": true,
+            "contributions": [],
+            "percent_counted": "0"
+          }
+        }
+      ],
+      "not_modelled": [
+        "The drop before the project's first board (the supply cable to it) is not modelled; the software takes it as 0."
+      ],
+      "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+      "rules_version": "2026.11.21.1",
+      "schema": "pp-vdrec/1",
+      "snapshot_sha256": "492b50ab314569f9883149304832b748561eda6221fdb46d04ad9e4faa4fbfc2",
+      "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
+    },
+    "calculation_record_sha256": "e925fd04308952134bbcd7c715585c87f3530773f80e80956ab09a1cdae8bec6",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

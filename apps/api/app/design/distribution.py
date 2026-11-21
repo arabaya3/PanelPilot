@@ -57,10 +57,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
+from typing import Any
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import disconnection, enclosure, markets, mccb, motors, short_circuit, voltage_drop
+from app.design import (
+    disconnection,
+    enclosure,
+    markets,
+    mccb,
+    motors,
+    short_circuit,
+    vd_record,
+    voltage_drop,
+)
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -128,6 +138,32 @@ class _DropCheck:
     limit: Decimal
     upstream: Decimal
     exceeded: DesignNote | None = None
+    #: "running" or "starting".
+    kind: str = "running"
+    #: Where the check is recorded, when the design is recorded (ADR 0004).
+    trace: vd_record.CheckTrace | None = None
+
+
+def _measure(
+    kind: str, trace: vd_record.CheckTrace | None
+) -> Callable[[voltage_drop.Run, Decimal, InstallationConditions], Decimal]:
+    """How a drop is read: the readings, then the worst of them; each kept in ``trace``.
+
+    The same functions ``voltage_drop.percent`` and ``starting_percent`` are
+    made of, so a recorded design and an unrecorded one compute the same drop.
+    """
+    reader = voltage_drop.readings if kind == "running" else voltage_drop.starting_readings
+
+    def measure(
+        run: voltage_drop.Run, section: Decimal, conditions: InstallationConditions
+    ) -> Decimal:
+        read = reader(run, section, conditions)
+        drop = voltage_drop.percent_of(run, read)
+        if trace is not None:
+            trace.attempts.append(vd_record.Attempt(section, drop, read))
+        return drop
+
+    return measure
 
 
 @dataclass
@@ -157,6 +193,8 @@ class _Sized:
     #: enlarges the cable afterwards has them worked again on the final cable.
     running: _DropCheck | None = None
     starting: _DropCheck | None = None
+    #: Its record, when the design is recorded (ADR 0004).
+    trace: vd_record.CircuitTrace | None = None
 
     @property
     def magnetic_trip_a(self) -> Decimal | None:
@@ -193,6 +231,7 @@ def _size(
     notes: list[DesignNote],
     budget: voltage_drop.Budget,
     sub_board_after_a: dict[str, Decimal],
+    board: vd_record.BoardTrace | None = None,
 ) -> _Sized:
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
@@ -200,7 +239,8 @@ def _size(
             "a three-phase load on a single-phase supply", code="three_phase_on_single_phase"
         ).about(load.description)
     if load.starter is not None:
-        return _size_motor(request, profile, load, index, notes, budget)
+        return _size_motor(request, profile, load, index, notes, budget, board)
+    trace = _circuit_trace(load, index, board)
     power_factor = load.power_factor or DEFAULT_POWER_FACTOR
     current = feeder_protection.load_current(
         power_kw=load.power_kw,
@@ -253,7 +293,11 @@ def _size(
                 )
             )
     section, parallel = _size_cable(request, load, rated, three_phase, notes)
+    if trace is not None:
+        trace.section("current_carrying_capacity", None, section)
     if rule and rule.cable_mm2 is not None and rule.cable_mm2 > section:
+        if trace is not None:
+            trace.section("company_circuit_rule", section, rule.cable_mm2)
         section = rule.cable_mm2
     voltage = request.supply.voltage_v if three_phase else _phase_voltage(request)
     run = (
@@ -261,7 +305,18 @@ def _size(
         if load.length_m
         else None
     )
-    section, drop, running = _check_drop(request, profile, budget, load, run, section, notes)
+    if trace is not None:
+        trace.current = {
+            "design_current_a": str(current),
+            "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+            "parallel_cables": parallel,
+            "per_cable_a": str(run.current_a) if run is not None else None,
+        }
+        trace.voltage = _voltage_used(request, three_phase, voltage)
+    sized_for_current = section
+    section, drop, running = _check_drop(request, profile, budget, load, run, section, notes, trace)
+    if trace is not None:
+        trace.section("voltage_drop", sized_for_current, section)
     sized = _Sized(
         load=load,
         index=index,
@@ -274,11 +329,18 @@ def _size(
         parallel=parallel,
         moulded=moulded,
         running=running,
+        trace=trace,
     )
     # Short circuit first: the earth fault loop, checked last, only ever
     # enlarges the cable further, which a short circuit trips on sooner.
+    before = sized.section_mm2
     _check_short_circuit(request, sized, notes)
+    if trace is not None:
+        trace.section("short_circuit", before, sized.section_mm2)
+    before = sized.section_mm2
     _check_disconnection(request, profile, sized, notes)
+    if trace is not None:
+        trace.section("earth_fault", before, sized.section_mm2)
     # A larger cable drops less; the drop shown is the one it has.
     _settle_drops(request, sized, notes)
     return sized
@@ -465,6 +527,68 @@ def _settle_drops(request: DistributionBoardRequest, item: _Sized, notes: list[D
         item.drop_percent = _settle(request, item.load, item.running, item.section_mm2, notes)
     if item.starting is not None:
         _settle(request, item.load, item.starting, item.section_mm2, notes)
+    if item.trace is not None:
+        item.trace.final_section_mm2 = item.section_mm2
+        item.trace.saved_percent = item.drop_percent
+
+
+def _circuit_trace(
+    load: LoadInput,
+    index: int,
+    board: vd_record.BoardTrace | None,
+) -> vd_record.CircuitTrace | None:
+    """A circuit's record, with its inputs and where each came from; ``None`` unrecorded."""
+    if board is None:
+        return None
+    if load.feeds is not None:
+        derived = f"derived by the software from the design of board {load.feeds}"
+        origins = {"power_kw": derived, "power_factor": derived, "phases": derived}
+        length_origin = f"entered (feeder length of board {load.feeds})"
+    else:
+        origins = {"power_kw": "entered", "power_factor": "entered", "phases": "entered"}
+        length_origin = "entered"
+    power_factor: dict[str, str | None]
+    if load.power_factor is None and load.starter is None:
+        power_factor = {
+            "value": str(DEFAULT_POWER_FACTOR),
+            "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+        }
+    else:
+        power_factor = {
+            "value": None if load.power_factor is None else str(load.power_factor),
+            "origin": origins["power_factor"] if load.power_factor is not None else "not entered",
+        }
+    trace = vd_record.CircuitTrace(
+        circuit_id=f"c{index + 1}",
+        description=load.description,
+        load=load.load.value,
+        inputs={
+            "power_kw": {"value": str(load.power_kw), "origin": origins["power_kw"]},
+            "power_factor": power_factor,
+            "phases": {"value": load.phases, "origin": origins["phases"]},
+            "length_m": (
+                {"value": str(load.length_m), "origin": length_origin}
+                if load.length_m is not None
+                else {"value": None, "origin": "not given"}
+            ),
+            "starter": load.starter.value if load.starter is not None else None,
+        },
+    )
+    board.circuits.append(trace)
+    return trace
+
+
+def _voltage_used(
+    request: DistributionBoardRequest, three_phase: bool, voltage: Decimal
+) -> dict[str, Any]:
+    """The voltage a circuit's drop is a share of, and how the software got it."""
+    if three_phase:
+        basis = "supply line voltage"
+    elif request.supply.phases == 1:
+        basis = "supply voltage (single-phase supply)"
+    else:
+        basis = "phase voltage: supply line voltage / sqrt 3, rounded to whole volts"
+    return {"value_v": str(voltage), "basis": basis}
 
 
 def _settle(
@@ -481,6 +605,10 @@ def _settle(
     """
     drop = check.measure(check.run, section, request.conditions)
     shown = drop.quantize(_HUNDREDTH)
+    if check.trace is not None:
+        # The reading just made is the final one, not another section tried.
+        check.trace.final = check.trace.attempts.pop()
+        check.trace.within = drop <= check.limit - check.upstream
     if section == check.section_mm2 or check.exceeded is None:
         check.section_mm2 = section
         return shown
@@ -503,7 +631,7 @@ def _exceeded_note(
 ) -> DesignNote:
     """The note that no tabulated section brings a drop within its limit."""
     total = shown + check.upstream
-    if check.measure is voltage_drop.starting_percent:
+    if check.kind == "starting":
         return note(
             "starting_drop_exceeded",
             load=load.description,
@@ -611,6 +739,7 @@ def _check_drop(
     run: voltage_drop.Run | None,
     section: Decimal,
     notes: list[DesignNote],
+    trace: vd_record.CircuitTrace | None = None,
 ) -> tuple[Decimal, Decimal | None, _DropCheck | None]:
     """Hold a cable's voltage drop within the limit, enlarging it if need be.
 
@@ -619,22 +748,47 @@ def _check_drop(
         it was checked, for working it again if a later check enlarges it.
     """
     if run is None:
+        if trace is not None:
+            trace.running = vd_record.CheckTrace("running", "unchecked", "no_length")
         return section, None, None
+    recorded = (
+        vd_record.CheckTrace(
+            "running",
+            limit_percent=budget.limit(profile, load.load, load.feeds),
+            limit_source=budget.limit_source(profile, load.load, load.feeds),
+            upstream_percent=budget.upstream_percent,
+        )
+        if trace is not None
+        else None
+    )
+    measure = _measure("running", recorded)
     checked = voltage_drop.fit(
         run,
         section,
         budget.limit(profile, load.load, load.feeds) - budget.upstream_percent,
         request.conditions,
+        measure,
     )
     if checked is None:
         notes.append(
             note("voltage_drop_untabulated", load=load.description, section=_plain(section))
         )
+        if trace is not None:
+            trace.running = vd_record.CheckTrace("running", "unchecked", "beyond_tables")
         return section, None, None
+    if trace is not None and recorded is not None:
+        recorded.selected_mm2 = checked.section_mm2
+        trace.running = recorded
     limit = budget.limit(profile, load.load, load.feeds)
     total = checked.percent + budget.upstream_percent
     check = _DropCheck(
-        run, voltage_drop.percent, checked.section_mm2, limit, budget.upstream_percent
+        run,
+        measure,
+        checked.section_mm2,
+        limit,
+        budget.upstream_percent,
+        kind="running",
+        trace=recorded,
     )
     if not checked.within:
         check.exceeded = _exceeded_note(check, load, checked.percent, section)
@@ -661,6 +815,7 @@ def _size_motor(
     index: int,
     notes: list[DesignNote],
     budget: voltage_drop.Budget,
+    board: vd_record.BoardTrace | None = None,
 ) -> _Sized:
     """Size a motor's circuit: its devices from the starter tables, its cable for them.
 
@@ -684,21 +839,47 @@ def _size_motor(
         )
     except ValidationError as exc:
         raise exc.about(load.description) from exc
+    trace = _circuit_trace(load, index, board)
+    star_delta = load.starter is MotorStarter.STAR_DELTA
     run = None
     if load.length_m:
-        star_delta = load.starter is MotorStarter.STAR_DELTA
         run = voltage_drop.Run(
             current_a=motor.current_a / _SQRT3 if star_delta else motor.current_a,
             length_m=load.length_m,
             three_phase=not star_delta,
             voltage_v=request.supply.voltage_v,
         )
+    if trace is not None:
+        trace.section("current_carrying_capacity", None, cable.cross_section_mm2)
+        trace.current = {
+            "design_current_a": str(motor.current_a),
+            "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+            "run_current_a": str(run.current_a) if run is not None else None,
+            "run_basis": (
+                "star-delta: Ir / sqrt 3 in each of three single-phase loops"
+                if star_delta
+                else "Ir, three-phase"
+            ),
+        }
+        trace.voltage = {
+            "value_v": str(request.supply.voltage_v),
+            "basis": "supply line voltage",
+        }
     section, drop, running = _check_drop(
-        request, profile, budget, load, run, cable.cross_section_mm2, notes
+        request, profile, budget, load, run, cable.cross_section_mm2, notes, trace
     )
+    if trace is not None:
+        trace.section("voltage_drop", cable.cross_section_mm2, section)
     starting: _DropCheck | None = None
     if load.length_m and load.starter is not None:
-        section, starting = _check_starting(request, profile, budget, load, motor, section, notes)
+        before = section
+        section, starting = _check_starting(
+            request, profile, budget, load, motor, section, notes, trace
+        )
+        if trace is not None:
+            trace.section("starting_drop", before, section)
+    elif trace is not None:
+        trace.starting = vd_record.CheckTrace("starting", "unchecked", "no_length")
     sized = _Sized(
         load=load,
         index=index,
@@ -710,11 +891,15 @@ def _size_motor(
         drop_percent=drop,
         running=running,
         starting=starting,
+        trace=trace,
     )
     # A starter's breaker trips on short circuit only, at the threshold I3 its
     # coordination table prints; a drive's fuses are not checked, and such a
     # circuit is counted as unchecked.
+    before = sized.section_mm2
     _check_disconnection(request, profile, sized, notes)
+    if trace is not None:
+        trace.section("earth_fault", before, sized.section_mm2)
     # The starting and earth-fault checks may have enlarged the cable since
     # its running drop was read: both drops are those of the final cable.
     _settle_drops(request, sized, notes)
@@ -739,6 +924,7 @@ def _check_starting(
     motor: motors.MotorCircuit,
     section: Decimal,
     notes: list[DesignNote],
+    trace: vd_record.CircuitTrace | None = None,
 ) -> tuple[Decimal, _DropCheck | None]:
     """Hold the drop while a motor starts within the company's limit.
 
@@ -752,9 +938,16 @@ def _check_starting(
     """
     multiple = STARTING_MULTIPLE.get(load.starter) if load.starter else None
     if multiple is None or load.length_m is None:
+        if trace is not None:
+            reason = "no_length" if load.length_m is None else "no_starting_multiple"
+            trace.starting = vd_record.CheckTrace("starting", "unchecked", reason)
         return section, None
     if request.conditions.conductor_material is not ConductorMaterial.COPPER:
         notes.append(note("starting_drop_unchecked", load=load.description))
+        if trace is not None:
+            trace.starting = vd_record.CheckTrace(
+                "starting", "unchecked", "no_start_up_column_for_aluminium"
+            )
         return section, None
     run = voltage_drop.Run(
         current_a=motor.current_a * multiple,
@@ -763,18 +956,40 @@ def _check_starting(
         voltage_v=request.supply.voltage_v,
     )
     limit = profile.max_starting_voltage_drop_percent
+    recorded = (
+        vd_record.CheckTrace(
+            "starting",
+            limit_percent=limit,
+            limit_source="company profile max_starting_voltage_drop_percent",
+            upstream_percent=budget.upstream_percent,
+        )
+        if trace is not None
+        else None
+    )
+    measure = _measure("starting", recorded)
     checked = voltage_drop.fit(
         run,
         section,
         limit - budget.upstream_percent,
         request.conditions,
-        voltage_drop.starting_percent,
+        measure,
     )
     if checked is None:
+        if trace is not None:
+            trace.starting = vd_record.CheckTrace("starting", "unchecked", "beyond_tables")
         return section, None
+    if trace is not None and recorded is not None:
+        recorded.selected_mm2 = checked.section_mm2
+        trace.starting = recorded
     total = checked.percent + budget.upstream_percent
     check = _DropCheck(
-        run, voltage_drop.starting_percent, checked.section_mm2, limit, budget.upstream_percent
+        run,
+        measure,
+        checked.section_mm2,
+        limit,
+        budget.upstream_percent,
+        kind="starting",
+        trace=recorded,
     )
     if not checked.within:
         check.exceeded = _exceeded_note(check, load, checked.percent, section)
@@ -1063,14 +1278,20 @@ def design_distribution_board(
     budget: voltage_drop.Budget | None = None,
     sub_board_after_a: dict[str, Decimal] | None = None,
     supply_breaker_a: Decimal | None = None,
+    recorder: vd_record.BoardTrace | None = None,
 ) -> Board:
     """Design a distribution board's protection and cables from its load schedule.
+
+    With a ``recorder``, each circuit's voltage-drop calculation is kept in it
+    as it runs (ADR 0004); the board designed is the same either way.
 
     Args:
         request: The board's name, supply, load schedule and cable conditions.
         profile: The company whose rules apply.
         budget: What its feeders dropped already, and what each of its own
             feeders is held to; none for a board at the origin.
+        recorder: Where each circuit's voltage-drop calculation is kept as it
+            runs (ADR 0004); none to keep nothing.
         sub_board_after_a: For each sub-board it feeds, by name, the largest
             breaker that sub-board's switch feeds, which the feeder
             discriminates with.
@@ -1090,7 +1311,7 @@ def design_distribution_board(
     if budget.upstream_percent > 0:
         notes.append(note("voltage_drop_upstream", percent=_plain(budget.upstream_percent)))
     sized = [
-        _size(request, profile, load, i, notes, budget, sub_board_after_a or {})
+        _size(request, profile, load, i, notes, budget, sub_board_after_a or {}, recorder)
         for i, load in enumerate(request.loads)
     ]
     ratio = profile.discrimination_ratio

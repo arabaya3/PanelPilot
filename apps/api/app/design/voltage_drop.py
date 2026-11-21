@@ -97,6 +97,9 @@ class Budget:
 
     upstream_percent: Decimal = Decimal(0)
     feeder_limits: dict[str, Decimal] = field(default_factory=dict)
+    #: For the record (ADR 0004) only: each feeder before the board, and
+    #: whether its drop was known. Not used by any check.
+    upstream_from: tuple[tuple[str, str, Decimal | None], ...] = ()
 
     def limit(self, profile: CompanyProfile, kind: LoadKind, feeds: str | None) -> Decimal:
         """The limit from the origin for one circuit.
@@ -113,6 +116,18 @@ class Budget:
             return self.feeder_limits[feeds]
         return limit_for(profile, kind)
 
+    def limit_source(self, profile: CompanyProfile, kind: LoadKind, feeds: str | None) -> str:
+        """Where :meth:`limit` took the limit from, as the record states it.
+
+        The company profile is the one resolved for the design: its defaults,
+        a market's settings and the company's own are not told apart there.
+        """
+        if feeds is not None and feeds in self.feeder_limits:
+            return f"the strictest limit of the loads at or below board {feeds}"
+        if kind in profile.max_voltage_drop_percent:
+            return f"company profile max_voltage_drop_percent[{kind.value}]"
+        return "company profile default_max_voltage_drop_percent"
+
 
 def limit_for(profile: CompanyProfile, kind: LoadKind) -> Decimal:
     """The company's limit from the origin for a kind of load.
@@ -128,7 +143,36 @@ def limit_for(profile: CompanyProfile, kind: LoadKind) -> Decimal:
 
 
 def percent(run: Run, section_mm2: Decimal, conditions: InstallationConditions) -> Decimal:
-    """The drop along a run, as a share of its voltage.
+    """The drop along a run, as a share of its voltage: :func:`readings`, then :func:`percent_of`.
+
+    Args:
+        run: What the cable carries and how far.
+        section_mm2: A section in :data:`SECTIONS`.
+        conditions: How the cable is installed.
+
+    Returns:
+        The drop in percent, at the worst power factor the tables hold.
+    """
+    return percent_of(run, readings(run, section_mm2, conditions))
+
+
+def percent_of(run: Run, read: tuple[cable_sizing.TableReading, ...]) -> Decimal:
+    """The drop of the worst of the readings, as a share of the run's voltage.
+
+    Args:
+        run: The run the readings are of.
+        read: What :func:`readings` or :func:`starting_readings` read.
+
+    Returns:
+        The drop in percent.
+    """
+    return max(r.volts for r in read) / run.voltage_v * 100
+
+
+def readings(
+    run: Run, section_mm2: Decimal, conditions: InstallationConditions
+) -> tuple[cable_sizing.TableReading, ...]:
+    """Every table cell the running drop along a run is read from.
 
     Args:
         run: What the cable carries and how far.
@@ -137,12 +181,13 @@ def percent(run: Run, section_mm2: Decimal, conditions: InstallationConditions) 
             aluminium, whether it is single-core.
 
     Returns:
-        The drop in percent, at the worst power factor the tables hold.
+        One reading per column or table it could fall between; the drop is
+        the worst of them (:func:`percent_of`).
     """
     material = conditions.conductor_material
     if material is ConductorMaterial.ALUMINIUM:
-        readings = [
-            cable_sizing.voltage_drop(
+        return tuple(
+            cable_sizing.voltage_drop_reading(
                 current_a=run.current_a,
                 length_m=run.length_m,
                 cross_section_mm2=section_mm2,
@@ -152,21 +197,19 @@ def percent(run: Run, section_mm2: Decimal, conditions: InstallationConditions) 
                 installation_method=conditions.installation_method,
             )
             for power_factor in _ALUMINIUM_POWER_FACTORS
-        ]
-    else:
-        readings = [
-            cable_sizing.voltage_drop(
-                current_a=run.current_a,
-                length_m=run.length_m,
-                cross_section_mm2=section_mm2,
-                conductor_material=material,
-                power_factor=power_factor,
-                three_phase=run.three_phase,
-                load_type=load_type,
-            )
-            for power_factor, load_type in _COPPER_COLUMNS
-        ]
-    return max(readings) / run.voltage_v * 100
+        )
+    return tuple(
+        cable_sizing.voltage_drop_reading(
+            current_a=run.current_a,
+            length_m=run.length_m,
+            cross_section_mm2=section_mm2,
+            conductor_material=material,
+            power_factor=power_factor,
+            three_phase=run.three_phase,
+            load_type=load_type,
+        )
+        for power_factor, load_type in _COPPER_COLUMNS
+    )
 
 
 @dataclass(frozen=True)
@@ -187,6 +230,24 @@ class Checked:
 def starting_percent(run: Run, section_mm2: Decimal, conditions: InstallationConditions) -> Decimal:
     """The drop along a copper run while a motor starts, as a share of its voltage.
 
+    :func:`starting_readings`, then :func:`percent_of`.
+
+    Args:
+        run: The starting current and the run; read as three-phase.
+        section_mm2: A section in :data:`SECTIONS`.
+        conditions: How the cable is installed; copper.
+
+    Returns:
+        The drop in percent.
+    """
+    return percent_of(run, starting_readings(run, section_mm2, conditions))
+
+
+def starting_readings(
+    run: Run, section_mm2: Decimal, conditions: InstallationConditions
+) -> tuple[cable_sizing.TableReading, ...]:
+    """The cell the drop while a motor starts is read from.
+
     Read from Fig. G28's start-up column (cos phi 0.35), the power factor of
     a motor's locked-rotor current. Aluminium is not tabulated that low, so
     only copper is checked.
@@ -197,19 +258,20 @@ def starting_percent(run: Run, section_mm2: Decimal, conditions: InstallationCon
         conditions: How the cable is installed; copper.
 
     Returns:
-        The drop in percent.
+        The one reading.
     """
     del conditions
-    drop = cable_sizing.voltage_drop(
-        current_a=run.current_a,
-        length_m=run.length_m,
-        cross_section_mm2=section_mm2,
-        conductor_material=ConductorMaterial.COPPER,
-        power_factor=Decimal("0.35"),
-        three_phase=run.three_phase,
-        load_type=cable_sizing.LoadType.MOTOR,
+    return (
+        cable_sizing.voltage_drop_reading(
+            current_a=run.current_a,
+            length_m=run.length_m,
+            cross_section_mm2=section_mm2,
+            conductor_material=ConductorMaterial.COPPER,
+            power_factor=Decimal("0.35"),
+            three_phase=run.three_phase,
+            load_type=cable_sizing.LoadType.MOTOR,
+        ),
     )
-    return drop / run.voltage_v * 100
 
 
 def fit(
