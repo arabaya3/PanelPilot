@@ -834,8 +834,6 @@ def _read_classified(
         return _integrity_finding("hash_mismatch"), None
     if not _requirements_match(row):
         return _integrity_finding("requirements_mismatch"), None
-    if not _calculation_record_match(row):
-        return _integrity_finding("calculation_record_mismatch"), None
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotSchemaUnknownError as exc:
@@ -848,6 +846,10 @@ def _read_classified(
     current = _current_classification(row, anchored) if _versions_current(row) else None
     if _findings_mismatch(row, anchored, current):
         return _integrity_finding("findings_mismatch"), None
+    # Last: a design altered in any other way is reported for that reason, as
+    # before the record existed; this says only that the record itself was.
+    if not _calculation_record_match(row):
+        return _integrity_finding("calculation_record_mismatch"), None
     return anchored, current
 
 
@@ -2130,13 +2132,6 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "requirements_mismatch"},
         )
-    if not _calculation_record_match(row):
-        raise ConflictError(
-            f"revision {number}'s calculation record does not match its recorded hash "
-            "or is not bound to this revision",
-            code="snapshot_integrity_failed",
-            params={"revision": number, "reason": "calculation_record_mismatch"},
-        )
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotUnreadableError as exc:
@@ -2158,6 +2153,14 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             "under the rules it records; save it again as a new revision",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "findings_mismatch"},
+        )
+    # Last, as in the listing check: other alterations keep their own reason.
+    if not _calculation_record_match(row):
+        raise ConflictError(
+            f"revision {number}'s calculation record does not match its recorded hash "
+            "or is not bound to this revision",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "calculation_record_mismatch"},
         )
     return anchored
 

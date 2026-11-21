@@ -819,7 +819,13 @@ def voltage_drop_reading(
 
     The one implementation: :func:`voltage_drop` returns this reading's
     ``volts``, so a caller that records the reading gets the same drop as one
-    that does not. Arguments, sources and refusals are :func:`voltage_drop`'s.
+    that does not. Arguments and refusals are :func:`voltage_drop`'s.
+
+    Source:
+        Copper: Schneider Electric, *Electrical Installation Guide* 2010,
+        Chapter G, Fig. G28, drop = (V/A/km) x current x length in km.
+        Aluminium: ABB, *Electrical installation handbook* Vol. 2
+        (1SDC010001D0204), §2.2.2 Tables 8-12, with ΔU = ΔUx Ib L.
     """
     _require_positive("current_a", current_a)
     _require_positive("length_m", length_m)

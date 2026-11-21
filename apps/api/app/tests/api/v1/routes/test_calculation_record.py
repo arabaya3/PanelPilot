@@ -19,8 +19,8 @@ from sqlalchemy.engine import Engine
 from app.design import snapshot
 from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401 - fixtures
     _app,
-    _caller,
     _Caller,
+    _caller,
     _client,
     _engine,
     _tenants,

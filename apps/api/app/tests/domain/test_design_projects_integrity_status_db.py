@@ -122,8 +122,12 @@ def _forge_review(stored: dict[str, Any]) -> None:
 
 
 #: case: (schema written, alteration, rehash, policy change, expected)
+#: rehash: False, True (the snapshot's hash recomputed), or "with_record" (the
+#: calculation record rewritten to name the new hash and rehashed too, ADR 0004).
 #: expected: (validated, export_status, code, reason) for the altered revision.
-CASES: dict[str, tuple[str, Any, bool, str | None, tuple[bool, str, str | None, str | None]]] = {
+CASES: dict[
+    str, tuple[str, Any, bool | str, str | None, tuple[bool, str, str | None, str | None]]
+] = {
     "intact_v1": ("pp-design/1", None, False, None, (True, "draft", None, None)),
     "intact_v2": ("pp-design/2", None, False, None, (True, "draft", None, None)),
     "hash_tampered_v1": (
@@ -147,15 +151,25 @@ CASES: dict[str, tuple[str, Any, bool, str | None, tuple[bool, str, str | None, 
         None,
         (False, "not_validated", "snapshot_integrity_failed", "findings_mismatch"),
     ),
-    # Known limit, kept visible: a consistent rewrite (hash recomputed) whose
-    # findings are the same reads as the design saved. Only a signature over
-    # the snapshot could tell; the hash is not one.
+    # Known limit, kept visible: a consistent rewrite (hash recomputed, and
+    # the calculation record rewritten to match) whose findings are the same
+    # reads as the design saved. Only a signature over the snapshot could tell;
+    # the hashes are not one.
     "rehashed_net_rename_undetected": (
+        "pp-design/2",
+        _net_renamed,
+        "with_record",
+        None,
+        (True, "draft", None, None),
+    ),
+    # The same rewrite leaving the calculation record behind: the record still
+    # names the snapshot it was saved with, so the rewrite is detected (ADR 0004).
+    "rehashed_net_rename_record_left": (
         "pp-design/2",
         _net_renamed,
         True,
         None,
-        (True, "draft", None, None),
+        (False, "not_validated", "snapshot_integrity_failed", "calculation_record_mismatch"),
     ),
     "rehashed_pattern_edit": (
         "pp-design/2",
@@ -216,6 +230,11 @@ def test_the_integrity_status_on_open_list_approval_and_every_export(
         values: dict[str, Any] = {"design_snapshot": stored}
         if rehash:
             values["snapshot_sha256"] = snapshot.sha256_of(stored)
+        if rehash == "with_record":
+            record = copy.deepcopy(revision_row(engine, project_id, 2)["calculation_record"])
+            record["snapshot_sha256"] = values["snapshot_sha256"]
+            values["calculation_record"] = record
+            values["calculation_record_sha256"] = snapshot.sha256_of(record)
         update_row(engine, project_id, 2, **values)
     if policy is not None:
         saved = _open(client, project_id, 2)
