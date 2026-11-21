@@ -12,7 +12,9 @@ import pytest
 from app.core.errors import ValidationError
 from app.design import designations, distribution, profile, voltage_drop
 from app.models.schemas.design import (
+    Board,
     Circuit,
+    DesignNote,
     DeviceKind,
     DistributionBoardRequest,
     LoadInput,
@@ -709,3 +711,114 @@ def test_a_market_is_named_on_the_board() -> None:
         n.code
         for n in distribution.design_distribution_board(_hall(), profile.default_profile()).notes
     ]
+
+
+# --- Voltage drop after a later enlargement -----------------------------------
+#
+# Each expected drop below is worked by hand from Schneider EIG 2010 Fig. G28
+# cells (V/(A·km)), not read back from the engine: drop = cell x I x L/1000,
+# as a share of the line voltage (three-phase) or the 231 V phase voltage the
+# board uses for a single-phase circuit, rounded to 0.01 %. The design takes
+# the worse of the lighting (cos phi 1) and motor (cos phi 0.8) columns. The
+# section a later check enlarges the cable to is the board's own (stated by
+# its note); only the drop on that final cable is asserted from the arithmetic.
+
+
+def _codes_for(board: Board, load: str, *codes: str) -> list[DesignNote]:
+    return [n for n in board.notes if n.code in codes and n.params.get("load") == load]
+
+
+def test_a_motor_enlarged_for_earth_fault_shows_the_drop_of_its_final_cable() -> None:
+    # 4 kW DOL motor, Ir 8.6 A (ABB §3.3 table, as the board states it), 60 m,
+    # 400 V, TN-S with Ze 0.35 ohm. The earth-fault check enlarges 1.5 -> 4 mm².
+    motor = _load(LoadKind.MOTOR, "4", "Fan", phases=3, starter="dol", length_m=Decimal(60))
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    (circuit,) = board.circuits
+    assert circuit.design_current_a == Decimal("8.6")
+    (upsized,) = _codes_for(board, "Fan", "earth_fault_upsized")
+    assert (upsized.params["sized"], upsized.params["section"]) == ("1.5", "4")
+    assert board.cable(circuit.cable_id or "").cross_section_mm2 == 4
+    # Fig. G28 4 mm² three-phase: lighting 9.5, motor 8 -> 9.5.
+    # 9.5 x 8.6 A x 0.060 km = 4.902 V of 400 V = 1.2255 % -> 1.23 %.
+    # (The 1.5 mm² cable it started as: 25 x 8.6 x 0.06 = 12.9 V, 3.22 %.)
+    assert circuit.voltage_drop_percent == Decimal("1.23")
+
+
+def test_a_motor_enlarged_for_starting_shows_the_running_drop_of_its_final_cable() -> None:
+    # 22 kW DOL motor, Ir 42 A, 120 m, 400 V; starting held to 8 %.
+    company = profile.default_profile().model_copy(
+        update={"max_starting_voltage_drop_percent": Decimal(8)}
+    )
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[_load(LoadKind.MOTOR, "22", "Pump", phases=3, starter="dol", length_m=Decimal(120))],
+    )
+    board = distribution.design_distribution_board(request, company)
+    (circuit,) = board.circuits
+    assert circuit.design_current_a == Decimal(42)
+    (starting,) = _codes_for(board, "Pump", "starting_drop_upsized")
+    assert (starting.params["sized"], starting.params["section"]) == ("10", "16")
+    assert board.cable(circuit.cable_id or "").cross_section_mm2 == 16
+    # Fig. G28 16 mm² three-phase: lighting 2.4, motor 2.05 -> 2.4.
+    # 2.4 x 42 A x 0.120 km = 12.096 V of 400 V = 3.024 % -> 3.02 %.
+    # (The 10 mm² cable: 3.6 x 42 x 0.12 = 18.144 V, 4.54 %.)
+    assert circuit.voltage_drop_percent == Decimal("3.02")
+
+
+def test_an_exceeded_drop_is_stated_for_the_cable_a_later_check_enlarged() -> None:
+    # 4 kW single-phase data circuit over 300 m, held to 0.5 % (a company
+    # limit, so that no tabulated section is within it). Ib = 4000 / (231 x
+    # 0.9) = 19.24 A. The short-circuit check enlarges 2.5 -> 25 mm².
+    company = profile.default_profile().model_copy(
+        update={"default_max_voltage_drop_percent": Decimal("0.5")}
+    )
+    request = _earthed("0.35", _load(LoadKind.DATA, "4", "Link", length_m=Decimal(300)))
+    board = distribution.design_distribution_board(request, company)
+    (circuit,) = board.circuits
+    assert circuit.design_current_a == Decimal("19.24")
+    (short,) = _codes_for(board, "Link", "short_circuit_min_upsized")
+    assert (short.params["sized"], short.params["section"]) == ("2.5", "25")
+    assert board.cable(circuit.cable_id or "").cross_section_mm2 == 25
+    # Fig. G28 25 mm² single-phase: lighting 1.8, motor 1.5 -> 1.8.
+    # 1.8 x 19.24 A x 0.300 km = 10.3896 V of 231 V = 4.4977 % -> 4.50 %.
+    assert circuit.voltage_drop_percent == Decimal("4.50")
+    # Still above 0.5 %: the blocking finding stays, stated for that cable.
+    (exceeded,) = _codes_for(board, "Link", "voltage_drop_exceeded")
+    # Note params are printed without trailing zeros (the notes' existing _plain).
+    assert exceeded.params["own"] == "4.5"
+    assert exceeded.params["total"] == "4.5"
+    assert exceeded.params["section"] == "25"
+    assert exceeded.params["limit"] == "0.5"
+    assert "4.5 %" in exceeded.text
+    assert "44.98" not in exceeded.text
+    # The reason it was enlarged is kept.
+    assert short.params["sized"] == "2.5"
+
+
+def test_a_cable_no_later_check_enlarges_keeps_its_drop_and_notes() -> None:
+    # Control: 1 kW single-phase data circuit, 20 m, no earth-loop data, so no
+    # later check enlarges it. Ib = 1000 / (231 x 0.9) = 4.81 A on 2.5 mm²
+    # (lighting 18, motor 14.4 -> 18): 18 x 4.81 x 0.020 = 1.7316 V of 231 V
+    # = 0.7496 % -> 0.75 %.
+    request = DistributionBoardRequest(
+        name="DB", loads=[_load(LoadKind.DATA, "1", "Rack", length_m=Decimal(20))]
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (circuit,) = board.circuits
+    assert circuit.design_current_a == Decimal("4.81")
+    assert board.cable(circuit.cable_id or "").cross_section_mm2 == Decimal("2.5")
+    assert circuit.voltage_drop_percent == Decimal("0.75")
+    assert not [n for n in board.notes if "drop" in n.code and n.code != "voltage_drop_unchecked"]
+
+
+def test_a_cable_without_a_length_stays_unchecked_after_a_later_check() -> None:
+    # No length: no drop is worked, whatever else happens to the cable.
+    motor = _load(LoadKind.MOTOR, "4", "Fan", phases=3, starter="dol")
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    assert board.circuits[0].voltage_drop_percent is None
+    (unchecked,) = [n for n in board.notes if n.code == "voltage_drop_unchecked"]
+    assert unchecked.params["count"] == "1"
