@@ -14,6 +14,7 @@ same tables openly, with two worked sizing examples to test against.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
@@ -746,6 +747,86 @@ def voltage_drop(
     current or length is refused too: it is a run carrying nothing, and the
     only answer to it is one no caller needed to ask for.
     """
+    return voltage_drop_reading(
+        current_a=current_a,
+        length_m=length_m,
+        cross_section_mm2=cross_section_mm2,
+        conductor_material=conductor_material,
+        power_factor=power_factor,
+        three_phase=three_phase,
+        load_type=load_type,
+        installation_method=installation_method,
+    ).volts
+
+
+#: Column names of Fig. G28 as transcribed, in ``_VOLTAGE_DROP_MV_PER_A_KM`` order.
+_G28_COLUMNS = (
+    "single-phase motor cos phi 0.8",
+    "single-phase motor cos phi 0.35",
+    "single-phase lighting",
+    "three-phase motor cos phi 0.8",
+    "three-phase motor cos phi 0.35",
+    "three-phase lighting",
+)
+
+#: The ABB handbook columns as transcribed, in ``_VOLTAGE_DROP_AL`` order.
+_ABB_COLUMNS = (
+    "single-core single-phase",
+    "single-core three-phase",
+    "two-core single-phase",
+    "three-core three-phase",
+)
+
+
+@dataclass(frozen=True)
+class TableReading:
+    """One cell a voltage drop was read from, and the drop it gave.
+
+    Attributes:
+        table: The table, as its source names it.
+        document_id: The source document's identifier in the citation.
+        edition: The edition the code records for the source; ``None`` when
+            the code records none.
+        column: The column read, as transcribed here.
+        cross_section_mm2: The row read.
+        power_factor: The power factor the column or table is for.
+        cell_v_per_a_km: The cell, in V/(A·km).
+        volts: The drop it gives: cell x current x length in km.
+    """
+
+    table: str
+    document_id: str
+    edition: str | None
+    column: str
+    cross_section_mm2: Decimal
+    power_factor: Decimal
+    cell_v_per_a_km: Decimal
+    volts: Decimal
+
+
+def voltage_drop_reading(
+    *,
+    current_a: Decimal,
+    length_m: Decimal,
+    cross_section_mm2: Decimal,
+    conductor_material: ConductorMaterial,
+    power_factor: Decimal,
+    three_phase: bool,
+    load_type: LoadType = LoadType.MOTOR,
+    installation_method: InstallationMethod | None = None,
+) -> TableReading:
+    """:func:`voltage_drop`, with the cell it was read from.
+
+    The one implementation: :func:`voltage_drop` returns this reading's
+    ``volts``, so a caller that records the reading gets the same drop as one
+    that does not. Arguments and refusals are :func:`voltage_drop`'s.
+
+    Source:
+        Copper: Schneider Electric, *Electrical Installation Guide* 2010,
+        Chapter G, Fig. G28, drop = (V/A/km) x current x length in km.
+        Aluminium: ABB, *Electrical installation handbook* Vol. 2
+        (1SDC010001D0204), §2.2.2 Tables 8-12, with ΔU = ΔUx Ib L.
+    """
     _require_positive("current_a", current_a)
     _require_positive("length_m", length_m)
     _require_finite("cross_section_mm2", cross_section_mm2)
@@ -783,7 +864,16 @@ def voltage_drop(
 
     per_a_km = Decimal(row[index])
     # The guide's formula: drop = (V/A/km) x current x length in km.
-    return per_a_km * current_a * (length_m / Decimal("1000"))
+    return TableReading(
+        table="Chapter G, Fig. G28",
+        document_id=_SCHNEIDER_G28.document_id,
+        edition="2010",
+        column=_G28_COLUMNS[index],
+        cross_section_mm2=cross_section_mm2,
+        power_factor=Decimal(1) if load_type is LoadType.LIGHTING else power_factor,
+        cell_v_per_a_km=per_a_km,
+        volts=per_a_km * current_a * (length_m / Decimal("1000")),
+    )
 
 
 def _aluminium_drop(
@@ -794,7 +884,7 @@ def _aluminium_drop(
     power_factor: Decimal,
     three_phase: bool,
     installation_method: InstallationMethod | None,
-) -> Decimal:
+) -> TableReading:
     """Voltage drop of an aluminium run from ABB's specific-drop tables.
 
     Schneider's Fig. G28 aluminium column is offset against its copper one
@@ -822,7 +912,18 @@ def _aluminium_drop(
         )
     single_core = installation_method in _SINGLE_CORE_METHODS
     index = (0 if single_core else 2) + (1 if three_phase else 0)
-    return Decimal(row[index]) * current_a * (length_m / Decimal("1000"))
+    cell = Decimal(row[index])
+    _page, section = _VOLTAGE_DROP_AL_PAGES[power_factor]
+    return TableReading(
+        table=section,
+        document_id=ABB_HANDBOOK_ID,
+        edition=None,
+        column=_ABB_COLUMNS[index],
+        cross_section_mm2=cross_section_mm2,
+        power_factor=power_factor,
+        cell_v_per_a_km=cell,
+        volts=cell * current_a * (length_m / Decimal("1000")),
+    )
 
 
 def voltage_drop_citation(conductor_material: ConductorMaterial, power_factor: Decimal) -> Citation:

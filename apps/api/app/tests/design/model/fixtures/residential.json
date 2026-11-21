@@ -37,6 +37,311 @@
   },
   "source": "pipeline",
   "stored": {
+    "calculation_record": {
+      "boards": [
+        {
+          "board": "DB-V",
+          "circuits": [
+            {
+              "circuit_id": "c1",
+              "current": {
+                "design_current_a": "3.86",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": "3.86"
+              },
+              "description": "Lighting ground",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "entered",
+                  "value": "15"
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "0.8"
+                },
+                "starter": null
+              },
+              "load": "lighting",
+              "running": {
+                "attempts": [
+                  {
+                    "raw_percent": "0.7552173913043478260869565217",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "30",
+                        "column": "single-phase lighting",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "1",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "1.73700"
+                      },
+                      {
+                        "cell_v_per_a_km": "24",
+                        "column": "single-phase motor cos phi 0.8",
+                        "cross_section_mm2": "1.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.8",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "1.38960"
+                      }
+                    ],
+                    "section_mm2": "1.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "0.7552173913043478260869565217",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "30",
+                      "column": "single-phase lighting",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "1",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "1.73700"
+                    },
+                    {
+                      "cell_v_per_a_km": "24",
+                      "column": "single-phase motor cos phi 0.8",
+                      "cross_section_mm2": "1.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.8",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "1.38960"
+                    }
+                  ],
+                  "rounded_percent": "0.76",
+                  "section_mm2": "1.5"
+                },
+                "kind": "running",
+                "limit_percent": "3",
+                "limit_source": "company profile max_voltage_drop_percent[lighting]",
+                "selected_by_check_mm2": "1.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "0.76",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "saved_voltage_drop_percent": "0.76",
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "supply voltage (single-phase supply)",
+                "value_v": "230"
+              }
+            },
+            {
+              "circuit_id": "c2",
+              "current": {
+                "design_current_a": "9.66",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": "9.66"
+              },
+              "description": "Sockets kitchen",
+              "final_section_mm2": "2.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "entered",
+                  "value": "12"
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "2.0"
+                },
+                "starter": null
+              },
+              "load": "socket",
+              "running": {
+                "attempts": [
+                  {
+                    "raw_percent": "0.907200",
+                    "readings": [
+                      {
+                        "cell_v_per_a_km": "18",
+                        "column": "single-phase lighting",
+                        "cross_section_mm2": "2.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "1",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "2.08656"
+                      },
+                      {
+                        "cell_v_per_a_km": "14.4",
+                        "column": "single-phase motor cos phi 0.8",
+                        "cross_section_mm2": "2.5",
+                        "document_id": "schneider-eig-2010",
+                        "edition": "2010",
+                        "power_factor": "0.8",
+                        "table": "Chapter G, Fig. G28",
+                        "volts": "1.669248"
+                      }
+                    ],
+                    "section_mm2": "2.5"
+                  }
+                ],
+                "final": {
+                  "raw_percent": "0.907200",
+                  "readings": [
+                    {
+                      "cell_v_per_a_km": "18",
+                      "column": "single-phase lighting",
+                      "cross_section_mm2": "2.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "1",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "2.08656"
+                    },
+                    {
+                      "cell_v_per_a_km": "14.4",
+                      "column": "single-phase motor cos phi 0.8",
+                      "cross_section_mm2": "2.5",
+                      "document_id": "schneider-eig-2010",
+                      "edition": "2010",
+                      "power_factor": "0.8",
+                      "table": "Chapter G, Fig. G28",
+                      "volts": "1.669248"
+                    }
+                  ],
+                  "rounded_percent": "0.91",
+                  "section_mm2": "2.5"
+                },
+                "kind": "running",
+                "limit_percent": "5",
+                "limit_source": "company profile default_max_voltage_drop_percent",
+                "selected_by_check_mm2": "2.5",
+                "status": "checked",
+                "total_complete": true,
+                "total_percent": "0.91",
+                "upstream_percent_counted": "0",
+                "within_limit": true
+              },
+              "saved_voltage_drop_percent": "0.91",
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                },
+                {
+                  "from_mm2": "1.5",
+                  "section_mm2": "2.5",
+                  "step": "company_circuit_rule"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "supply voltage (single-phase supply)",
+                "value_v": "230"
+              }
+            },
+            {
+              "circuit_id": "c3",
+              "current": {
+                "design_current_a": "14.49",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": null
+              },
+              "description": "Water heater",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "3.0"
+                },
+                "starter": null
+              },
+              "load": "water_heater",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "supply voltage (single-phase supply)",
+                "value_v": "230"
+              }
+            }
+          ],
+          "conditions": {
+            "conductor_material": "copper",
+            "installation_method": "B1"
+          },
+          "supply": {
+            "phases": 1,
+            "voltage_v": "230"
+          },
+          "upstream": {
+            "complete": true,
+            "contributions": [],
+            "percent_counted": "0"
+          }
+        }
+      ],
+      "not_modelled": [
+        "The drop before the project's first board (the supply cable to it) is not modelled; the software takes it as 0."
+      ],
+      "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+      "rules_version": "2026.11.21.1",
+      "schema": "pp-vdrec/1",
+      "snapshot_sha256": "173591eee8603c799851d16d5d51fc315a70ac31354d152fb62b969ba7f8a8c0",
+      "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
+    },
+    "calculation_record_sha256": "5c8813ea1986f062b9aef21ebc5a0bc50235ac462c02a6e68de1dd377b343ec3",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

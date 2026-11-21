@@ -260,7 +260,10 @@ def _stored(request: Request) -> dict[str, Any]:
 def _rehash(project: DesignProject, base: dict[str, Any]) -> dict[str, Any]:
     """Store a schema-built project exactly as ``_validate`` stores one."""
     dumped = project.model_dump(mode="json")
-    return {**base, "design_snapshot": dumped, "snapshot_sha256": snapshot.sha256_of(dumped)}
+    # No calculation record: one is evidence of what the design computed, and
+    # an augmented snapshot was never computed by it (ADR 0004).
+    kept = {k: v for k, v in base.items() if not k.startswith("calculation_record")}
+    return {**kept, "design_snapshot": dumped, "snapshot_sha256": snapshot.sha256_of(dumped)}
 
 
 def _every_kind(base: dict[str, Any]) -> dict[str, Any]:

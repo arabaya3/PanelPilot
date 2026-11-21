@@ -29,6 +29,140 @@
   },
   "source": "pipeline",
   "stored": {
+    "calculation_record": {
+      "boards": [
+        {
+          "board": "DB-AE",
+          "circuits": [
+            {
+              "circuit_id": "c1",
+              "current": {
+                "design_current_a": "4.81",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": null
+              },
+              "description": "Lighting",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "1"
+                },
+                "starter": null
+              },
+              "load": "lighting",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "phase voltage: supply line voltage / sqrt 3, rounded to whole volts",
+                "value_v": "231"
+              }
+            },
+            {
+              "circuit_id": "c2",
+              "current": {
+                "design_current_a": "9.62",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": null
+              },
+              "description": "Sockets",
+              "final_section_mm2": "2.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "2"
+                },
+                "starter": null
+              },
+              "load": "socket",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                },
+                {
+                  "from_mm2": "1.5",
+                  "section_mm2": "2.5",
+                  "step": "company_circuit_rule"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "phase voltage: supply line voltage / sqrt 3, rounded to whole volts",
+                "value_v": "231"
+              }
+            }
+          ],
+          "conditions": {
+            "conductor_material": "copper",
+            "installation_method": "B1"
+          },
+          "supply": {
+            "phases": 3,
+            "voltage_v": "400"
+          },
+          "upstream": {
+            "complete": true,
+            "contributions": [],
+            "percent_counted": "0"
+          }
+        }
+      ],
+      "not_modelled": [
+        "The drop before the project's first board (the supply cable to it) is not modelled; the software takes it as 0."
+      ],
+      "profile_sha256": "beb4c39335778683555e98b3e59d96f31f1f76c761e4a7444865388bd6abf5a7",
+      "rules_version": "2026.11.21.1",
+      "schema": "pp-vdrec/1",
+      "snapshot_sha256": "61bfabfa658ce089fa5ef23a100ef3eae1195bb29672e0e1a71253377f6d52a8",
+      "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
+    },
+    "calculation_record_sha256": "5f18849380873131e122c881abe530cee3766984763e36396614fabb5ed6d98e",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

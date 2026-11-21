@@ -96,6 +96,11 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # every read; NULL on a revision saved before it, which gets a derived one.
     requirements: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The voltage-drop calculation record (``pp-vdrec/1``, ADR 0004) and its
+    # SHA-256, written once with the revision and checked on every read; NULL
+    # on a revision saved before it, which reads as not recorded.
+    calculation_record: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    calculation_record_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Set with the approval, in the same locked transaction: the snapshot
     # hash approved. An approval counts only while it equals snapshot_sha256.
     approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -119,6 +124,12 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # JSON null for a revision with no stored record). NULL on an approval
     # recorded before this column: not bound, so not current.
     approved_requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Set with the approval: the calculation record's hash then (JSON null's
+    # for a revision with none). NULL on an approval recorded before this
+    # column; on a revision with no record that still counts (ADR 0004).
+    approved_calculation_record_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     # The approver's display name, frozen: "" when the account had none (an
     # export says "a team member"). Exports never re-read it from the account.
     approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

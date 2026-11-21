@@ -34,6 +34,193 @@
   },
   "source": "pipeline",
   "stored": {
+    "calculation_record": {
+      "boards": [
+        {
+          "board": "DB-DEC",
+          "circuits": [
+            {
+              "circuit_id": "c1",
+              "current": {
+                "design_current_a": "0.00",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": null
+              },
+              "description": "Tiny load",
+              "final_section_mm2": "1.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "0.001"
+                },
+                "starter": null
+              },
+              "load": "lighting",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "phase voltage: supply line voltage / sqrt 3, rounded to whole volts",
+                "value_v": "231"
+              }
+            },
+            {
+              "circuit_id": "c2",
+              "current": {
+                "design_current_a": "5.40",
+                "method": "Ib = P / (k U cos phi), rounded to 0.01 A (feeder_protection.load_current)",
+                "parallel_cables": 1,
+                "per_cable_a": null
+              },
+              "description": "Many decimals",
+              "final_section_mm2": "2.5",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 1
+                },
+                "power_factor": {
+                  "origin": "software default (DEFAULT_POWER_FACTOR), none entered",
+                  "use": "design current Ib; not the voltage-drop table column",
+                  "value": "0.9"
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "1.123456789012345678"
+                },
+                "starter": null
+              },
+              "load": "socket",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "1.5",
+                  "step": "current_carrying_capacity"
+                },
+                {
+                  "from_mm2": "1.5",
+                  "section_mm2": "2.5",
+                  "step": "company_circuit_rule"
+                }
+              ],
+              "starting": null,
+              "voltage": {
+                "basis": "phase voltage: supply line voltage / sqrt 3, rounded to whole volts",
+                "value_v": "231"
+              }
+            },
+            {
+              "circuit_id": "c3",
+              "current": {
+                "design_current_a": "169.81",
+                "method": "motor rated current Ir (app.design.motors; the board's notes state its basis)",
+                "run_basis": "Ir, three-phase",
+                "run_current_a": null
+              },
+              "description": "Big motor",
+              "final_section_mm2": "70",
+              "inputs": {
+                "length_m": {
+                  "origin": "not given",
+                  "value": null
+                },
+                "phases": {
+                  "origin": "entered",
+                  "value": 3
+                },
+                "power_factor": {
+                  "origin": "not entered",
+                  "use": "motor rated current (app.design.motors), where its formula applies; not the voltage-drop table column",
+                  "value": null
+                },
+                "power_kw": {
+                  "origin": "entered",
+                  "value": "90"
+                },
+                "starter": "drive"
+              },
+              "load": "motor",
+              "running": {
+                "kind": "running",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "saved_voltage_drop_percent": null,
+              "sections": [
+                {
+                  "section_mm2": "70",
+                  "step": "current_carrying_capacity"
+                }
+              ],
+              "starting": {
+                "kind": "starting",
+                "reason": "no_length",
+                "status": "unchecked"
+              },
+              "voltage": {
+                "basis": "supply line voltage",
+                "value_v": "400"
+              }
+            }
+          ],
+          "conditions": {
+            "conductor_material": "copper",
+            "installation_method": "B1"
+          },
+          "supply": {
+            "phases": 3,
+            "voltage_v": "400"
+          },
+          "upstream": {
+            "complete": true,
+            "contributions": [],
+            "percent_counted": "0"
+          }
+        }
+      ],
+      "not_modelled": [
+        "The drop before the project's first board (the supply cable to it) is not modelled; the software takes it as 0."
+      ],
+      "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+      "rules_version": "2026.11.21.1",
+      "schema": "pp-vdrec/1",
+      "snapshot_sha256": "7a6e1d4b1ea027e98805622fc6e1391d29a35bdb1479850d7f7a1235482cedb1",
+      "statement": "Evidence of what this software computed when the revision was saved. It is not engineering validation: the method, tables and limits are not confirmed by it."
+    },
+    "calculation_record_sha256": "67c84c9567963076a265f1bb0a027cf5668a3155187b696d9ca411e9e8f86875",
     "catalogue_version": "none",
     "design_snapshot": {
       "boards": [

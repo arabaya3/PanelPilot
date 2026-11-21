@@ -2917,6 +2917,27 @@ class CompanySettings(BaseModel):
     permissions: list[Permission] = Field(default_factory=list)
 
 
+class CalculationRecordView(StrictModel):
+    """A revision's voltage-drop calculation record (ADR 0004), as stored.
+
+    Evidence of what the software computed when the revision was saved, not
+    engineering validation (the record says so itself).
+
+    Attributes:
+        revision: The revision it is of.
+        status: ``recorded``, or ``not_recorded`` for a revision saved before
+            records were written (or whose design was refused). Nothing is
+            derived for one that has none.
+        sha256: The record's SHA-256, which an approval binds.
+        record: The record (``pp-vdrec/1``).
+    """
+
+    revision: int
+    status: Literal["recorded", "not_recorded"]
+    sha256: str | None = None
+    record: dict[str, Any] | None = None
+
+
 class SaveCompanySettings(StrictModel):
     """Company settings to save.
 

@@ -43,7 +43,7 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from app.core.errors import ValidationError
-from app.design import disconnection, distribution, fault_level, voltage_drop
+from app.design import disconnection, distribution, fault_level, vd_record, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -226,12 +226,19 @@ def _check_supply(child: DistributionBoardRequest, parent: DistributionBoardRequ
         )
 
 
-def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProfile) -> list[Board]:
+def design_boards(
+    requests: list[DistributionBoardRequest],
+    profile: CompanyProfile,
+    trace: vd_record.ProjectTrace | None = None,
+) -> list[Board]:
     """Design every board in a project, each feeder sized from its sub-board.
 
     Args:
         requests: The boards' schedules.
         profile: The company whose rules apply.
+        trace: Where to keep each board's voltage-drop calculation as it runs
+            (ADR 0004), from the pass that designs what is returned; the
+            boards are the same either way.
 
     Returns:
         The boards, undesignated, in the order given.
@@ -270,6 +277,9 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
 
     # From the origin down: each board knows what its feeders dropped.
     upstream: dict[str, Decimal] = {}
+    # For the record only: each board's chain of feeders, with their drops.
+    upstream_from: dict[str, tuple[tuple[str, str, Decimal | None], ...]] = {}
+    recorded: dict[str, vd_record.BoardTrace] = {}
     supply_breakers: dict[str, Decimal] = {}
     designed: dict[str, Board] = {}
     for request in reversed(order):
@@ -279,14 +289,19 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
         budget = voltage_drop.Budget(
             upstream_percent=upstream.get(request.name, Decimal(0)),
             feeder_limits={child: strictest[child] for child in children},
+            upstream_from=upstream_from.get(request.name, ()),
         )
+        recorder = _board_trace(request, budget) if trace is not None else None
         board = distribution.design_distribution_board(
             _with_feeders(request, feeders),
             profile,
             budget,
             after,
             supply_breakers.get(request.name),
+            recorder,
         )
+        if recorder is not None:
+            recorded[request.name] = recorder
         for circuit in board.circuits:
             if circuit.feeds is not None:
                 breaker = board.device(circuit.device_ids[0]).rated_current_a
@@ -295,6 +310,10 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
                 upstream[circuit.feeds] = budget.upstream_percent + (
                     circuit.voltage_drop_percent or Decimal(0)
                 )
+                upstream_from[circuit.feeds] = (
+                    *budget.upstream_from,
+                    (request.name, circuit.id, circuit.voltage_drop_percent),
+                )
         if request.fed_from is not None:
             board.notes.append(note("fed_from", board=request.fed_from))
         if level_note is not None:
@@ -302,7 +321,36 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
         if loop_note is not None:
             board.notes.append(loop_note)
         designed[request.name] = board
+    if trace is not None:
+        trace.boards.extend(recorded[request.name] for request in requests)
     return [designed[request.name] for request in requests]
+
+
+def _board_trace(
+    request: DistributionBoardRequest, budget: voltage_drop.Budget
+) -> vd_record.BoardTrace:
+    """A board's record: its supply, conditions and what its feeders contributed."""
+    supply = request.supply
+    return vd_record.BoardTrace(
+        board=request.name,
+        supply={"voltage_v": str(supply.voltage_v), "phases": supply.phases},
+        conditions={
+            "conductor_material": request.conditions.conductor_material.value,
+            "installation_method": request.conditions.installation_method.value,
+        },
+        upstream_percent=budget.upstream_percent,
+        upstream=[
+            {
+                "board": board,
+                "circuit_id": circuit_id,
+                "percent": None if percent is None else str(percent),
+                # An unchecked feeder drop is counted as 0 by the software.
+                "status": "recorded" if percent is not None else "unknown_counted_as_0",
+            }
+            for board, circuit_id, percent in budget.upstream_from
+        ],
+        upstream_unknown=any(percent is None for _b, _c, percent in budget.upstream_from),
+    )
 
 
 def _largest_after_incomer(board: Board) -> Decimal | None:

@@ -27,6 +27,7 @@ from app.models.schemas.design import (
     ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
+    CalculationRecordView,
     CompanySettings,
     ConfigurationReview,
     ConfigurationValidateRequest,
@@ -391,6 +392,26 @@ def open_project(
     """Open a saved project at its latest revision, or the one asked for."""
     return design_projects.open_project(
         session=session, user=user, project_id=project_id, revision=revision
+    )
+
+
+@router.get(
+    "/projects/{project_id}/revisions/{number}/calculation-record",
+    response_model=CalculationRecordView,
+    responses={
+        404: {"description": "No such revision is the caller's (`revision_not_found`)"},
+        409: {"description": "`snapshot_integrity_failed` (`calculation_record_mismatch`)"},
+    },
+)
+def get_calculation_record(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> CalculationRecordView:
+    """A revision's voltage-drop calculation record, or ``not_recorded`` (ADR 0004)."""
+    return design_projects.calculation_record(
+        session=session, user=user, project_id=project_id, number=number
     )
 
 
