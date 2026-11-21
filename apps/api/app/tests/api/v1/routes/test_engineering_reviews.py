@@ -404,12 +404,18 @@ def test_a_stored_claim_must_be_the_servers_record(
         }
     who.user = team["owner"]
     honest = _rewrite(stored, lambda k, d: recorded[(k, d["ref"])])
+    # Stored as the server would store it: its calculation record (ADR 0004)
+    # names this snapshot, so the rewrite is not read as one under a record.
+    record = dict(revision_row(engine, project_id, number)["calculation_record"])
+    record["snapshot_sha256"] = snapshot.sha256_of(honest)
     update_row(
         engine,
         project_id,
         number,
         design_snapshot=honest,
         snapshot_sha256=snapshot.sha256_of(honest),
+        calculation_record=record,
+        calculation_record_sha256=snapshot.sha256_of(record),
     )
     opened = _open(client, project_id, number)
     # It reads: no integrity failure. Its saved findings said "unreviewed",
